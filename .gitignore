@@ -1,0 +1,14 @@
+.venv/
+node_modules/
+.env
+runs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.deepeval/
+*.log
+.toyapp.pid
+
+# Tai lieu rieng cua Role A (Nghia) - khong day len repo chung
+role-a/
+docs/research/qcagent-run*.md
