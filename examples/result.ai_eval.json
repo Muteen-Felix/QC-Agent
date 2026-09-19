@@ -1,0 +1,97 @@
+{
+  "task_id": "t-003",
+  "run_id": "r-0088",
+  "worker": {
+    "name": "deepeval",
+    "version": null,
+    "adapter_version": "0.1.0"
+  },
+  "status": "fail",
+  "verdict": {
+    "value": "fail",
+    "verdict_source": "deterministic_assert",
+    "gating": true,
+    "confidence": null,
+    "rationale": null
+  },
+  "findings": [
+    {
+      "finding_id": "f-10",
+      "title": "JSONCorrectness: 5/5 case đúng schema",
+      "detected_by": "metric:JSONCorrectness",
+      "verdict_source": "deterministic_assert",
+      "confidence": null,
+      "rationale": null,
+      "severity_hint": null,
+      "evidence": [],
+      "promote_candidate": null
+    },
+    {
+      "finding_id": "f-11",
+      "title": "summary_shorter_than_body: 4/5 case đạt — case #3 summary dài hơn body",
+      "detected_by": "metric:summary_shorter_than_body",
+      "verdict_source": "deterministic_assert",
+      "confidence": null,
+      "rationale": null,
+      "severity_hint": "high",
+      "evidence": [
+        {
+          "kind": "raw_output",
+          "uri": "runs/r-0088/t-003/case-3.json",
+          "sha256": "d740be21c93f5a0861ed4c7b92038fa5716ce0db43829af150c6be73048d921e"
+        }
+      ],
+      "promote_candidate": null
+    },
+    {
+      "finding_id": "f-12",
+      "title": "G-Eval 'summary có giữ ý chính không': 0.71 (baseline 0.78, delta -0.07)",
+      "detected_by": "metric:GEval",
+      "verdict_source": "llm_judgment",
+      "confidence": 0.64,
+      "rationale": "Judge cho rằng case #2 và #5 bỏ mất ý về deadline. Ngưỡng cảnh báo delta = -0.10, chưa đạt.",
+      "severity_hint": "low",
+      "evidence": [
+        {
+          "kind": "raw_output",
+          "uri": "runs/r-0088/t-003/geval-detail.json",
+          "sha256": "9ab3c05e178d24f6b0e91dc7350af426185ed9c0b7f342a8619de507cb42130f"
+        }
+      ],
+      "promote_candidate": null
+    }
+  ],
+  "metrics": {
+    "JSONCorrectness.pass_rate": 1.0,
+    "summary_not_empty.pass_rate": 1.0,
+    "summary_shorter_than_body.pass_rate": 0.8,
+    "GEval.score": 0.71
+  },
+  "evidence": [
+    {
+      "kind": "raw_output",
+      "uri": "runs/r-0088/t-003/deepeval-results.json",
+      "sha256": "31f8ae06c24b7d95013ecaf6289b5710de4c3a8f60219bd7ce4530a81f962d0b"
+    },
+    {
+      "kind": "stdout",
+      "uri": "runs/r-0088/t-003/pytest-stdout.log",
+      "sha256": "6c0e93b18af527d40312ba97ed6f85410c9d72be3105fa84d7be209163cf4a8d"
+    }
+  ],
+  "cost": {
+    "wallclock_s": 48,
+    "tokens": 12440,
+    "usd": 0.04
+  },
+  "sut_identity_ref": "sut-9f2c",
+  "determinism": {
+    "seed": null,
+    "replay_cmd": "deepeval test run tests/eval/test_summarize.py"
+  },
+  "adapter_notes": [
+    "version=null: RUN 1-5 không ghi phiên bản DeepEval; điền từ version_probe lúc chạy thật.",
+    "judge_config.model != SUT model — đã kiểm, không trùng.",
+    "GEval là advisory: KHÔNG tham gia verdict.value."
+  ]
+}

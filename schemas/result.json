@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qc-agent.local/schemas/result.json",
+  "title": "Quality Result Schema v1.0.0",
+  "type": "object",
+  "required": [
+    "task_id",
+    "run_id",
+    "worker",
+    "status",
+    "verdict",
+    "evidence",
+    "cost"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "worker": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "adapter_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "adapter_version": {
+          "type": "string"
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail",
+        "error",
+        "skipped"
+      ]
+    },
+    "verdict": {
+      "type": "object",
+      "required": [
+        "value",
+        "verdict_source",
+        "gating"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "enum": [
+            "pass",
+            "fail",
+            "non_gating"
+          ]
+        },
+        "verdict_source": {
+          "enum": [
+            "deterministic_assert",
+            "llm_judgment",
+            "heuristic"
+          ]
+        },
+        "gating": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1,
+          "default": null
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verdict_source": {
+                "const": "deterministic_assert"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "confidence": {
+                "const": null
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "gating": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "verdict_source": {
+                "const": "deterministic_assert"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": [
+          "finding_id",
+          "title",
+          "detected_by",
+          "verdict_source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "finding_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "detected_by": {
+            "type": "string"
+          },
+          "verdict_source": {
+            "enum": [
+              "deterministic_assert",
+              "llm_judgment",
+              "heuristic"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1,
+            "default": null
+          },
+          "rationale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "severity_hint": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              null
+            ],
+            "default": null
+          },
+          "evidence": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/evidence_item"
+            }
+          },
+          "promote_candidate": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "default": null,
+            "properties": {
+              "suggested_capability": {
+                "type": "string"
+              },
+              "repro_steps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "suggested_assertion": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "default": {}
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence_item"
+      }
+    },
+    "cost": {
+      "type": "object",
+      "required": [
+        "wallclock_s"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "wallclock_s": {
+          "type": "number"
+        },
+        "tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null
+        },
+        "usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null
+        }
+      }
+    },
+    "sut_identity_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "determinism": {
+      "type": "object",
+      "default": {},
+      "properties": {
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replay_cmd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "adapter_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "$defs": {
+    "evidence_item": {
+      "type": "object",
+      "required": [
+        "kind",
+        "uri",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "raw_output",
+            "stdout",
+            "metrics",
+            "screenshot",
+            "trace"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}
