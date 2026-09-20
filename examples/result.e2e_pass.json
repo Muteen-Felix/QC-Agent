@@ -1,0 +1,47 @@
+{
+  "task_id": "t-101",
+  "run_id": "r-0090",
+  "worker": {
+    "name": "midscene-cli",
+    "version": "1.7.2",
+    "adapter_version": "0.1.0"
+  },
+  "status": "pass",
+  "verdict": {
+    "value": "non_gating",
+    "verdict_source": "heuristic",
+    "gating": false,
+    "confidence": null,
+    "rationale": "Discovery lane: worker hoàn thành 15/15 bước, không phát hiện tín hiệu ngầm nào."
+  },
+  "findings": [],
+  "metrics": {
+    "steps_executed": 15,
+    "unique_states_visited": 11
+  },
+  "evidence": [
+    {
+      "kind": "raw_output",
+      "uri": "runs/r-0090/t-101/midscene-summary.json",
+      "sha256": "7b1e9c4a2d5f8036c1ab47e9d0f2358a6c4b19de7f03a5218cbd6e4079f31a2c"
+    },
+    {
+      "kind": "trace",
+      "uri": "runs/r-0090/t-101/trace.zip",
+      "sha256": "2f4d81ac93e07b5612cd0fa3487be91d6503ac7218fe4d09b3a5c61780ef2d4b"
+    }
+  ],
+  "cost": {
+    "wallclock_s": 512,
+    "tokens": 96210,
+    "usd": 0.26
+  },
+  "sut_identity_ref": "sut-9f2c",
+  "determinism": {
+    "seed": null,
+    "replay_cmd": null
+  },
+  "adapter_notes": [
+    "Parse từ --summary JSON, KHÔNG parse HTML report"
+  ]
+}

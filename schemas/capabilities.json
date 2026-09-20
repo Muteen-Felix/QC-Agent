@@ -1,0 +1,14 @@
+{
+  "_note": "Từ vựng capability (file DỮ LIỆU, không thuộc contract đóng băng). Thêm capability mới = thêm một dòng ở đây.",
+  "capabilities": {
+    "api.property":  "API property-based / contract  (oracle: checks)",
+    "http.load":     "Load test, ngưỡng do plan khai  (oracle: threshold)",
+    "http.collect":  "Thu output của app cho task khác dùng  (oracle: checks)",
+    "llmapp.eval":   "Eval AI app: metric tất định + advisory judge  (oracle: checks)",
+    "ui.explore":    "Khám phá UI, discovery lane  (oracle: implicit_signals)",
+    "demo.echo":     "Worker giả để dựng skeleton  (oracle: trivial | checks)",
+    "demo.echo2":    "Worker giả thứ hai — chứng minh N5 (STEP 44)",
+    "security.stub": "Task security giả cho luật always_on (STEP 49)  (oracle: trivial)"
+  },
+  "oracle_kinds": ["trivial", "checks", "threshold", "implicit_signals"]
+}

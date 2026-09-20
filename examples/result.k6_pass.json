@@ -1,0 +1,47 @@
+{
+  "task_id": "t-002",
+  "run_id": "r-0001",
+  "worker": {
+    "name": "k6",
+    "version": null,
+    "adapter_version": "0.1.0"
+  },
+  "status": "pass",
+  "verdict": {
+    "value": "pass",
+    "verdict_source": "deterministic_assert",
+    "gating": true,
+    "confidence": null,
+    "rationale": null
+  },
+  "findings": [],
+  "metrics": {
+    "http_req_duration.p95": 214.7,
+    "http_req_failed.rate": 0.002
+  },
+  "evidence": [
+    {
+      "kind": "raw_output",
+      "uri": "runs/r-0001/t-002/k6-summary.json",
+      "sha256": "6b59cdf8c95d86bc32706f762862e08ccb7e9b83d60359c9f913f218c0f6b7a1"
+    },
+    {
+      "kind": "stdout",
+      "uri": "runs/r-0001/t-002/stdout.log",
+      "sha256": "275f8eb0b3670719242ead5792bf63d698bda7b3a0506a3a7d2880a8b44fecb9"
+    }
+  ],
+  "cost": {
+    "wallclock_s": 31.4,
+    "tokens": 0,
+    "usd": 0.0
+  },
+  "sut_identity_ref": "sut-poc",
+  "determinism": {
+    "seed": null,
+    "replay_cmd": "k6 run --summary-export=k6-summary.json tests/perf/notes_list.js"
+  },
+  "adapter_notes": [
+    "k6 exit_code=0"
+  ]
+}

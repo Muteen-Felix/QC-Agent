@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qc-agent.local/schemas/task_spec.json",
+  "title": "Task Spec v1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id","plan_id","run_id","capability","lane","intent","target","inputs",
+               "oracle","expected_result_kind","budget","determinism","sut_identity_ref",
+               "evidence_required","retry"],
+  "properties": {
+    "task_id": {"type": "string"},
+    "plan_id": {"type": "string"},
+    "run_id":  {"type": "string"},
+    "capability": {"type": "string", "pattern": "^[a-z0-9_]+([.][a-z0-9_]+)+$"},
+    "lane": {"enum": ["gate", "discovery"]},
+    "intent": {"type": "string"},
+    "target": {
+      "type": "object",
+      "required": ["kind", "base_url"],
+      "properties": {
+        "kind": {"type": "string"},
+        "base_url": {"type": "string"},
+        "spec_ref": {"type": "string"},
+        "entry_path": {"type": "string"}
+      }
+    },
+    "inputs": {"type": "object"},
+    "oracle": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {"kind": {"type": "string"}}
+    },
+    "expected_result_kind": {"enum": ["verdict", "candidate_finding"]},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wallclock_s", "tokens", "usd"],
+      "properties": {
+        "wallclock_s": {"type": "number", "exclusiveMinimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "usd": {"type": "number", "minimum": 0}
+      }
+    },
+    "determinism": {
+      "type": "object",
+      "required": ["seed", "replayable"],
+      "properties": {
+        "seed": {"type": ["integer", "null"]},
+        "replayable": {"type": "boolean"}
+      }
+    },
+    "sut_identity_ref": {"type": "string"},
+    "evidence_required": {
+      "type": "array",
+      "items": {"enum": ["raw_output", "stdout", "metrics", "screenshot", "trace"]}
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max", "on"],
+      "properties": {
+        "max": {"type": "integer", "minimum": 0, "maximum": 1},
+        "on": {"type": "array", "items": {"const": "error"}}
+      }
+    },
+    "risk_tags": {"type": "array", "items": {"type": "string"}}
+  },
+  "allOf": [
+    {"if":   {"properties": {"lane": {"const": "discovery"}}},
+     "then": {"properties": {"expected_result_kind": {"const": "candidate_finding"}}}},
+    {"if":   {"properties": {"lane": {"const": "gate"}}},
+     "then": {"properties": {"expected_result_kind": {"const": "verdict"}}}}
+  ]
+}
