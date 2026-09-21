@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total": 1,
+    "successful": 0,
+    "failed": 1,
+    "partialFailed": 0,
+    "notExecuted": 0,
+    "totalDuration": 22781,
+    "generatedAt": "9/21/2026, 3:40:53 PM"
+  },
+  "results": [
+    {
+      "script": "..\\..\\..\\midscene\\hello_missing.yaml",
+      "success": false,
+      "resultType": "failed",
+      "report": "..\\..\\report\\hello_missing-2026-09-21_15-40-30-7f2b0ea1.html",
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": false,
+          "resultType": "failed",
+          "report": "..\\..\\report\\hello_missing-2026-09-21_15-40-30-7f2b0ea1.html",
+          "error": "Task failed: Không tìm thấy nút \"Thanh toán\" trên trang hiện tại.\n",
+          "duration": 22781
+        }
+      ],
+      "error": "Task failed: Không tìm thấy nút \"Thanh toán\" trên trang hiện tại.\n",
+      "duration": 22781
+    }
+  ]
+}

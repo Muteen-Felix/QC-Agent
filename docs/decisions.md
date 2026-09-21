@@ -46,3 +46,22 @@ A giữ `schema.py`, `evidence.py`, `plan.py`, `_base.py`, `runner.py`, `cli.py`
 | Nghĩa | A | ghi 2026-09-20 |
 | Đức | B | xác nhận tại họp STEP 07, 2026-09-20 |
 | Huy | C | xác nhận tại họp STEP 07, 2026-09-20 |
+
+## Midscene exit-code matrix
+
+Chạy thật bằng `@midscene/cli 1.13.0`, model `gemini-3.5-flash`, ngày 2026-09-21. CLI đặt file
+`--summary runs/<name>.json` dưới `midscene_run/output/runs/`, không phải dưới `runs/` ở repo root.
+
+| case | exit code | có file summary? | khoá/giá trị phân biệt pass–fail | ghi chú |
+|---|---:|---|---|---|
+| pass | 1 | có | `results[0].success=false`; `resultType=failed`; `error` chứa HTTP 429 | Không xác nhận được live pass: flow hai `aiAct` vượt Gemini free-tier 5 request/phút; retry cuối vẫn `RESOURCE_EXHAUSTED`. Sample thật mang tên `live_quota_error`, không gắn nhãn pass. |
+| missing_element | 1 | có | `results[0].success=false`; `resultType=failed`; `error="Task failed: Không tìm thấy nút ..."` | Phân biệt được lỗi thiếu element từ `error`; có đường dẫn report HTML. |
+| aiassert_false | 1 | có | `results[0].success=false`; `resultType=failed`; `error="Assertion failed: ..."` | `aiAssert` sai làm exit khác 0; summary không có confidence. |
+| no_key | 1 | có | `results[0].success=false`; `resultType=failed`; `error="Timed out after waiting 30000ms"` | Đã nạp base/model/family, tạm ẩn `.env` và xoá riêng key; CLI không fail-fast theo lỗi missing-key mà timeout browser/run. |
+
+Kết luận: `--summary` đủ để biết thành công/thất bại cấp file và phân biệt `missing_element`/`aiAssert`
+qua chuỗi `error`, nhưng **không đủ trường có cấu trúc cho từng step để sinh đầy đủ `findings[]`**; không có
+token/cost và chỉ có đường dẫn report HTML. `aiAssert` sai làm exit `1`. STEP 28 phải parse bảo thủ, được mất
+thông tin nhưng không đoán; live pass chưa xác nhận nên dùng `midscene_summary.fixture.json` có nhãn **MOCK**.
+
+`MIDSCENE_MODEL_FAMILY=gemini`. Chrome/Puppeteer headless là bắt buộc; không cần `--headed` cho các run trên.
