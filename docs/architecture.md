@@ -1132,8 +1132,8 @@ capabilities:
     advisory_metrics: [GEval]
     parallel_safe: true
 requires:
-  env: [OPENAI_API_KEY]
-data_egress: [app_input, app_output]   # khai TRƯỚC cái gì rời khỏi máy
+  env: []   # OpenAI/Gemini are alternatives; STEP 02 probes primary + fallback
+data_egress: [app_input, app_output]   # sent to selected judge provider; record actual provider/model
 ```
 
 Registry nạp lúc khởi động bằng cách quét `workers/*.yaml`; `version_probe` chạy ở bước
@@ -1514,7 +1514,7 @@ git log --stat -1        # commit "add axe worker"
 | # | Kịch bản | Dấu hiệu **sớm** | Chặn |
 |---|---|---|---|
 | **V1** | **Contract bị Midscene ép méo** — *xác suất cao nhất*. Ngày 2, ai đó thêm `if worker == "midscene"` vào lõi. **Đúng 30 giây đó, N4 và N5 chết** | Tên worker xuất hiện trong `core/`, **hoặc** nghe câu "thêm một trường nhỏ chỉ cho Midscene" | **Viết adapter Midscene TRƯỚC** (slot 3, không phải slot 4). Dừng 15 phút, cả 3 quyết định: sửa schema cho **cả 4** worker, hoặc để adapter **mất thông tin**. **CẤM** thêm trường riêng |
-| **V2** | **Gate xanh vì worker không chạy.** Thiếu `OPENAI_API_KEY` → DeepEval `skipped`. **Failure mode nguy hiểm nhất của cả hệ vì nó im lặng và trông giống thành công** | Không có — đó là vấn đề | `skipped` **bắt buộc** làm gate **vàng** và in ở **ĐẦU** report. Xác nhận key là **việc số 0 của slot 1**, trước cả chốt schema |
+| **V2** | **Gate xanh vì worker không chạy.** Không có provider chấm dùng được (OpenAI và Gemini đều thiếu/lỗi) | Không có — đó là vấn đề | STEP 02 thử primary rồi fallback; registry không thể biểu diễn `one-of` cho env nên worker chạy deterministic metrics với `requires.env: []`. Nếu G-Eval không chạy, ghi rõ `error`/`mock`, không giả là điểm thật; deterministic verdict vẫn chỉ dựa trên các metric gating |
 | **V3** | **Plan mục** | Số endpoint trong app > số task trong plan | Job định kỳ chạy planner, xuất diff, mở PR tự động. **Bắt buộc**, không phải tuỳ chọn |
 | **V4** | **Discovery lane thành nghĩa địa** | Hàng chờ triage tăng đơn điệu | Trần cứng số finding/run; ưu tiên `deterministic_assert`; **tuần nào không ai triage thì tự động TẮT và báo** |
 | **V5** | **Chi phí VLM trôi.** UI đổi → agent đi vòng → số bước ×3 → hoá đơn ×3 mà **vẫn "pass"** | `cost.tokens` tăng giữa hai run cùng plan | `budget` là trần **cứng** trong task spec; `cost` lên report **kể cả khi xanh** |
