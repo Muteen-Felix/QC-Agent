@@ -835,7 +835,7 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
     check(r, { 'status 200': (x) => x.status === 200 });
   }
   ```
-  và `tests/perf/notes_list_thresholds.js` = cùng nội dung + `thresholds: { http_req_duration: ['p(95)<300'], http_req_failed: ['rate<0.01'] }` trong `options` (**chỉ để khám phá** exit code khi threshold hỏng), và `tests/perf/broken.js` chứa đúng một dòng sai cú pháp `this is not javascript`. (⚠ cú pháp k6 viết theo trí nhớ về doc — RUN 3 chỉ xác nhận `options.thresholds` và exit ≠ 0 khi threshold hỏng; **sửa theo lỗi thật** nếu k6 phàn nàn.)
+  và `tests/perf/notes_list_thresholds.js` = cùng nội dung + `thresholds: { http_req_duration: ['p(95)<300'], http_req_failed: ['rate<0.01'] }` trong `options` (**chỉ để khám phá** exit code khi threshold hỏng), và `tests/perf/broken.js` chứa đúng một dòng sai cú pháp `this is not javascript`. Cú pháp threshold và script lỗi đã chạy thật trên k6 v2.2.0; script lỗi exit 107 và không tạo summary.
   ```powershell
   $env:APP_BASE_URL = "http://127.0.0.1:8000"
   .\scripts\toyapp.ps1 start -Bugs none
@@ -846,12 +846,12 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
   .\scripts\toyapp.ps1 stop
   k6 run --summary-export=runs\k6_down.json tests\perf\notes_list_thresholds.js;               "server_down exit=$LASTEXITCODE"
   ```
-  Lưu mẫu: `k6_summary.pass.json`, `k6_summary.threshold_fail.json`, `k6_summary.server_down.json` (từ `runs/`) và `k6_stdout.script_error.txt` vào `tests/samples/`. Mở `k6_summary.pass.json`, ghi vào `docs/decisions.md` **tên khoá thật** chứa p95 của `http_req_duration` và tỉ lệ của `http_req_failed` (⚠ RUN 4 giả định `["p(95)"]` và `.rate` — có thể là `value`). Điền bảng `## k6 exit-code matrix` với đúng 4 hàng `pass | threshold_fail | script_error | server_down` (cột: `exit code`, `có file summary?`).
+  Lưu mẫu: `k6_summary.pass.json`, `k6_summary.threshold_fail.json`, `k6_summary.server_down.json` (từ `runs/`) và `k6_stdout.script_error.txt` vào `tests/samples/`. Ghi bảng `## k6 exit-code matrix` với đúng 4 hàng `pass | threshold_fail | script_error | server_down` (cột: `exit code`, `có file summary?`) và ghi key nguồn đã xác minh của p95/failed-rate vào `docs/decisions.md`.
   ```powershell
   git add -A; git commit -m "STEP 30: k6 hello + exit-code matrix + samples"; git push
   ```
 - **DoD:** bảng `## k6 exit-code matrix` có đúng **4 hàng** `pass | threshold_fail | script_error | server_down`, mỗi hàng có exit code và trạng thái summary; chỉ đếm hàng trong bảng k6 (không đếm hàng `server_down` của STEP 24); `(git ls-files tests/samples | Select-String k6_).Count` ≥ **4**; `docs/decisions.md` ghi tên khoá p95 và failed-rate.
-- **Nếu fail:** k6 chưa cài/không chạy ⟹ `doctor` đã báo từ STEP 04 — nếu vẫn chưa xong ở đây thì **báo cả nhóm** (k6 là worker "hình mẫu" của contract). Nếu `threshold_fail` và `script_error` cho **cùng** exit code ⟹ đó chính là lý do adapter phải dựa vào *sự có mặt của file summary*, không dựa vào exit code (STEP 31 đã thiết kế như vậy).
+- **Nếu fail:** k6 chưa cài/không chạy ⟹ `doctor` đã báo từ STEP 04 — nếu vẫn chưa xong ở đây thì **báo cả nhóm** (k6 là worker "hình mẫu" của contract). Ở script khám phá có threshold, sự có mặt của summary giúp phân biệt threshold fail với script hỏng nếu hai case cùng exit code. Adapter STEP 31 chạy script không có threshold, nên summary hợp lệ + exit 0 mới được đưa vào oracle; exit khác 0 là `error`.
 
 ### STEP 31 — `adapters/k6_adapter.py` + `workers/k6.yaml`
 - **Owner:** Huy (Role C) · **Depends on:** 27, 30, 13 · **Parallel-safe:** STEP 28, 29, 32 · **Time:** 75'
@@ -859,7 +859,7 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
   1. `workers/k6.yaml` theo [arch §5.5] (nguyên văn khối k6): `lanes: [gate]`, `http.load`, `oracle_kinds: [threshold]`, `verdict_sources: [deterministic_assert]`, **`parallel_safe: false`** (chiếm tài nguyên đo lường — STEP 39 hiểu là *độc quyền*), `requires: {env: [APP_BASE_URL], binaries: [k6]}`, `data_egress: []`.
   2. `tests/fixtures/task_k6.json`: `examples/task.k6.json` với `inputs: {"script":"tests/perf/notes_list.js","vus":10,"duration":"30s"}`, `budget.wallclock_s: 90`.
   3. `adapters/k6_adapter.py` viết theo mẫu ở **mục 5.4 của arch**, đã hiệu chỉnh theo STEP 30: `build_cmd` dùng `--summary-export=<workdir>/k6-summary.json`, `--vus`, `--duration` (đã xác nhận bằng `k6 run --help`) và đặt `APP_BASE_URL` từ `spec.target.base_url`; `parse_output`: **không có file summary ⟹ `AdapterParseError`** (script hỏng ≠ threshold hỏng); **exit ≠ 0 ⟹ `AdapterParseError`** (script không có threshold nên k6 thành công phải exit 0 — ma trận STEP 30 xác nhận); trích **đúng hai số** vào `metrics` bằng **tên khoá đã ghi ở STEP 30**: `http_req_duration.p95` và `http_req_failed.rate`; thiếu khoá ⟹ `AdapterParseError`; `tokens=0, usd=0.0`; `replay_cmd` = chuỗi lệnh đã chạy nguyên văn. **Adapter không có một phép so sánh nào** — `oracle/threshold.py` so.
-  4. `tests/test_k6_adapter.py` — **5 test** trên `tests/samples/k6_*`: (1) mẫu `pass` ⟹ 2 metric đúng số; (2) chuyển mẫu `threshold_fail` và `server_down` thành measurements rồi gọi `oracle.evaluate` với cả hai assertion của fixture: p95 vượt ngưỡng ở mẫu đầu, failed-rate vượt ngưỡng ở mẫu sau, nên cả hai đều `fail`. Các mẫu STEP 30 đến từ script khám phá có threshold và exit 99; test giả lập exit 0 để mô phỏng script adapter `notes_list.js` không có threshold; (3) không file summary ⟹ `AdapterParseError`; (4) exit ≠ 0 nhưng có summary ⟹ `AdapterParseError`; (5) summary thiếu khoá metric ⟹ `AdapterParseError`.
+  4. `tests/test_k6_adapter.py` — **5 test** trên `tests/samples/k6_*`: (1) mẫu `pass` ⟹ 2 metric đúng số; (2) chuyển mẫu `threshold_fail` và `server_down` thành measurements rồi gọi `oracle.evaluate` với cả hai assertion của fixture: p95 vượt ngưỡng ở mẫu đầu, failed-rate vượt ngưỡng ở mẫu sau, nên cả hai đều `fail`. Các mẫu STEP 30 đến từ script khám phá có threshold và exit 99; test giả lập exit 0 để mô phỏng script adapter `notes_list.js` không có threshold. Lượt manual kiểm tra server down bằng chính adapter và script không threshold (1 VU/1s) cũng tạo summary, exit 0 và oracle `fail` do failed-rate=1.0; (3) không file summary ⟹ `AdapterParseError`; (4) exit ≠ 0 nhưng có summary ⟹ `AdapterParseError`; (5) summary thiếu khoá metric ⟹ `AdapterParseError`.
   ```powershell
   pytest tests\test_k6_adapter.py -q
   $env:APP_BASE_URL = "http://127.0.0.1:8000"

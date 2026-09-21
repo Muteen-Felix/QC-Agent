@@ -1521,18 +1521,21 @@ git log --stat -1        # commit "add axe worker"
 
 Rút từ bảng double-check của `[R4]` + `[R5 (a)]`, giữ những dòng **ảnh hưởng tới code**:
 
+k6 exit code đã được xác minh trên v2.2.0 và được ghi ở `docs/decisions.md`, nên không còn là
+mục chưa kiểm: script threshold fail exit 99 có summary; script cú pháp sai exit 107, không có
+summary. Adapter STEP 31 dùng script không threshold và xử lý exit khác 0 như lỗi worker.
+
 | # | Claim chưa kiểm | Kiểm bằng cách nào (≤10 phút) | Sai thì hỏng gì |
 |---|---|---|---|
-| 1 | **k6 exit code cụ thể** khi threshold fail (doc chỉ nói "non-zero") | Chạy script threshold chắc chắn fail rồi `echo $LASTEXITCODE` | Adapter k6 map sai trạng thái → đã phòng bằng luật 5.3 (ưu tiên oracle, exit code chỉ đối chiếu) |
-| 2 | **DeepEval có export JSON/JUnit không** | `deepeval test run` rồi xem `DEEPEVAL_RESULTS_FOLDER` | Adapter phải parse stdout — xấu nhưng làm được |
-| 3 | **Midscene `--summary` JSON đủ trường để sinh `findings[]`** (doc-verified, **chưa chạy**) | Chạy 1 file YAML, mở file summary | **Rủi ro V1 tăng mạnh** |
-| 4 | **Midscene `aiAssert` fail có làm exit code ≠ 0** | Viết assert chắc chắn sai | Ảnh hưởng quyết định lane của Midscene |
-| 5 | **Schemathesis chạy được trên Windows không cần WSL** | `pip install schemathesis && st --version` | **Mất worker PoC dễ nhất** |
-| 6 | **Schemathesis pin seed được** | Chạy 2 lần, so | **Tiêu chí #4 (tái lập) phải hạ chuẩn** |
-| 7 | Consumer JUnit XML chuẩn **không** gate trên `<properties>` tuỳ biến | Xuất JUnit XML có property lạ, nạp vào ReportPortal/GitHub Actions | Luận điểm chính của prior art yếu đi (không sụp) |
-| 8 | **Assertion node của Hercules là LLM hay tất định** (`FROM-INDEX`, **chưa đọc code**) | Đọc code node đó | Nếu nó tất định, luận điểm phân biệt phải **hẹp lại thêm một bậc** — phải kiểm **trước khi lên slide** |
-| 9 | **4 worker PoC cắm chung một contract chạy được** | Đây là toàn bộ nội dung PoC | Nếu sai, bản propose **không có demo** |
-| 10 | Ước lượng setup cost (10–45 phút/worker) và dòng code (680/110) | Ngày 1 sprint | Kế hoạch 2.5 ngày trượt |
+| 1 | **DeepEval có export JSON/JUnit không** | `deepeval test run` rồi xem `DEEPEVAL_RESULTS_FOLDER` | Adapter phải parse stdout — xấu nhưng làm được |
+| 2 | **Midscene `--summary` JSON đủ trường để sinh `findings[]`** (doc-verified, **chưa chạy**) | Chạy 1 file YAML, mở file summary | **Rủi ro V1 tăng mạnh** |
+| 3 | **Midscene `aiAssert` fail có làm exit code ≠ 0** | Viết assert chắc chắn sai | Ảnh hưởng quyết định lane của Midscene |
+| 4 | **Schemathesis chạy được trên Windows không cần WSL** | `pip install schemathesis && st --version` | **Mất worker PoC dễ nhất** |
+| 5 | **Schemathesis pin seed được** | Chạy 2 lần, so | **Tiêu chí #4 (tái lập) phải hạ chuẩn** |
+| 6 | Consumer JUnit XML chuẩn **không** gate trên `<properties>` tuỳ biến | Xuất JUnit XML có property lạ, nạp vào ReportPortal/GitHub Actions | Luận điểm chính của prior art yếu đi (không sụp) |
+| 7 | **Assertion node của Hercules là LLM hay tất định** (`FROM-INDEX`, **chưa đọc code**) | Đọc code node đó | Nếu nó tất định, luận điểm phân biệt phải **hẹp lại thêm một bậc** — phải kiểm **trước khi lên slide** |
+| 8 | **4 worker PoC cắm chung một contract chạy được** | Đây là toàn bộ nội dung PoC | Nếu sai, bản propose **không có demo** |
+| 9 | Ước lượng setup cost (10–45 phút/worker) và dòng code (680/110) | Ngày 1 sprint | Kế hoạch 2.5 ngày trượt |
 
 ## 9.4 Câu hỏi còn treo — cần quyết sau sprint
 
