@@ -93,8 +93,10 @@ def _default_model_id(provider: str, model_ids: list[str]) -> str:
             match = re.fullmatch(r"gemini-(\d+(?:\.\d+)*?)-flash(?P<lite>-lite)?", model_id)
             if match:
                 version = tuple(int(part) for part in match.group(1).split("."))
-                lite_rank = -1 if match.group("lite") else 0
-                ranked.append((version, lite_rank, model_id))
+                # Prefer Flash-Lite for judge calls: it is the lower-cost,
+                # higher-throughput option when both stable variants exist.
+                lite_rank = 1 if match.group("lite") else 0
+                ranked.append((lite_rank, version, model_id))
         if ranked:
             return max(ranked)[2]
     return model_ids[0]
