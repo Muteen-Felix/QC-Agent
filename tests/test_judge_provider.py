@@ -87,7 +87,7 @@ def test_configured_fallback_model_is_used():
     assert selection.model_id == "gemini-chosen"
 
 
-def test_gemini_default_prefers_highest_stable_flash_model():
+def test_gemini_default_prefers_highest_stable_flash_lite_model():
     def probe(provider, _api_key):
         if provider == "openai":
             raise ProviderProbeError("openai", "HTTP 401")
@@ -95,6 +95,7 @@ def test_gemini_default_prefers_highest_stable_flash_model():
             "models": [
                 {"baseModelId": "antigravity-preview-05-2026", "supportedActions": ["generateContent"]},
                 {"baseModelId": "gemini-2.5-flash", "supportedActions": ["generateContent"]},
+                {"baseModelId": "gemini-3.5-flash-lite", "supportedActions": ["generateContent"]},
                 {"baseModelId": "gemini-3.6-flash", "supportedActions": ["generateContent"]},
                 {"baseModelId": "gemini-3.8-flash", "supportedActions": ["generateContent"]},
                 {"baseModelId": "gemini-3.8-flash-lite", "supportedActions": ["generateContent"]},
@@ -108,4 +109,4 @@ def test_gemini_default_prefers_highest_stable_flash_model():
     )
 
     assert selection.provider == "gemini"
-    assert selection.model_id == "gemini-3.8-flash"
+    assert selection.model_id == "gemini-3.8-flash-lite"
