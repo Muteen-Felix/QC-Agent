@@ -858,17 +858,21 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
 - **Actions:**
   1. `workers/k6.yaml` theo [arch §5.5] (nguyên văn khối k6): `lanes: [gate]`, `http.load`, `oracle_kinds: [threshold]`, `verdict_sources: [deterministic_assert]`, **`parallel_safe: false`** (chiếm tài nguyên đo lường — STEP 39 hiểu là *độc quyền*), `requires: {env: [APP_BASE_URL], binaries: [k6]}`, `data_egress: []`.
   2. `tests/fixtures/task_k6.json`: `examples/task.k6.json` với `inputs: {"script":"tests/perf/notes_list.js","vus":10,"duration":"30s"}`, `budget.wallclock_s: 90`.
-  3. `adapters/k6_adapter.py` (~80 dòng), **hai hàm**, viết theo mẫu ở **mục 5.4 của arch** *nhưng* với các sửa sau (mẫu đó có ⚠ chưa verify): `build_cmd` dùng `--summary-export=<workdir>/k6-summary.json`, `--vus`, `--duration` (⚠ xác nhận bằng `k6 run --help`) và `env = {"APP_BASE_URL": spec.target.base_url}`; `parse_output`: **không có file summary ⟹ `AdapterParseError`** (script hỏng ≠ threshold hỏng); **exit ≠ 0 ⟹ `AdapterParseError`** (script không có threshold nên k6 thành công phải exit 0 — ma trận STEP 30 xác nhận); trích **đúng hai số** vào `metrics` bằng **tên khoá đã ghi ở STEP 30**: `http_req_duration.p95` và `http_req_failed.rate`; thiếu khoá ⟹ `AdapterParseError`; `tokens=0, usd=0.0`; `replay_cmd` = chuỗi lệnh đã chạy nguyên văn. **Adapter không có một phép so sánh nào** — `oracle/threshold.py` so.
-  4. `tests/test_k6_adapter.py` — **5 test** trên `tests/samples/k6_*`: (1) mẫu `pass` ⟹ 2 metric đúng số; (2) mẫu `threshold_fail`/`server_down` với oracle `p95<300` ⟹ oracle `fail` (dựng `signals` rồi gọi `oracle.evaluate`); (3) không file summary ⟹ `AdapterParseError`; (4) exit ≠ 0 nhưng có summary ⟹ `AdapterParseError`; (5) summary thiếu khoá metric ⟹ `AdapterParseError`.
+  3. `adapters/k6_adapter.py` viết theo mẫu ở **mục 5.4 của arch**, đã hiệu chỉnh theo STEP 30: `build_cmd` dùng `--summary-export=<workdir>/k6-summary.json`, `--vus`, `--duration` (đã xác nhận bằng `k6 run --help`) và đặt `APP_BASE_URL` từ `spec.target.base_url`; `parse_output`: **không có file summary ⟹ `AdapterParseError`** (script hỏng ≠ threshold hỏng); **exit ≠ 0 ⟹ `AdapterParseError`** (script không có threshold nên k6 thành công phải exit 0 — ma trận STEP 30 xác nhận); trích **đúng hai số** vào `metrics` bằng **tên khoá đã ghi ở STEP 30**: `http_req_duration.p95` và `http_req_failed.rate`; thiếu khoá ⟹ `AdapterParseError`; `tokens=0, usd=0.0`; `replay_cmd` = chuỗi lệnh đã chạy nguyên văn. **Adapter không có một phép so sánh nào** — `oracle/threshold.py` so.
+  4. `tests/test_k6_adapter.py` — **5 test** trên `tests/samples/k6_*`: (1) mẫu `pass` ⟹ 2 metric đúng số; (2) chuyển mẫu `threshold_fail` và `server_down` thành measurements rồi gọi `oracle.evaluate` với cả hai assertion của fixture: p95 vượt ngưỡng ở mẫu đầu, failed-rate vượt ngưỡng ở mẫu sau, nên cả hai đều `fail`. Các mẫu STEP 30 đến từ script khám phá có threshold và exit 99; test giả lập exit 0 để mô phỏng script adapter `notes_list.js` không có threshold; (3) không file summary ⟹ `AdapterParseError`; (4) exit ≠ 0 nhưng có summary ⟹ `AdapterParseError`; (5) summary thiếu khoá metric ⟹ `AdapterParseError`.
   ```powershell
   pytest tests\test_k6_adapter.py -q
   $env:APP_BASE_URL = "http://127.0.0.1:8000"
+  New-Item -ItemType Directory -Force runs\step31 | Out-Null
   .\scripts\toyapp.ps1 start -Bugs none
+  $env:QC_RUNS_DIR = "runs/step31/pass"
   python -m adapters.k6_adapter --spec tests\fixtures\task_k6.json --out runs\k6_ok.json;   "ok exit=$LASTEXITCODE"
   .\scripts\toyapp.ps1 start -Bugs none -LatencyMs 400
+  $env:QC_RUNS_DIR = "runs/step31/slow"
   python -m adapters.k6_adapter --spec tests\fixtures\task_k6.json --out runs\k6_slow.json; "slow exit=$LASTEXITCODE"
-  (Get-Content tests\fixtures\task_k6.json -Raw -Encoding UTF8).Replace("notes_list.js","broken.js") | Set-Content -Encoding UTF8 tests\fixtures\task_k6_broken.json
-  python -m adapters.k6_adapter --spec tests\fixtures\task_k6_broken.json --out runs\k6_broken.json; "broken exit=$LASTEXITCODE"
+  (Get-Content tests\fixtures\task_k6.json -Raw -Encoding UTF8).Replace("notes_list.js","broken.js") | Set-Content -Encoding UTF8 runs\step31\task_k6_broken.json
+  $env:QC_RUNS_DIR = "runs/step31/broken"
+  python -m adapters.k6_adapter --spec runs\step31\task_k6_broken.json --out runs\k6_broken.json; "broken exit=$LASTEXITCODE"
   .\scripts\toyapp.ps1 stop
   python tools\validate.py result runs\k6_ok.json runs\k6_slow.json runs\k6_broken.json
   git add -A; git commit -m "STEP 31: k6 adapter"; git push

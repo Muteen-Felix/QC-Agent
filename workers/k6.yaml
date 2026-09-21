@@ -1,0 +1,14 @@
+name: k6
+version_probe: "k6 version"
+adapter: "adapters/k6_adapter.py"
+lanes: [gate]
+capabilities:
+  - id: http.load
+    oracle_kinds: [threshold]
+    verdict_sources: [deterministic_assert]
+    parallel_safe: false
+requires:
+  env: [APP_BASE_URL]
+  binaries: [k6]
+data_egress: []
+cost_profile: { tokens_per_run: 0, typical_wallclock_s: 60 }

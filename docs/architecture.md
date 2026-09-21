@@ -987,30 +987,29 @@ thì sẽ có ngày chúng lệch nhau.
 `[R4 S12c ca A]` + `[R4 S15.4 lớp 4]`:
 1. File output có tồn tại và **parse được** không? → không: `error`.
 2. Parse được → **giao metrics cho `oracle/`** để so. Kết quả so = `pass`/`fail`.
-3. Exit code chỉ dùng để **đối chiếu**. Exit code nói fail mà oracle nói pass (hoặc ngược lại)
-   ⟹ **mâu thuẫn tín hiệu** ⟹ `error` + ghi `adapter_notes`. Đây là lớp 4 của S15.4 áp cho
-   adapter: *tín hiệu mâu thuẫn thì báo hỏng, không chọn bên*.
+3. Diễn giải exit code theo contract của worker. Nếu worker mã hoá assertion trong exit code,
+   so exit với oracle; hai tín hiệu mâu thuẫn ⟹ `error`. Nếu worker không có threshold trong
+   script như k6 adapter STEP 31, mã khác 0 ⟹ `error` (lỗi worker), còn ngưỡng do oracle quyết.
 
-*(Lý do bước 3 tồn tại: `[R3 9.4]` xác nhận k6 "exit với mã khác 0" khi threshold fail nhưng
-**doc không nói số cụ thể** — `[CHƯA VERIFY, R4 double-check #2]`. Không code theo một con số
-chưa ai chạy.)*
+k6 v2.2.0 exit 99 ở script khám phá riêng có threshold; adapter chạy `notes_list.js` không có
+threshold và vì vậy yêu cầu exit 0. Chi tiết đã xác minh ở `docs/decisions.md`.
 
 ## 5.4 Adapter mẫu viết đầy đủ — `adapters/k6_adapter.py`
 
-Chọn k6 làm mẫu vì nó là worker **được nguồn mô tả đầy đủ nhất**: threshold nằm ngay trong
-script, pass/fail nằm trong exit code, có `--summary-export` `[R3 9.4]` `[R4 S12b]`.
+Chọn k6 làm mẫu vì nó là worker **được nguồn mô tả đầy đủ nhất**: có `--summary-export`
+`[R3 9.4]` `[R4 S12b]`. Trong adapter của STEP 31, script chỉ kiểm tra HTTP 200 và không có
+threshold; adapter đòi exit code 0 rồi chuyển số đo cho oracle chung. Script khám phá riêng có
+threshold có thể exit khác 0 khi ngưỡng bị vượt.
 *(Trong sprint, adapter **thật đầu tiên** là Schemathesis ở slot 2 `[R5 P3]` — nó được viết theo
 đúng khuôn này và do A review làm mẫu cho hai cái sau.)*
 
 ```python
 # adapters/k6_adapter.py   —  ~90 dòng, C viết, A review theo checklist 5 câu
 #
-# ⚠ [NGOÀI RUN 1-5 / CHƯA VERIFY] Ba thứ dưới đây là kiến thức về k6 mà RUN 1-5 KHÔNG xác nhận:
-#     (1) tên flag `--vus` / `--duration`  (RUN 4 chỉ ghi `inputs.vus`, `inputs.duration` và lệnh
-#         `k6 run --summary-export=k6-summary.json <script>`);
-#     (2) cấu trúc JSON của file summary: `metrics.http_req_duration["p(95)"]`, `metrics.http_req_failed.rate`;
-#     (3) cách truyền seed cho k6 (RUN 4 có `determinism.seed: 1337` nhưng không nói k6 nhận nó thế nào).
-#   Ngày 1 phải chạy `k6 run` thật, mở file summary, rồi SỬA adapter cho khớp. Đừng tin dòng nào có ⚠.
+# Đã xác minh trên k6 v2.2.0 (darwin/arm64), xem `docs/decisions.md`:
+#     các cờ --vus / --duration / --summary-export;
+#     p95 ở metrics.http_req_duration["p(95)"], failed-rate ở metrics.http_req_failed.value.
+# Seed không được truyền vào k6 trong adapter này; spec dùng determinism.seed = null.
 from pathlib import Path
 from subprocess import CompletedProcess
 from adapters._base import Adapter, ParsedOutput, AdapterParseError
@@ -1027,13 +1026,12 @@ class K6Adapter(Adapter):
         cmd = [
             "k6", "run",
             f"--summary-export={summary}",                # ✔ có trong RUN 4 S12b
-            "--vus",      str(spec.inputs["vus"]),        # ⚠ tên flag chưa verify
-            "--duration", spec.inputs["duration"],        # ⚠ tên flag chưa verify
+            "--vus",      str(spec.inputs["vus"]),
+            "--duration", spec.inputs["duration"],
             script,
         ]
-        # APP_BASE_URL khai ở workers/k6.yaml `requires.env`. Seed: ⚠ chưa biết k6 nhận thế nào
-        # → ngày 1 quyết; nếu k6 không nhận seed thì determinism.seed = null và ghi adapter_notes.
-        self._env = {"APP_BASE_URL": spec.target["base_url"]}
+        # APP_BASE_URL khai ở workers/k6.yaml `requires.env`; seed không dùng, spec đặt null.
+        self.env = {"APP_BASE_URL": spec.target["base_url"]}
         self._summary_path = summary
         return cmd
 
@@ -1043,6 +1041,8 @@ class K6Adapter(Adapter):
         # (a) Không có file summary ⟹ worker hỏng, KHÔNG phải test fail.
         if not self._summary_path.exists():
             raise AdapterParseError("k6 không xuất được summary — coi là crash, không phải fail")
+        if proc.returncode != 0:
+            raise AdapterParseError(f"k6 kết thúc với exit code {proc.returncode}")
 
         try:
             raw = json.loads(self._summary_path.read_text(encoding="utf-8"))
@@ -1050,12 +1050,12 @@ class K6Adapter(Adapter):
             raise AdapterParseError(f"summary không parse được: {e}")   # → status=error
 
         # (b) TRÍCH SỐ. Tuyệt đối KHÔNG so ngưỡng ở đây — việc đó của oracle/threshold.py
-        #     ⚠ đường dẫn khoá JSON dưới đây chưa verify — sửa theo file summary thật
+        #     Dùng đúng khoá nguồn đã xác minh từ summary thật của k6 v2.2.0.
         try:
             m = raw["metrics"]
             metrics = {
                 "http_req_duration.p95": m["http_req_duration"]["p(95)"],
-                "http_req_failed.rate":  m["http_req_failed"]["rate"],
+                "http_req_failed.rate":  m["http_req_failed"]["value"],
             }
         except (KeyError, TypeError) as e:
             raise AdapterParseError(f"thiếu metric bắt buộc trong summary: {e}")
@@ -1065,9 +1065,7 @@ class K6Adapter(Adapter):
         stdout_path.write_text(proc.stdout or "", encoding="utf-8")
 
         notes = []
-        # (d) ĐỐI CHIẾU exit code với kết quả oracle — xem 5.3 bước 3.
-        #     k6 exit khác 0 khi threshold fail, NHƯNG doc không nói số cụ thể
-        #     [CHƯA VERIFY — RUN 4 double-check #2] ⟹ chỉ dùng làm tín hiệu đối chiếu.
+        # (d) Ghi lại exit code. Script adapter không khai báo threshold nên mã khác 0 là lỗi worker.
         notes.append(f"k6 exit_code={proc.returncode}")
 
         return ParsedOutput(
