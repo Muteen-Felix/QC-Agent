@@ -850,7 +850,7 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
   ```powershell
   git add -A; git commit -m "STEP 30: k6 hello + exit-code matrix + samples"; git push
   ```
-- **DoD:** `(Select-String -Path docs\decisions.md -Pattern '^\| (pass|threshold_fail|script_error|server_down) \|').Count` = **4** (trong bảng k6, cột exit code đã điền số); `(git ls-files tests/samples | Select-String k6_).Count` ≥ **4**; `docs/decisions.md` ghi tên khoá p95 và failed-rate.
+- **DoD:** bảng `## k6 exit-code matrix` có đúng **4 hàng** `pass | threshold_fail | script_error | server_down`, mỗi hàng có exit code và trạng thái summary; chỉ đếm hàng trong bảng k6 (không đếm hàng `server_down` của STEP 24); `(git ls-files tests/samples | Select-String k6_).Count` ≥ **4**; `docs/decisions.md` ghi tên khoá p95 và failed-rate.
 - **Nếu fail:** k6 chưa cài/không chạy ⟹ `doctor` đã báo từ STEP 04 — nếu vẫn chưa xong ở đây thì **báo cả nhóm** (k6 là worker "hình mẫu" của contract). Nếu `threshold_fail` và `script_error` cho **cùng** exit code ⟹ đó chính là lý do adapter phải dựa vào *sự có mặt của file summary*, không dựa vào exit code (STEP 31 đã thiết kế như vậy).
 
 ### STEP 31 — `adapters/k6_adapter.py` + `workers/k6.yaml`
