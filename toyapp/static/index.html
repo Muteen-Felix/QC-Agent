@@ -1,1 +1,45 @@
-<!doctype html><title>noteboard</title><script>window.QC_BUGS = __QC_BUGS__;</script>
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>noteboard</title></head>
+<body>
+<h1>noteboard</h1>
+<form id="f">
+  <input id="title" placeholder="Tiêu đề" required>
+  <input id="body" placeholder="Nội dung" required>
+  <button type="submit">Thêm</button>
+</form>
+<ul id="notes"></ul>
+<script>
+window.QC_BUGS = __QC_BUGS__;
+const ev = (type, extra) => fetch('/__qc/events', {method: 'POST', headers: {'content-type': 'application/json'},
+                                                  body: JSON.stringify({type, ...extra})}).catch(() => {});
+window.onerror = (m) => { ev('console_error', {message: String(m)}); };
+const _fetch = window.fetch.bind(window);          // http_5xx do TRANG thấy (không lẫn request của Schemathesis/k6)
+window.fetch = async (...a) => {
+  const r = await _fetch(...a);
+  if (r.status >= 500 && !String(a[0]).startsWith('/__qc')) ev('http_5xx', {url: String(a[0]), status: r.status});
+  return r;
+};
+async function render() {
+  const notes = await (await fetch('/notes')).json();
+  const ul = document.getElementById('notes'); ul.innerHTML = '';
+  for (const n of notes) {
+    const li = document.createElement('li'); li.textContent = n.title + ' — ' + n.body + ' ';
+    const b = document.createElement('button'); b.textContent = 'Xoá';
+    b.onclick = () => del(n.id); li.appendChild(b); ul.appendChild(li);
+  }
+  ev('render_done', {count: notes.length});
+}
+async function del(id) {
+  ev('delete_clicked', {id});
+  await fetch('/notes/' + id, {method: 'DELETE'});
+  if (!window.QC_BUGS.includes('2')) await render();      // BUG-2: bỏ dòng này → danh sách không cập nhật
+}
+document.getElementById('f').onsubmit = async (e) => {
+  e.preventDefault();
+  await fetch('/notes', {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify({title: title.value, body: body.value})});
+  title.value = ''; body.value = ''; await render();
+};
+render();
+</script>
+</body></html>
