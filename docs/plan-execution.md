@@ -312,6 +312,7 @@ tool nào), `winget`, `bootstrap.ps1`, toàn bộ `core/` ngoài `verdict.py`. M
 - **Owner:** Huy (Role C) · **Depends on:** 04, 07 · **Parallel-safe:** STEP 08, 09 · **Time:** 20'
 - **Actions:** như STEP 08. Thêm: điền `OPENAI_API_KEY` (STEP 02) vào `.env`. Khi cả ba dòng `ENV-FINGERPRINT` đã có trong chat, C dán ba dòng vào mục `## Phase 0 gate` của `docs/decisions.md`, commit + push.
 - **DoD:** ba fingerprint là **một giá trị duy nhất**.
+- **Đối chiếu từ macOS (bổ sung):** chạy `bash scripts/doctor_macos.sh`. Script này dùng chung `scripts/fingerprint.py` với `doctor.ps1`; hash dùng pin Python `3.11` (không gồm patch release) và thứ tự package chuẩn hóa. Sau khi cập nhật helper, mọi máy cần chạy doctor lại vì fingerprint cũ không cùng thuật toán.
 - **Nếu fail:** giá trị lệch → mỗi người chạy `.\.venv\Scripts\python.exe -m pip freeze | Out-File -Encoding ascii freeze_<A|B|C>.txt` rồi `Compare-Object (Get-Content freeze_A.txt) (Get-Content freeze_B.txt)`. Nguyên nhân thường gặp: ai đó `pip install` thêm gói ngoài lock, hoặc khác minor Python. Sửa bằng cách xoá `.venv` + chạy lại bootstrap. **Không** sửa `requirements.lock` để "cho khớp".
 
 ### STEP 11 — Toy backend `noteboard` + script chạy/dừng
@@ -1996,6 +1997,8 @@ exit $LASTEXITCODE
 ```
 
 #### F-03 — `scripts/doctor.ps1`
+
+> **Cập nhật fingerprint đa nền tảng:** đoạn mã dưới đây là mẫu ban đầu của STEP 04. Bản hiện hành dùng `scripts/fingerprint.py` để chuẩn hóa thứ tự package và hash pin Python; `scripts/doctor_macos.sh` gọi cùng helper. Khi dựng lại môi trường, dùng các file đã commit thay vì chép riêng đoạn cũ bên dưới.
 
 ```powershell
 # scripts/doctor.ps1 - environment check. Exit 0 = all OK. ASCII ONLY (see env.ps1).
