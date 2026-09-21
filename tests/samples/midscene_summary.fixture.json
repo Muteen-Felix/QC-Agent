@@ -1,0 +1,30 @@
+{
+  "_fixture_notice": "MOCK viết tay vì live pass bị Gemini free-tier 429; CHƯA xác nhận với Midscene pass thật",
+  "summary": {
+    "total": 1,
+    "successful": 1,
+    "failed": 0,
+    "partialFailed": 0,
+    "notExecuted": 0,
+    "totalDuration": 1234,
+    "generatedAt": "MOCK"
+  },
+  "results": [
+    {
+      "script": "midscene/hello.yaml",
+      "success": true,
+      "resultType": "success",
+      "report": "MOCK/report.html",
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": true,
+          "resultType": "success",
+          "report": "MOCK/report.html",
+          "duration": 1234
+        }
+      ],
+      "duration": 1234
+    }
+  ]
+}
