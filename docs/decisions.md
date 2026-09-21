@@ -47,21 +47,22 @@ A giữ `schema.py`, `evidence.py`, `plan.py`, `_base.py`, `runner.py`, `cli.py`
 | Đức | B | xác nhận tại họp STEP 07, 2026-09-20 |
 | Huy | C | xác nhận tại họp STEP 07, 2026-09-20 |
 
-## Midscene exit-code matrix
+## Schemathesis exit-code matrix
 
-Chạy thật bằng `@midscene/cli 1.13.0`, model `gemini-3.5-flash`, ngày 2026-09-21. CLI đặt file
-`--summary runs/<name>.json` dưới `midscene_run/output/runs/`, không phải dưới `runs/` ở repo root.
+Đã hiệu chuẩn trên Schemathesis **4.27.5** bằng `scripts/test_step24_schemathesis.py`; mỗi lượt dùng tiến trình toyapp mới và port trống riêng. CLI đã xác nhận các cờ: `--max-examples 25` (mỗi operation), `--seed 1337`, `--checks`, `--exclude-path`, `--report junit`, `--report-junit-path`. Thêm `--generation-database none` để mỗi lượt không dùng lại generation database. Schemathesis vẫn lưu manifest crash riêng dưới `.schemathesis/<project>/cache/crashes`, nên runner chạy CLI từ thư mục `runs/step24/` bị Git ignore; JUnit được ghi bằng đường dẫn tuyệt đối.
 
-| case | exit code | có file summary? | khoá/giá trị phân biệt pass–fail | ghi chú |
-|---|---:|---|---|---|
-| pass | 1 | có | `results[0].success=false`; `resultType=failed`; `error` chứa HTTP 429 | Không xác nhận được live pass: flow hai `aiAct` vượt Gemini free-tier 5 request/phút; retry cuối vẫn `RESOURCE_EXHAUSTED`. Sample thật mang tên `live_quota_error`, không gắn nhãn pass. |
-| missing_element | 1 | có | `results[0].success=false`; `resultType=failed`; `error="Task failed: Không tìm thấy nút ..."` | Phân biệt được lỗi thiếu element từ `error`; có đường dẫn report HTML. |
-| aiassert_false | 1 | có | `results[0].success=false`; `resultType=failed`; `error="Assertion failed: ..."` | `aiAssert` sai làm exit khác 0; summary không có confidence. |
-| no_key | 1 | có | `results[0].success=false`; `resultType=failed`; `error="Timed out after waiting 30000ms"` | Đã nạp base/model/family, tạm ẩn `.env` và xoá riêng key; CLI không fail-fast theo lỗi missing-key mà timeout browser/run. |
+`--checks all` phát hiện BUG-1 nhưng cũng tạo false positive ở `OPTIONS` (Allow header) và request body 400. Vì vậy hiệu chuẩn gate dùng đúng `not_a_server_error,response_schema_conformance`; bỏ riêng `POST /notes/{note_id}/summarize` khỏi lượt chạy, còn `GET /notes/{note_id}` và các thao tác tạo/list/xoá vẫn được kiểm tra.
 
-Kết luận: `--summary` đủ để biết thành công/thất bại cấp file và phân biệt `missing_element`/`aiAssert`
-qua chuỗi `error`, nhưng **không đủ trường có cấu trúc cho từng step để sinh đầy đủ `findings[]`**; không có
-token/cost và chỉ có đường dẫn report HTML. `aiAssert` sai làm exit `1`. STEP 28 phải parse bảo thủ, được mất
-thông tin nhưng không đoán; live pass chưa xác nhận nên dùng `midscene_summary.fixture.json` có nhãn **MOCK**.
+| case | exit code | có báo cáo? | chỗ nào nói check nào hỏng |
+|---|---:|---|---|
+| bug_on | **1 trong 5/5** | Có, JUnit 5/5 | `GET /notes/{note_id}` có failure `Server error` / HTTP 500; `DELETE /notes/{note_id}` cũng thấy cùng BUG-1 |
+| bug_off | **0 trong 5/5** | Có, JUnit 5/5, 0 failure | Không có check hỏng; còn một warning schema mismatch nhưng không đổi exit code |
+| server_down | **1** | Có JUnit rỗng, `tests=0` | Không chạy check; stdout báo không tải được OpenAPI vì connection refused |
 
-`MIDSCENE_MODEL_FAMILY=gemini`. Chrome/Puppeteer headless là bắt buộc; không cần `--headed` cho các run trên.
+Hiệu chuẩn ban đầu với `QC_LONG_ID_LEN=64` và `32` không tái hiện BUG-1 cho seed `1337`. Theo quy tắc hiệu chuẩn STEP 24, mặc định trong `toyapp/app.py` được hạ xuống **16**; tại giá trị này BUG-1 vẫn là lỗi cài sẵn (id dài hơn ngưỡng trả 500) và bắt được mục tiêu 5/5. Cần nêu rõ thay đổi ngưỡng khi review kết quả.
+
+Mẫu đã lưu: `tests/samples/st_bug_on.txt`, `st_bug_on.junit.xml`, `st_bug_off.txt`, `st_bug_off.junit.xml`, `st_server_down.txt`. Báo cáo đủ 11 lượt được giữ cục bộ trong `runs/step24/` (thư mục bị loại khỏi Git).
+
+## Schemathesis adapter parsing
+
+Ở Schemathesis 4.27.5, JUnit failure text không ghi tên check: `not_a_server_error` được nhận diện bằng tiêu đề `Server error` cùng status 5xx; `response_schema_conformance` bằng tiêu đề `Response violates schema`. Failure không khớp các dạng đã biết, report thiếu/hỏng, report rỗng/thiếu operation testcase hoặc exit code mâu thuẫn với JUnit đều thành `AdapterParseError` (`status=error`), không bị đổi thành fail/pass. Để tránh report thiếu bị hiểu là toàn bộ check đã pass, adapter đối chiếu số operation trên stdout, testcase trong JUnit và các bộ đếm XML. Schemathesis tạo JUnit hợp lệ nhưng rỗng khi server không kết nối được; adapter cũng xử lý trường hợp đó như lỗi worker. Mỗi lượt tạo config riêng trong workdir với `[cache] enabled = false`; `--generation-database none` vẫn tắt riêng kho ví dụ sinh.

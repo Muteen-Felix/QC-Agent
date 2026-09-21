@@ -16,7 +16,7 @@ from toyapp import summarizer
 
 BUGS = {b.strip() for b in (os.environ.get("QC_BUGS", "").strip() or "1,2,3").split(",") if b.strip()}
 LATENCY_MS = int(os.environ.get("QC_LATENCY_MS", "").strip() or "0")
-LONG_ID_LEN = int(os.environ.get("QC_LONG_ID_LEN", "").strip() or "64")
+LONG_ID_LEN = int(os.environ.get("QC_LONG_ID_LEN", "").strip() or "16")
 INDEX = pathlib.Path(__file__).parent / "static" / "index.html"
 
 app = FastAPI(title="noteboard", version="0.1.0")
