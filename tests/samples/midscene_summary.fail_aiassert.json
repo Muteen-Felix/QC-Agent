@@ -1,0 +1,33 @@
+{
+  "summary": {
+    "total": 1,
+    "successful": 0,
+    "failed": 1,
+    "partialFailed": 0,
+    "notExecuted": 0,
+    "totalDuration": 26360,
+    "generatedAt": "9/21/2026, 3:43:52 PM"
+  },
+  "results": [
+    {
+      "script": "..\\..\\..\\midscene\\hello_assert_false.yaml",
+      "success": false,
+      "resultType": "failed",
+      "output": "..\\hello_assert_false-df5beff6-bfbd-4c1b-8cbb-db62963332ed.json",
+      "report": "..\\..\\report\\hello_assert_false-2026-09-21_15-43-25-785a1810.html",
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": false,
+          "resultType": "failed",
+          "output": "..\\hello_assert_false-df5beff6-bfbd-4c1b-8cbb-db62963332ed.json",
+          "report": "..\\..\\report\\hello_assert_false-2026-09-21_15-43-25-785a1810.html",
+          "error": "Assertion failed: trang có nút \"Thanh toán\"\nReason: The screenshot is completely black, indicating that there is no content visible on the screen. Therefore, there is no \"Thanh toán\" button visible.",
+          "duration": 26360
+        }
+      ],
+      "error": "Assertion failed: trang có nút \"Thanh toán\"\nReason: The screenshot is completely black, indicating that there is no content visible on the screen. Therefore, there is no \"Thanh toán\" button visible.",
+      "duration": 26360
+    }
+  ]
+}
