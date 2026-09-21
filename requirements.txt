@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+httpx
+pydantic
+jsonschema
+pyyaml
+pytest
+schemathesis
+deepeval
