@@ -245,7 +245,7 @@ tool nào), `winget`, `bootstrap.ps1`, toàn bộ `core/` ngoài `verdict.py`. M
   import json, pathlib
   from toyapp.summarizer import summarize
 
-  G = json.loads(pathlib.Path("tests/eval/golden.json").read_text(encoding="utf-8"))
+  G = json.loads(pathlib.Path("tests/eval/golden.json").read_text(encoding="utf-8-sig"))
 
   def test_bug_off_all_shorter():
       assert all(0 < len(summarize(g["body"], False)) < len(g["body"]) for g in G)
