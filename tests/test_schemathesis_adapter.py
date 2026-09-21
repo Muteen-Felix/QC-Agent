@@ -45,6 +45,15 @@ def test_bug_on_maps_only_the_known_server_error_check(tmp_path):
     assert "st run" in parsed.replay_cmd
 
 
+def test_bug_on_finding_title_includes_failing_endpoint(tmp_path):
+    shutil.copyfile(SAMPLES / "st_bug_on.junit.xml", tmp_path / REPORT_NAME)
+    stdout = (SAMPLES / "st_bug_on.txt").read_text(encoding="utf-8")
+
+    parsed = SchemathesisAdapter().parse_output(_completed(1, stdout), tmp_path, copy.deepcopy(SPEC))
+
+    assert any("GET /notes/{note_id}" in finding["title"] for finding in parsed.findings)
+
+
 def test_bug_off_marks_each_required_check_passed(tmp_path):
     shutil.copyfile(SAMPLES / "st_bug_off.junit.xml", tmp_path / REPORT_NAME)
     stdout = (SAMPLES / "st_bug_off.txt").read_text(encoding="utf-8")
