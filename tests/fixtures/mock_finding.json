@@ -1,0 +1,1 @@
+{"metrics":{},"signals":{},"findings":[{"finding_id":"f-m1","title":"Thông báo lỗi khó hiểu","detected_by":"llm_observation","verdict_source":"llm_judgment","confidence":0.6,"rationale":"chuỗi mã kỹ thuật hiện ra cho người dùng"}]}
