@@ -1,0 +1,91 @@
+Command argv:
+[
+  "/Users/mac/Desktop/QC/QC-Agent/.venv/bin/st",
+  "run",
+  "http://127.0.0.1:54882/openapi.json",
+  "--checks",
+  "not_a_server_error,response_schema_conformance",
+  "--max-examples",
+  "25",
+  "--seed",
+  "1337",
+  "--exclude-path",
+  "/notes/{note_id}/summarize",
+  "--generation-database",
+  "none",
+  "--report",
+  "junit",
+  "--report-junit-path",
+  "/Users/mac/Desktop/QC/QC-Agent/runs/step24/bug_off/bug_off_01.junit.xml",
+  "--no-color"
+]
+
+Exit code: 0
+
+Schemathesis v4.27.5
+━━━━━━━━━━━━━━━━━━━━
+
+
+ ✅  Loaded specification from http://127.0.0.1:54882/openapi.json (in 0.14s)
+
+     Base URL:         http://127.0.0.1:54882/
+     Specification:    Open API 3.1.0
+     Operations:       4 selected / 5 total
+
+
+ ✅  API capabilities:
+
+     Supports NULL byte in headers:                            ✘
+     Accepts backslash and control characters in URL paths:    ✓
+
+ ⏭   Examples (in 0.00s)
+
+     ⏭  4 skipped
+
+ ✅  Coverage (in 0.18s)
+
+     ✅ 4 passed
+
+ ✅  Fuzzing (in 0.67s)
+
+     ✅ 4 passed
+
+ ✅  Stateful (in 2.23s)
+
+     Scenarios:    155
+     API Links:    5 covered / 5 selected / 5 total (5 inferred)
+
+     ✅ 155 passed
+
+=================================== WARNINGS ===================================
+
+Schema validation mismatch: 1 operation mostly rejected generated data due to validation errors, indicating schema constraints don't match API validation
+
+  - GET /notes/{note_id}
+
+💡 Check your schema constraints - API validation may be stricter than documented
+
+=================================== SUMMARY ====================================
+
+API Operations:
+  Selected: 4/5
+  Tested: 4
+
+Test Phases:
+  ⏭  Examples
+  ✅ Coverage
+  ✅ Fuzzing
+  ✅ Stateful
+
+Warnings:
+  ⚠️ Schema validation mismatch: 1 operation mostly rejected generated data
+
+Test cases:
+  586 generated, 586 passed
+
+Reports:
+  - JUNIT: /Users/mac/Desktop/QC/QC-Agent/runs/step24/bug_off/bug_off_01.junit.xml
+
+Seed: 1337
+
+============================== 1 warning in 3.11s ==============================

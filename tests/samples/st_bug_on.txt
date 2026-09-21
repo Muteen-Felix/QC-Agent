@@ -1,0 +1,125 @@
+Command argv:
+[
+  "/Users/mac/Desktop/QC/QC-Agent/.venv/bin/st",
+  "run",
+  "http://127.0.0.1:54807/openapi.json",
+  "--checks",
+  "not_a_server_error,response_schema_conformance",
+  "--max-examples",
+  "25",
+  "--seed",
+  "1337",
+  "--exclude-path",
+  "/notes/{note_id}/summarize",
+  "--generation-database",
+  "none",
+  "--report",
+  "junit",
+  "--report-junit-path",
+  "/Users/mac/Desktop/QC/QC-Agent/runs/step24/bug_on/bug_on_01.junit.xml",
+  "--no-color"
+]
+
+Exit code: 1
+
+Schemathesis v4.27.5
+━━━━━━━━━━━━━━━━━━━━
+
+
+ ✅  Loaded specification from http://127.0.0.1:54807/openapi.json (in 0.27s)
+
+     Base URL:         http://127.0.0.1:54807/
+     Specification:    Open API 3.1.0
+     Operations:       4 selected / 5 total
+
+
+ ✅  API capabilities:
+
+     Supports NULL byte in headers:                            ✘
+     Accepts backslash and control characters in URL paths:    ✓
+
+ ⏭   Examples (in 0.00s)
+
+     ⏭  4 skipped
+
+ ✅  Coverage (in 0.20s)
+
+     ✅ 4 passed
+
+ ❌  Fuzzing (in 0.67s)
+
+     ✅ 2 passed  ❌ 2 failed
+
+ ✅  Stateful (in 1.98s)
+
+     Scenarios:    155
+     API Links:    5 covered / 5 selected / 5 total (5 inferred)
+
+     ✅ 155 passed
+
+=================================== FAILURES ===================================
+___________________________ DELETE /notes/{note_id} ____________________________
+1. Test Case ID: zknnVb
+
+- Server error
+
+[500] Internal Server Error:
+
+    `{"detail":"internal error"}`
+
+Reproduce with:
+
+    curl -X DELETE http://127.0.0.1:54807/notes/%C3%BCi%F1%8C%A7%96%C3%8B%C3%AC%29%C2%A8%F0%BE%94%97%F2%BE%AD%95HD%C3%84%F2%96%A9%96%F1%9A%8C%95%0C%1B%C3%A8%C3%87
+
+    st replay zknnVb
+
+_____________________________ GET /notes/{note_id} _____________________________
+1. Test Case ID: Eid6JP
+
+- Server error
+
+[500] Internal Server Error:
+
+    `{"detail":"internal error"}`
+
+Reproduce with:
+
+    curl -X GET http://127.0.0.1:54807/notes/%C3%BCi%F1%8C%A7%96%C3%8B%C3%AC%29%C2%A8%F0%BE%94%97%F2%BE%AD%95HD%C3%84%F2%96%A9%96%F1%9A%8C%95%0C%1B%C3%A8%C3%87
+
+    st replay Eid6JP
+
+=================================== WARNINGS ===================================
+
+Schema validation mismatch: 1 operation mostly rejected generated data due to validation errors, indicating schema constraints don't match API validation
+
+  - GET /notes/{note_id}
+
+💡 Check your schema constraints - API validation may be stricter than documented
+
+=================================== SUMMARY ====================================
+
+API Operations:
+  Selected: 4/5
+  Tested: 4
+
+Test Phases:
+  ⏭  Examples
+  ✅ Coverage
+  ❌ Fuzzing
+  ✅ Stateful
+
+Failures:
+  ❌ Server error: 2
+
+Warnings:
+  ⚠️ Schema validation mismatch: 1 operation mostly rejected generated data
+
+Test cases:
+  578 generated, 2 found 2 unique failures
+
+Reports:
+  - JUNIT: /Users/mac/Desktop/QC/QC-Agent/runs/step24/bug_on/bug_on_01.junit.xml
+
+Seed: 1337
+
+======================== 2 failures, 1 warning in 2.88s ========================

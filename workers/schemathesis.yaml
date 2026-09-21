@@ -1,0 +1,14 @@
+name: schemathesis
+version_probe: "st --version"
+adapter: "adapters/schemathesis_adapter.py"
+lanes: [gate]
+capabilities:
+  - id: api.property
+    oracle_kinds: [checks]
+    verdict_sources: [deterministic_assert]
+    parallel_safe: true
+requires:
+  env: [APP_BASE_URL]
+  binaries: [st]
+data_egress: []
+cost_profile: { tokens_per_run: 0, typical_wallclock_s: 60 }
