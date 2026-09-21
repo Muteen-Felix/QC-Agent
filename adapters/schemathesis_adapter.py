@@ -46,7 +46,7 @@ class SchemathesisAdapter(Adapter):
         if isinstance(max_examples, bool) or not isinstance(max_examples, int) or max_examples < 1:
             raise AdapterParseError("inputs.max_examples debe ser un entero > 0")
         if isinstance(seed, bool) or not isinstance(seed, int):
-            raise AdapterParseError("inputs.seed debe ser un entero")
+            raise AdapterParseError("inputs.seed phải là số nguyên")
         exclude_path = inputs.get("exclude_path")
         if not isinstance(exclude_path, str) or not exclude_path.startswith("/"):
             raise AdapterParseError("inputs.exclude_path debe ser una ruta absoluta del API")
@@ -140,6 +140,11 @@ class SchemathesisAdapter(Adapter):
             raise AdapterParseError("oracle.required thiếu hoặc có check chưa được hỗ trợ")
 
         checks = {name: True for name in required}
+        case_of = {
+            child: case for case in testcases for child in case
+            if child.tag.rsplit("}", 1)[-1] == "failure"
+        }
+        findings = []
         for failure in failures:
             detail = "".join(failure.itertext())
             lowered = detail.lower()
@@ -154,12 +159,20 @@ class SchemathesisAdapter(Adapter):
             if failed_check not in required:
                 raise AdapterParseError(f"JUnit có lỗi ở check không được yêu cầu: {failed_check}")
             checks[failed_check] = False
+            name = case_of[failure].attrib.get("name", "?")
+            findings.append({
+                "finding_id": f"f-st-{failed_check}-{len(findings) + 1}",
+                "title": f"{name}: {failed_check} không đạt",
+                "detected_by": f"schemathesis:{failed_check}",
+                "verdict_source": "deterministic_assert",
+            })
 
         if (proc.returncode != 0) != bool(failures):
             raise AdapterParseError("mâu thuẫn exit code/báo cáo")
 
         args = proc.args if isinstance(proc.args, (list, tuple)) else [str(proc.args)]
         return ParsedOutput(
+            findings=findings,
             signals={"checks": checks},
             evidence_paths=[("raw_output", report_path), ("stdout", stdout_path)],
             tokens=0,
