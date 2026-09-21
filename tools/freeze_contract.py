@@ -4,6 +4,9 @@
 """
 import hashlib, pathlib, sys
 
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 FILES = ["schemas/task_spec.json", "schemas/result.json", "workers/_template.yaml"]
 LOCK = pathlib.Path("schemas/CONTRACT.sha256")
 
