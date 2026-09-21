@@ -62,3 +62,7 @@ A giữ `schema.py`, `evidence.py`, `plan.py`, `_base.py`, `runner.py`, `cli.py`
 Hiệu chuẩn ban đầu với `QC_LONG_ID_LEN=64` và `32` không tái hiện BUG-1 cho seed `1337`. Theo quy tắc hiệu chuẩn STEP 24, mặc định trong `toyapp/app.py` được hạ xuống **16**; tại giá trị này BUG-1 vẫn là lỗi cài sẵn (id dài hơn ngưỡng trả 500) và bắt được mục tiêu 5/5. Cần nêu rõ thay đổi ngưỡng khi review kết quả.
 
 Mẫu đã lưu: `tests/samples/st_bug_on.txt`, `st_bug_on.junit.xml`, `st_bug_off.txt`, `st_bug_off.junit.xml`, `st_server_down.txt`. Báo cáo đủ 11 lượt được giữ cục bộ trong `runs/step24/` (thư mục bị loại khỏi Git).
+
+## Schemathesis adapter parsing
+
+Ở Schemathesis 4.27.5, JUnit failure text không ghi tên check: `not_a_server_error` được nhận diện bằng tiêu đề `Server error` cùng status 5xx; `response_schema_conformance` bằng tiêu đề `Response violates schema`. Failure không khớp các dạng đã biết, report thiếu/hỏng, report rỗng/thiếu operation testcase hoặc exit code mâu thuẫn với JUnit đều thành `AdapterParseError` (`status=error`), không bị đổi thành fail/pass. Để tránh report thiếu bị hiểu là toàn bộ check đã pass, adapter đối chiếu số operation trên stdout, testcase trong JUnit và các bộ đếm XML. Schemathesis tạo JUnit hợp lệ nhưng rỗng khi server không kết nối được; adapter cũng xử lý trường hợp đó như lỗi worker. Mỗi lượt tạo config riêng trong workdir với `[cache] enabled = false`; `--generation-database none` vẫn tắt riêng kho ví dụ sinh.
