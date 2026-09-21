@@ -1,0 +1,28 @@
+{
+  "name": "qc-agent",
+  "version": "1.0.0",
+  "description": "> Orchestrator \"ngu\" là orchestrator đúng. Routing bằng LLM là thừa và có hại. [arch §6.2]",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Muteen-Felix/QC-Agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Muteen-Felix/QC-Agent/issues"
+  },
+  "homepage": "https://github.com/Muteen-Felix/QC-Agent#readme",
+  "devDependencies": {
+    "@midscene/cli": "1.13.0"
+  }
+}
