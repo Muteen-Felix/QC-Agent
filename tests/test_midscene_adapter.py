@@ -85,9 +85,25 @@ def test_missing_element_canary_is_a_non_gating_failure(monkeypatch, tmp_path):
     ]
 
 
-def test_missing_summary_is_an_adapter_error(tmp_path, monkeypatch):
+def test_missing_summary_and_missing_model_config_are_adapter_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(midscene_module, "_events", lambda _base_url: [])
     with pytest.raises(AdapterParseError, match="summary.json"):
+        MidsceneAdapter().parse_output(_completed(1), tmp_path, copy.deepcopy(SPEC))
+
+    (tmp_path / "summary.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "success": False,
+                        "error": "Model configuration is incomplete: model name is required",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(AdapterParseError, match="lỗi hạ tầng"):
         MidsceneAdapter().parse_output(_completed(1), tmp_path, copy.deepcopy(SPEC))
 
 

@@ -10,7 +10,10 @@ from adapters._base import Adapter, AdapterParseError, ParsedOutput
 
 PARSER_VERSION = "1"
 _ELEMENT_NOT_FOUND = re.compile(r"kh[oô]ng t[iì]m th[aấ]y|not found|unable to find|could not find", re.IGNORECASE)
-_INFRA_ERROR = re.compile(r"\b429\b|resource_exhausted|model request failed|timed out|timeout", re.IGNORECASE)
+_INFRA_ERROR = re.compile(
+    r"\b429\b|resource_exhausted|model request failed|model configuration is incomplete|timed out|timeout",
+    re.IGNORECASE,
+)
 
 
 def _reset_events(base_url: str) -> None:
@@ -39,6 +42,7 @@ class MidsceneAdapter(Adapter):
 
     def build_cmd(self, spec: dict, workdir: Path) -> list[str]:
         _reset_events(spec["target"]["base_url"])
+        (workdir / "summary.json").unlink(missing_ok=True)
         npx = shutil.which("npx")
         if not npx:
             raise AdapterParseError("không tìm thấy npx trong PATH")

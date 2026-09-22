@@ -99,14 +99,14 @@ Mẫu đã lưu: `tests/samples/de_junit_mixed.xml`, `de_junit_pass.xml`, `de_ge
 
 ## Midscene STEP 29 live run
 
-Ngày 2026-09-22, ba lệnh adapter đều exit **0** và ba `result.json` đều qua schema validation, nhưng STEP 29 **chưa đạt DoD**. Explore, canary và lượt no-key đều có `status=error`, không có finding; Midscene 1.13.0 tạo summary thất bại với `Timed out after waiting 30000ms`.
+Ngày 2026-09-22, lỗi `document-start-failed` đã được truy tới `puppeteer.launch()`: Chrome GPU process crash lặp lại với exit `-1073741790` (`0xC0000022`, Access Denied), sau đó Chrome báo `GPU process isn't usable`. Phép thử Puppeteer tối thiểu cũng timeout 30 giây; thêm duy nhất `--no-sandbox` thì browser launch thành công trong khoảng 1.4 giây. Hai flow STEP 29 khai báo cờ này bằng `web.chromeArgs`.
 
-Report Midscene ghi `document-start-failed` và `hostErrors.phase=setup`, nên flow chưa bắt đầu và telemetry còn rỗng. Vì lỗi xảy ra trước thao tác UI, không giảm `max_steps` hoặc diễn giải thành lỗi sản phẩm. Đã kiểm tra không còn process Node/Chrome mang command line Midscene/Puppeteer bị mồ côi. Các lượt thử với runtime sạch, `MIDSCENE_MODEL_TIMEOUT=120000`, và ghim `MIDSCENE_CHROME_PATH` tới Chrome hệ thống vẫn lỗi đúng tại setup 30 giây; dừng retry để tránh tốn quota.
+Sau bản sửa browser, canary chạy thật qua model và cho đúng `status=fail`, `gating=false`, finding `implicit_signal:element_not_found`; result qua schema. Ca no-key cần tạm chuyển `.env` ra ngoài thư mục làm việc vì Midscene tự nạp file này; adapter đã được bổ sung nhận diện `Model configuration is incomplete` là lỗi hạ tầng, nên kết quả đúng `status=error`. Adapter cũng xoá summary cũ trước mỗi run để không đọc nhầm output của lượt trước.
 
 | run | status | findings | kết luận |
 |---|---|---:|---|
-| explore | error | 0 | setup timeout, chưa đo được BUG-2 |
-| canary | error | 0 | setup timeout, chưa tới bước tìm element |
-| no_key | error | 0 | setup timeout; Midscene tự nạp `.env`, nên chỉ xoá key trong process chưa tạo được ca no-key độc lập |
+| explore | error | 0 | browser đã chạy; Gemini 429 vì hết quota ngày 20 request, chưa đo được BUG-2 |
+| canary | fail | 1 | đúng `element_not_found`, non-gating |
+| no_key | error | 0 | đúng lỗi cấu hình model thiếu; phải cô lập `.env` |
 
-Chưa chạy bảng biến thiên explore 3 lần vì chưa có lượt explore thành công; không dùng fixture STEP 28 để giả làm số đo live.
+Chưa chạy bảng biến thiên explore 3 lần vì Gemini trả `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, giới hạn 20 request/ngày. Cần chờ quota ngày reset hoặc dùng project/key có quota rồi chạy lại; không dùng fixture STEP 28 để giả làm số đo live.
