@@ -1,0 +1,41 @@
+plan_version: 1
+name: demo-mock
+sut: {files: ["toyapp"], attrs: {model: "stub-rule-v1"}}
+tasks:
+  - task_id: t-e01
+    capability: demo.echo
+    lane: gate
+    intent: "Worker giả, oracle trivial: chứng minh đường ống thông"
+    target: {kind: none, base_url: "http://127.0.0.1:8000"}
+    inputs: {fixture: "tests/fixtures/mock_ok.json"}
+    oracle: {kind: trivial}
+    expected_result_kind: verdict
+    budget: {wallclock_s: 30, tokens: 0, usd: 0}
+    determinism: {seed: null, replayable: true}
+    evidence_required: [raw_output, stdout]
+    retry: {max: 1, "on": [error]}
+  - task_id: t-e02
+    capability: demo.echo
+    lane: gate
+    intent: "Worker giả, oracle checks đạt"
+    target: {kind: none, base_url: "http://127.0.0.1:8000"}
+    inputs: {fixture: "tests/fixtures/mock_ok.json"}
+    oracle: {kind: checks, required: [always_true]}
+    expected_result_kind: verdict
+    budget: {wallclock_s: 30, tokens: 0, usd: 0}
+    determinism: {seed: null, replayable: true}
+    evidence_required: [raw_output, stdout]
+    retry: {max: 1, "on": [error]}
+  - task_id: t-e03
+    capability: demo.echo
+    lane: discovery
+    intent: "Worker giả trả một finding llm_judgment (không chặn)"
+    target: {kind: none, base_url: "http://127.0.0.1:8000"}
+    expect_status: fail
+    inputs: {fixture: "tests/fixtures/mock_finding.json"}
+    oracle: {kind: trivial}
+    expected_result_kind: candidate_finding
+    budget: {wallclock_s: 30, tokens: 0, usd: 0}
+    determinism: {seed: null, replayable: false}
+    evidence_required: [raw_output]
+    retry: {max: 0, "on": []}

@@ -51,5 +51,33 @@ def gate_verdict(results: dict, specs: dict) -> GateVerdict:
     return GateVerdict(PASS, 0, reasons, banner)
 
 
+def canary_alerts(results: dict, plan_only: dict) -> list[dict]:
+    """Compare canary outcomes with plan expectations without affecting the gate."""
+    alerts = []
+    for task_id, fields in plan_only.items():
+        if "expect_status" not in fields:
+            continue
+        expected = fields["expect_status"]
+        result = results.get(task_id)
+        actual = result.get("status") if result is not None else None
+        ok = actual == expected
+        if ok:
+            message = f"CANARY {task_id}: OK ({expected} như kỳ vọng)"
+        else:
+            shown_actual = actual if actual is not None else "missing"
+            message = (
+                f"CANARY HỎNG: {task_id} báo {shown_actual} cho task chắc chắn phải {expected} "
+                "— worker tự hành không đáng tin"
+            )
+        alerts.append({
+            "task_id": task_id,
+            "expected": expected,
+            "actual": actual,
+            "ok": ok,
+            "message": message,
+        })
+    return alerts
+
+
 def lane_has_gate(specs: dict) -> bool:
     return any(s["lane"] == "gate" for s in specs.values())
