@@ -40,6 +40,10 @@ def render(ctx: RunContext) -> tuple[str, dict]:
         lines.extend(["## ⚠ SKIPPED / ERROR — ĐỌC TRƯỚC", ""])
         lines.extend(f"- `{task_id}`: {message}" for task_id, message in ctx.gate.banner)
         lines.append("")
+    broken_canaries = [item for item in ctx.canary if not item.get("ok")]
+    if broken_canaries:
+        lines.extend(item["message"] for item in broken_canaries)
+        lines.append("")
 
     symbol = {"PASS": "✅", "YELLOW": "🟡", "FAIL": "❌"}.get(ctx.gate.value, "⚠")
     lines.extend([f"## VERDICT: {symbol} {ctx.gate.value}", ""])
@@ -202,7 +206,9 @@ def _discovery_section(ctx: RunContext) -> list[str]:
                 lines.append(f"    → ứng viên promote: {promote.get('suggested_capability', '—')}")
         count += 1
     for item in ctx.canary:
-        lines.append(f"- CANARY: {item.get('message', item)}")
+        if not item.get("ok"):
+            continue
+        lines.append(f"- {item['message']}")
         count += 1
     if count == 0:
         lines.append("- Không có result discovery.")

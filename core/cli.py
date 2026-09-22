@@ -13,7 +13,7 @@ from pathlib import Path
 
 from core import registry, report, runner, signature
 from core.plan import ROOT, PlanError, load_plan, resolve, toposort
-from core.verdict import FAIL, PASS, YELLOW, gate_verdict
+from core.verdict import FAIL, PASS, YELLOW, canary_alerts, gate_verdict
 
 SYSTEM_ERROR = 3
 _RUN_ID = re.compile(r"^r-(\d{4})$")
@@ -106,7 +106,8 @@ def _run(args) -> int:
     run_ctx = report.RunContext(
         run_id=run_id, plan_id=plan_id, plan_name=plan["name"], plan_path=Path(args.plan).as_posix(),
         plan_text=plan["text"], sut_id=sut, run_signature=signature_hex, generated_at=_now(),
-        wallclock_s=round(wallclock, 3), specs=specs, results=results, gate=gate)
+        wallclock_s=round(wallclock, 3), specs=specs, results=results, gate=gate,
+        canary=canary_alerts(results, extras))
     md, _ = report.write(run_ctx, run_dir)
     print(md, end="")
     return gate.exit_code
@@ -118,6 +119,12 @@ def _rerender(args) -> int:
     if not specs:
         raise PlanError(f"{run_dir}: không có specs/*.json — không phải thư mục của một run")
     plan = load_plan(run_dir / "plan.yaml")
+    by_id = {task["task_id"]: task for task in plan["tasks"]}
+    plan_only = {
+        task_id: {"expect_status": by_id[task_id]["expect_status"]}
+        for task_id in specs
+        if task_id in by_id and "expect_status" in by_id[task_id]
+    }
     plan_id = signature.plan_id(plan["text"])
     sut = signature.sut_id(_read_json(run_dir / "sut_identity.json"))
     signature_hex, gate = _judge(specs, results, plan_id, sut, args.yellow_exit)
@@ -128,7 +135,8 @@ def _rerender(args) -> int:
     run_ctx = report.RunContext(
         run_id=next(iter(specs.values()))["run_id"], plan_id=plan_id, plan_name=plan["name"],
         plan_path=f"{run_dir.name}/plan.yaml", plan_text=plan["text"], sut_id=sut, run_signature=signature_hex,
-        generated_at=_now(), wallclock_s=wallclock, specs=specs, results=results, gate=gate)
+        generated_at=_now(), wallclock_s=wallclock, specs=specs, results=results, gate=gate,
+        canary=canary_alerts(results, plan_only))
     md, _ = report.render(run_ctx)  # render, không write: write sẽ đè report.md/report.json gốc
     (run_dir / "report.rerender.md").write_text(md, encoding="utf-8", newline="\n")
     print(md, end="")
