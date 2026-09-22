@@ -1,0 +1,16 @@
+{
+  "attrs": {
+    "model": "stub-rule-v1"
+  },
+  "code_commit": "cc0795d8bf2553eff0b9fa427fcfa1fafb0de88e",
+  "files_sha256": "5dfc26ff7686a7712c6e8ed4ff400e6d31d9d544305ba87ab3f6f56ddb84ffd0",
+  "probe": {
+    "bugs": [
+      "1",
+      "2",
+      "3"
+    ],
+    "latency_ms": 0,
+    "long_id_len": 16
+  }
+}

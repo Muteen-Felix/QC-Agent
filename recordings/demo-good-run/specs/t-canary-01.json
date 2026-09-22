@@ -1,0 +1,42 @@
+{
+  "task_id": "t-canary-01",
+  "capability": "ui.explore",
+  "lane": "discovery",
+  "intent": "CANARY: task chắc chắn phải fail (nút 'Thanh toán' không tồn tại). Worker báo pass = worker hỏng, không phải app tốt",
+  "target": {
+    "kind": "web_app",
+    "base_url": "http://127.0.0.1:8000",
+    "entry_path": "/"
+  },
+  "inputs": {
+    "flow": "midscene/canary_checkout.yaml",
+    "max_steps": 8
+  },
+  "oracle": {
+    "kind": "implicit_signals",
+    "signals": [
+      "element_not_found"
+    ],
+    "llm_observations_allowed": false
+  },
+  "expected_result_kind": "candidate_finding",
+  "budget": {
+    "wallclock_s": 300,
+    "tokens": 80000,
+    "usd": 0.5
+  },
+  "determinism": {
+    "seed": null,
+    "replayable": false
+  },
+  "evidence_required": [
+    "raw_output"
+  ],
+  "retry": {
+    "max": 0,
+    "on": []
+  },
+  "plan_id": "plan-f4a3467c",
+  "run_id": "r-0004",
+  "sut_identity_ref": "sut-f560000f"
+}

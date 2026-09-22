@@ -1,0 +1,51 @@
+{
+  "task_id": "t-003",
+  "capability": "llmapp.eval",
+  "lane": "gate",
+  "intent": "Đánh giá tóm tắt bằng metric tất định (gating) + G-Eval advisory (không chặn)",
+  "target": {
+    "kind": "llm_app",
+    "base_url": "http://127.0.0.1:8000"
+  },
+  "inputs": {
+    "outputs_path": "runs/r-0004/t-000/outputs.json",
+    "judge_config": {
+      "provider": "openai",
+      "model": "gemini-3.5-flash-lite",
+      "fallback_provider": "gemini",
+      "fallback_model": "gemini-3.5-flash-lite"
+    },
+    "sut_model": "stub-rule-v1"
+  },
+  "oracle": {
+    "kind": "checks",
+    "required": [
+      "summary_not_empty",
+      "summary_shorter_than_body",
+      "summary_json_valid"
+    ]
+  },
+  "expected_result_kind": "verdict",
+  "budget": {
+    "wallclock_s": 180,
+    "tokens": 50000,
+    "usd": 0.5
+  },
+  "determinism": {
+    "seed": null,
+    "replayable": true
+  },
+  "evidence_required": [
+    "raw_output",
+    "stdout"
+  ],
+  "retry": {
+    "max": 1,
+    "on": [
+      "error"
+    ]
+  },
+  "plan_id": "plan-f4a3467c",
+  "run_id": "r-0004",
+  "sut_identity_ref": "sut-f560000f"
+}

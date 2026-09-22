@@ -15,6 +15,8 @@ DEMO_FAIL = ROOT / "plans" / "demo_fail.yaml"
 
 def run_cli(tmp_path, *args):
     env = {k: v for k, v in os.environ.items() if k != "QC_RUNS_DIR"}
+    venv_bin = str(Path(sys.executable).parent)
+    env["PATH"] = venv_bin + (os.pathsep + env["PATH"] if env.get("PATH") else "")
     env["PYTHONUTF8"] = "1"
     return subprocess.run(
         [sys.executable, "orchestrator.py", *args, "--runs-dir", str(tmp_path / "runs")],

@@ -1,0 +1,48 @@
+{
+  "task_id": "t-002",
+  "run_id": "r-0004",
+  "worker": {
+    "name": "k6",
+    "version": null,
+    "adapter_version": "0.1.0"
+  },
+  "status": "pass",
+  "verdict": {
+    "value": "pass",
+    "verdict_source": "deterministic_assert",
+    "gating": true,
+    "confidence": null,
+    "rationale": null
+  },
+  "findings": [],
+  "metrics": {
+    "http_req_duration.p95": 21.037999999999997,
+    "http_req_failed.rate": 0
+  },
+  "evidence": [
+    {
+      "kind": "raw_output",
+      "uri": "runs/r-0004/t-002/k6-summary.json",
+      "sha256": "45a937599912243561c1d0a25c8d574a4fbd0505b4366bccdc0ae991bf7c6dd2"
+    },
+    {
+      "kind": "stdout",
+      "uri": "runs/r-0004/t-002/stdout.log",
+      "sha256": "3c81c143dfb92f2c426191d26c68294f959b60cdbd25b246129b5a5cd49a9f33"
+    }
+  ],
+  "cost": {
+    "wallclock_s": 30.411,
+    "tokens": 0,
+    "usd": 0.0
+  },
+  "sut_identity_ref": "sut-f560000f",
+  "determinism": {
+    "seed": null,
+    "replay_cmd": "k6 run --summary-export=/Users/mac/Desktop/QC/QC-Agent/runs/r-0004/t-002/k6-summary.json --vus 10 --duration 30s tests/perf/notes_list.js"
+  },
+  "adapter_notes": [
+    "PARSER_VERSION=1",
+    "k6 exit_code=0"
+  ]
+}
