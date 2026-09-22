@@ -1,6 +1,6 @@
 # plan.yaml — plan THẬT của PoC (thay plans/demo.yaml làm plan mặc định để chạy gate).
 # Chạy:  . .\scripts\env.ps1; .\scripts\toyapp.ps1 start; python orchestrator.py --plan plan.yaml
-# Các task sau (t-002 k6, t-101 Midscene, ...) thêm ở STEP 34, 40, 42, 49.
+# STEP 40: đủ 5 task — t-000 (collect), t-001 (schemathesis), t-002 (k6), t-003 (deepeval), t-101 (midscene).
 plan_version: 1
 name: noteboard-poc
 sut:
@@ -8,6 +8,26 @@ sut:
   attrs: {model: "stub-rule-v1"}
   probe_url: "http://127.0.0.1:8000/__qc/config"
 tasks:
+  - task_id: t-000
+    capability: http.collect
+    lane: gate
+    intent: "Thu thập input/output của API tóm tắt ghi chú qua golden set, làm nguồn cho t-003"
+    target:
+      kind: http_service
+      base_url: "http://127.0.0.1:8000"
+    # inputs/oracle SAO CHÉP nguyên từ tests/fixtures/task_collect.json (Role C, STEP 39) — nguồn duy nhất; đổi ở đó thì đồng bộ lại đây.
+    inputs:
+      golden: "tests/eval/golden.json"
+    oracle:
+      kind: checks
+      required: [all_http_2xx, count_matches_golden]
+    expected_result_kind: verdict
+    budget: {wallclock_s: 60, tokens: 0, usd: 0}
+    determinism: {seed: null, replayable: true}
+    evidence_required: [raw_output, stdout]
+    retry: {max: 1, "on": [error]}   # "on" phải đặt trong ngoặc kép: YAML 1.1 đọc on → true
+    prefer: [http-collect]
+
   - task_id: t-001
     capability: api.property
     lane: gate
@@ -56,6 +76,35 @@ tasks:
     evidence_required: [raw_output, stdout]
     retry: {max: 1, "on": [error]}
     prefer: [k6]
+
+  - task_id: t-003
+    capability: llmapp.eval
+    lane: gate
+    intent: "Đánh giá tóm tắt bằng metric tất định (gating) + G-Eval advisory (không chặn)"
+    target:
+      kind: llm_app
+      base_url: "http://127.0.0.1:8000"
+    depends_on: [t-000]
+    # inputs/oracle SAO CHÉP nguyên từ tests/fixtures/task_de.json (Role C, STEP 39) — nguồn duy nhất; đổi ở đó thì đồng bộ lại đây.
+    # outputs_path trỏ tới output SỐNG của t-000 trong CHÍNH run này (${run_id}) — không dùng fixture tĩnh
+    # tests/fixtures/outputs_collect.json (fixture đó đã đóng băng ở trạng thái bug-on, dùng riêng cho unit test adapter).
+    inputs:
+      outputs_path: "runs/${run_id}/t-000/outputs.json"
+      judge_config:
+        provider: "openai"
+        model: "gemini-3.5-flash-lite"
+        fallback_provider: "gemini"
+        fallback_model: "gemini-3.5-flash-lite"
+      sut_model: "stub-rule-v1"
+    oracle:
+      kind: checks
+      required: [summary_not_empty, summary_shorter_than_body, summary_json_valid]
+    expected_result_kind: verdict
+    budget: {wallclock_s: 180, tokens: 50000, usd: 0.5}
+    determinism: {seed: null, replayable: true}
+    evidence_required: [raw_output, stdout]
+    retry: {max: 1, "on": [error]}
+    prefer: [deepeval]
 
   - task_id: t-101
     capability: ui.explore
