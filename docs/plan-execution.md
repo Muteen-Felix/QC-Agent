@@ -989,7 +989,7 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
   import pytest
   from deepeval import assert_test
   from deepeval.metrics import BaseMetric, GEval
-  from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+  from deepeval.test_case import LLMTestCase, SingleTurnParams
 
 
   class NotEmpty(BaseMetric):
@@ -1034,7 +1034,7 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
               pytest.skip("không có OpenAI API key")
           model = model_name
       m = GEval(name="giữ ý chính", criteria="Bản tóm tắt có giữ ý chính của đầu vào không?",
-                evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+                evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
                 model=model)
       m.measure(LLMTestCase(input="Họp lúc 9h. Mang laptop.", actual_output="Họp 9h, mang laptop"))
       print("GEVAL_SCORE", m.score)
@@ -1042,12 +1042,16 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
   ```powershell
   pytest tests\eval\hello_probe.py -q -s --junitxml=runs\de_junit.xml; "metric+geval exit=$LASTEXITCODE"      # case "empty" phải đỏ
   $openai = $env:OPENAI_API_KEY; $gemini = $env:GEMINI_API_KEY; $google = $env:GOOGLE_API_KEY
-  Remove-Item Env:OPENAI_API_KEY,Env:GEMINI_API_KEY,Env:GOOGLE_API_KEY -ErrorAction SilentlyContinue
+  $judge = $env:QC_JUDGE_PROVIDER; $judgeModel = $env:QC_JUDGE_MODEL
+  $env:DEEPEVAL_DISABLE_DOTENV = "1"
+  Remove-Item Env:OPENAI_API_KEY,Env:GEMINI_API_KEY,Env:GOOGLE_API_KEY,Env:QC_JUDGE_PROVIDER,Env:QC_JUDGE_MODEL -ErrorAction SilentlyContinue
   pytest tests\eval\hello_probe.py -q -s --junitxml=runs\de_junit_nokey.xml; "no_key exit=$LASTEXITCODE"       # metric tất định vẫn chạy, geval skip
   $env:OPENAI_API_KEY = $openai; $env:GEMINI_API_KEY = $gemini; $env:GOOGLE_API_KEY = $google
+  $env:QC_JUDGE_PROVIDER = $judge; $env:QC_JUDGE_MODEL = $judgeModel
+  Remove-Item Env:DEEPEVAL_DISABLE_DOTENV -ErrorAction SilentlyContinue
   pytest tests\eval\hello_probe.py -q -k "ok" --junitxml=runs\de_junit_pass.xml; "metric_pass exit=$LASTEXITCODE"
   ```
-  Ghi lại: (a) `metric_fail` có exit ≠ 0 và JUnit có phần tử `<failure>` cho **đúng** `test_not_empty[empty-]`; (b) `no_key` metric tất định **vẫn chạy được không cần key** (quyết định D5/STEP 02 fallback); (c) **DeepEval có hỏi đăng nhập / mở trình duyệt / in prompt tương tác không** (nếu có: adapter chạy trong `subprocess` sẽ **treo** — tìm biến môi trường tắt trong doc DeepEval và ghi vào `.env.example`); (d) `deepeval test run tests\eval\hello_probe.py` có sinh file JSON trong `DEEPEVAL_RESULTS_FOLDER` không (đóng double-check #3; **không** bắt buộc dùng). Lưu `runs\de_junit.xml` → `tests/samples/de_junit_mixed.xml`, `de_junit_pass.xml` → `tests/samples/de_junit_pass.xml`, và stdout có dòng `GEVAL_SCORE` → `tests/samples/de_geval_stdout.txt`. Điền bảng `## DeepEval matrix` trong `docs/decisions.md`: 4 hàng `metric_pass | metric_fail | geval_with_key | geval_no_key`, cột `exit code`, `có JUnit?`, `ghi chú`.
+  Ghi lại: (a) `metric_fail` có exit ≠ 0 và JUnit có `<failure>` đúng ở `test_not_empty[empty]`; (b) metric tất định vẫn chạy khi không có key; (c) ghi nhận có/không login, browser hoặc prompt tương tác; (d) kiểm tra `deepeval test run` có sinh JSON trong `DEEPEVAL_RESULTS_FOLDER`. DeepEval tự nạp `.env`, vì vậy ca no-key phải đặt `DEEPEVAL_DISABLE_DOTENV=1` và gỡ cả key lẫn `QC_JUDGE_*` khỏi process. Lưu ba mẫu JUnit/stdout vào `tests/samples/` và điền bảng `## DeepEval matrix` trong `docs/decisions.md`.
   ```powershell
   git add -A; git commit -m "STEP 35: deepeval hello + junit samples"; git push
   ```
@@ -1058,46 +1062,65 @@ Chưa đủ 5 dấu ☐ ⟹ **không ai bắt đầu STEP 12+**. (Ngoại lệ d
 - **Owner:** Huy (Role C) · **Depends on:** 13, 11 · **Parallel-safe:** STEP 35, 33, 34 · **Time:** 45'
 - **Actions:** DeepEval **không tự chạy app** — nó cần sẵn `input`/`actual_output` `[R3 9.6, rủi ro #4]`; nên việc thu output là **một task riêng trong plan**, không giấu trong worker `[R3 rủi ro #4]`.
   1. `workers/http-collect.yaml`: `name: http-collect`, `version_probe: "python --version"`, `adapter: "adapters/collect_adapter.py"`, `lanes: [gate]`, capability `http.collect` (`oracle_kinds: [checks]`, `verdict_sources: [deterministic_assert]`, `parallel_safe: true`), `requires: {env: [APP_BASE_URL], binaries: []}`, `data_egress: []`.
-  2. `adapters/collect_adapter.py` (~60 dòng): `build_cmd` trả `[sys.executable, "-c", "pass"]` (việc thật làm trong `parse_output` bằng `httpx.Client`; client tiêm được qua thuộc tính lớp để test bằng `httpx.MockTransport`). Với mỗi case trong `inputs.golden` (`tests/eval/golden.json`): `POST /notes` `{title, body}` → `id`; `POST /notes/{id}/summarize`; ghi `{id: "g1", note_id, input, actual_output, model, prompt_hash, http_status}` vào `workdir/outputs.json`; cuối cùng `DELETE` các note đã tạo. `signals["checks"] = {"all_http_2xx": <mọi status 2xx>, "count_matches_golden": <số record == số case>}`; evidence `raw_output` = `outputs.json`. **Không** kết luận gì về *chất lượng* summary (việc của DeepEval); kết nối lỗi ⟹ `AdapterParseError`.
-  3. `tests/test_collect_adapter.py` — **4 test** (`MockTransport`): (1) mọi request 2xx ⟹ `all_http_2xx=True` và `outputs.json` có đúng 5 record có `actual_output`; (2) `summarize` trả 500 ở một case ⟹ `all_http_2xx=False`; (3) lỗi kết nối ⟹ `AdapterParseError`; (4) record giữ `model` và `prompt_hash` từ response.
+  2. `adapters/collect_adapter.py` gọi `adapters.collect_worker` bằng subprocess để mọi request HTTP nằm trong giới hạn `budget.wallclock_s` của `_base.Adapter._exec`; `parse_output` chỉ đọc và kiểm tra artifact. Phần xử lý dùng chung ở `adapters/collect_runtime.py`, nơi `httpx.Client` nhận factory để test bằng `httpx.MockTransport`. URL được truyền cho worker qua môi trường, không qua argv; URL có userinfo, query hoặc fragment bị từ chối. Orchestrator lưu nguyên task spec trước khi gọi adapter, vì vậy tuyệt đối không đặt secret ở bất kỳ trường nào của spec. Worker `http.collect` hiện chưa có cơ chế auth riêng. Với mỗi case trong `inputs.golden` (`tests/eval/golden.json`): `POST /notes` `{title, body}` → `id`; `POST /notes/{id}/summarize`; ghi `{id, note_id, input, actual_output, model, prompt_hash, http_status}` vào `workdir/outputs.json`; cuối cùng thử `DELETE` mọi note đã tạo. `http_status` là status summarize, hoặc status create nếu không tạo được note. `all_http_2xx` tính cả POST, summarize và DELETE; response 2xx nhưng JSON thiếu field bắt buộc hoặc lỗi transport làm worker khác 0 và adapter trả `error`. `collection.json` ghi count/checks của worker; evidence gồm `outputs.json`, `collection.json` và `stdout.log`. **Không** kết luận gì về *chất lượng* summary (việc của DeepEval).
+  3. `tests/test_collect_adapter.py` — **9 test**: (1) mọi request 2xx ⟹ đủ 5 record; (2) `summarize` trả 500 ⟹ `all_http_2xx=False`; (3) lỗi kết nối ⟹ worker collection error; (4) malformed success response vẫn dọn note; (5) request chậm bị chấm dứt theo budget task; (6) URL không được ghi vào argv; (7–9) từ chối user/password, query và fragment trong `base_url`.
   ```powershell
+  . .\scripts\env.ps1
   pytest tests\test_collect_adapter.py -q
-  .\scripts\toyapp.ps1 start
-  python -m adapters.collect_adapter --spec tests\fixtures\task_collect.json --out runs\collect.json; "exit=$LASTEXITCODE"
-  python tools\validate.py result runs\collect.json
-  (Get-Content runs\r-0001\t-000\outputs.json -Raw -Encoding UTF8 | ConvertFrom-Json).Count
+  $runRoot = $env:QC_RUNS_DIR; $appPort = ([uri]$env:APP_BASE_URL).Port
+  .\scripts\toyapp.ps1 start -Port $appPort
+  $collect = Get-Content tests\fixtures\task_collect.json -Raw | ConvertFrom-Json
+  $collect.run_id = "r-collect-live"; $collect.target.base_url = $env:APP_BASE_URL
+  $collect | ConvertTo-Json -Depth 20 | Set-Content "$runRoot\task_collect_live.json" -Encoding UTF8
+  python -m adapters.collect_adapter --spec "$runRoot\task_collect_live.json" --out "$runRoot\collect.json"; "exit=$LASTEXITCODE"
+  python tools\validate.py result "$runRoot\collect.json"
+  (Get-Content "$runRoot\r-collect-live\t-000\outputs.json" -Raw -Encoding UTF8 | ConvertFrom-Json).Count
   .\scripts\toyapp.ps1 stop
   git add -A; git commit -m "STEP 36: collect adapter (http.collect)"; git push
   ```
-  (`tests/fixtures/task_collect.json`: spec `t-000`, `capability:"http.collect"`, `lane:"gate"`, `run_id:"r-0001"`, `inputs:{"golden":"tests/eval/golden.json"}`, `oracle:{"kind":"checks","required":["all_http_2xx","count_matches_golden"]}`, `evidence_required:["raw_output"]`, `target.base_url:"http://127.0.0.1:8000"`.)
-- **DoD:** `pytest tests\test_collect_adapter.py -q` in **`4 passed`**; lệnh adapter `exit=0`, `validate.py` `PASS`, `status=pass`; số record trong `outputs.json` = **`5`**.
+  (`tests/fixtures/task_collect.json`: spec `t-000`, `capability:"http.collect"`, `lane:"gate"`, `run_id:"r-0001"`, `inputs:{"golden":"tests/eval/golden.json"}`, `oracle:{"kind":"checks","required":["all_http_2xx","count_matches_golden"]}`, `evidence_required:["raw_output","stdout"]`, `target.base_url:"http://127.0.0.1:8000"`.)
+- **DoD:** `pytest tests\test_collect_adapter.py -q` in **`9 passed`**; lệnh adapter `exit=0`, `validate.py` `PASS`, `status=pass`; số record trong `outputs.json` = **`5`**.
 - **Nếu fail:** không có `t-000` thì DeepEval không có gì để chấm ⟹ nhánh AI đứt. Fallback: DeepEval đọc thẳng `inputs.records` viết tay trong plan (mất một task, giữ được chứng minh `verdict_source`) — ghi `[KHÔNG KỊP]`.
 
 ### STEP 37 — `tests/eval/test_summarize.py` + `adapters/deepeval_adapter.py` (một worker, hai `verdict_source`)
 - **Owner:** Huy (Role C) · **Depends on:** 35, 36, 06, 13 · **Parallel-safe:** STEP 38 (A chờ), 39 (A) · **Time:** 90'
 - **Actions:**
-  1. **`tests/eval/test_summarize.py`** (dựa trên `hello_probe.py` **đã chạy được** ở STEP 35). **Đầu file bắt buộc có** `pytestmark = pytest.mark.skipif(not os.environ.get("QC_EVAL_OUTPUTS"), reason="chỉ chạy qua deepeval_adapter")` — nếu thiếu, `pytest -q` toàn repo sẽ đỏ vì file này nằm trong `tests/` và cần `outputs.json`. Đọc `QC_EVAL_OUTPUTS` (đường dẫn `outputs.json`), `QC_EVAL_OUT_DIR`. **3 metric tất định tự viết** (không gọi LLM): `summary_not_empty`, `summary_shorter_than_body` (`len(actual_output) < len(input)`), `summary_json_valid` (record có `summary: str`, `model: str`, `prompt_hash: str` — kiểm bằng `jsonschema`). Tham số hoá **`test_metric[<metric>-<case_id>]`** ⟹ JUnit cho **từng cặp (metric, case)**. **Advisory**: `test_geval_advisory` chạy G-Eval "giữ ý chính" bằng `QC_JUDGE_PROVIDER`/`QC_JUDGE_MODEL`; nếu primary lỗi thì thử fallback provider/model **tối đa một lần**. Khi dùng Gemini, tạo `GeminiModel(model=..., api_key=..., temperature=0)` ([DeepEval Gemini docs](https://deepeval.com/integrations/models/gemini)). Ghi `QC_EVAL_OUT_DIR/geval.json` = `{"score": <trung bình>, "cases": {...}, "judge_provider": "...", "judge_model": "..."}` hoặc `{"error": "..."}`; không ghi key hay response body lỗi; **không bao giờ làm test đỏ** — *advisory không được phép ảnh hưởng gate, kể cả khi cả hai provider đều hỏng.*
-  2. `workers/deepeval.yaml` theo [arch §5.5]: `lanes: [gate, discovery]`, capability `llmapp.eval` (`oracle_kinds: [checks]`, `verdict_sources: [deterministic_assert, llm_judgment]`, `gating_metrics: [summary_not_empty, summary_shorter_than_body, summary_json_valid]`, `advisory_metrics: [GEval]`, `parallel_safe: true`), `requires: {env: [], binaries: []}` (registry không có `one-of` cho OpenAI/Gemini; key chỉ dùng cho advisory), **`data_egress: [app_input, app_output]`**. Khi fallback sang Gemini, các trường này được gửi tới Google; provider/model thật phải được ghi vào `geval.json`.
-  3. `adapters/deepeval_adapter.py` (~110 dòng), **hai hàm**:
-     - `build_cmd`: **kiểm judge ≠ SUT trước tiên**: `inputs.judge_config.model == inputs.sut_model` ⟹ `AdapterParseError("judge trùng model của SUT")` (`[arch D5]`: **không âm thầm chạy**). Lệnh: `[os.environ.get("QC_DEEPEVAL_PYTHON", sys.executable), "-m", "pytest", "tests/eval/test_summarize.py", f"--junitxml={workdir}/junit.xml", "-q", "-p", "no:cacheprovider"]`; env: `QC_EVAL_OUTPUTS=<inputs.outputs_path>`, `QC_EVAL_OUT_DIR=<workdir>`, `DEEPEVAL_RESULTS_FOLDER=<workdir>/deepeval-results`.
-     - `parse_output`: (a) **không có `junit.xml` ⟹ `AdapterParseError`**; (b) parse JUnit: tên test khớp regex `test_metric\[(?P<metric>[a-z_]+)-(?P<case>[a-z0-9]+)\]` (`PARSER_VERSION="1"`); `signals["checks"][metric] = mọi case của metric đó đều pass`; mỗi cặp hỏng ⟹ finding `deterministic_assert`, `detected_by:"metric:<metric>"`, tiêu đề `"<metric>: case <case> không đạt"`, `severity_hint:"high"`; test hỏng **không quy về metric nào** ⟹ `AdapterParseError` (không đoán); (c) **đối chiếu**: pytest exit ≠ 0 mà JUnit không có thất bại (hoặc ngược lại) ⟹ `AdapterParseError`; (d) đọc `geval.json`: có `score` ⟹ **một finding `llm_judgment`**, `detected_by:"metric:GEval"`, `confidence = score` (**D-10**, kèm `adapter_notes: "confidence := G-Eval score"`), `rationale = "G-Eval 'giữ ý chính' <score> (judge=<model>)"`, `metrics["GEval.score"] = score`; `{"error":…}` hoặc không có file ⟹ **không** phát finding, chỉ ghi `adapter_notes` — phần tất định **không bị ảnh hưởng**; (e) `tokens`/`usd` = `None` (DeepEval không báo); (f) evidence: `junit.xml`, `geval.json` (nếu có), log stdout.
-  4. `tests/test_deepeval_adapter.py` — **8 test** trên `tests/samples/de_junit_*` + `geval.json` dựng tay: (1) JUnit sạch + G-Eval 0.71 ⟹ mọi check `True`, đúng 1 finding `llm_judgment` với `confidence=0.71`; (2) JUnit có `test_metric[summary_shorter_than_body-g3]` hỏng ⟹ check đó `False`, có finding `deterministic_assert` cho `g3`; (3) `judge_config.model == sut_model` ⟹ `AdapterParseError`; (4) không có JUnit ⟹ `AdapterParseError`; (5) pytest exit ≠ 0 nhưng JUnit sạch ⟹ `AdapterParseError`; (6) `geval.json` = `{"error": "429"}` ⟹ **không** finding `llm_judgment`, phần tất định vẫn hợp lệ; (7) OpenAI lỗi xác thực + Gemini hợp lệ ⟹ retry một lần, finding ghi provider `gemini`; (8) cả hai provider lỗi ⟹ không có `llm_judgment`, deterministic metrics vẫn hợp lệ, key không xuất hiện trong output.
+  1. **`tests/eval/test_summarize.py`** (dựa trên `hello_probe.py` **đã chạy được** ở STEP 35). **Đầu file bắt buộc có** `pytestmark = pytest.mark.skipif(not os.environ.get("QC_EVAL_OUTPUTS"), reason="chỉ chạy qua deepeval_adapter")` — nếu thiếu, `pytest -q` toàn repo sẽ đỏ vì file này nằm trong `tests/` và cần `outputs.json`. Đọc `QC_EVAL_OUTPUTS` (đường dẫn `outputs.json`), `QC_EVAL_OUT_DIR`. **3 metric tất định tự viết** (không gọi LLM): `summary_not_empty`, `summary_shorter_than_body` (`len(actual_output) < len(input)`), `summary_json_valid` (record có `actual_output: str`, `model: str`, `prompt_hash: str` — schema kiểm bằng `jsonschema`; `actual_output` là trường chuẩn hóa từ response `summary`). Tham số hoá **`test_metric[<metric>-<case_id>]`** ⟹ JUnit cho **từng cặp (metric, case)**. **Advisory**: `test_geval_advisory` chạy G-Eval "giữ ý chính" bằng `QC_JUDGE_PROVIDER`/`QC_JUDGE_MODEL`; nếu primary lỗi thì thử fallback provider/model **tối đa một lần**. Khi dùng Gemini, tạo `GeminiModel(model=..., api_key=..., temperature=0)` ([DeepEval Gemini docs](https://deepeval.com/integrations/models/gemini)). Ghi `QC_EVAL_OUT_DIR/geval.json` = `{"score": <trung bình>, "cases": {...}, "judge_provider": "...", "judge_model": "..."}` hoặc error tổng quát, không chứa response body; không ghi key hay response body lỗi; **không bao giờ làm test đỏ** — *advisory không được phép ảnh hưởng gate, kể cả khi cả hai provider đều hỏng.*
+  2. `workers/deepeval.yaml` theo [arch §5.5]: `lanes: [gate, discovery]`, capability `llmapp.eval` (`oracle_kinds: [checks]`, `verdict_sources: [deterministic_assert, llm_judgment]`, `gating_metrics: [summary_not_empty, summary_shorter_than_body, summary_json_valid]`, `advisory_metrics: [GEval]`, `parallel_safe: true`), `requires: {env: [], binaries: []}` (registry không có `one-of` cho OpenAI/Gemini; key chỉ dùng cho advisory), **`data_egress: [app_input, app_output]`**. Adapter đặt `DEEPEVAL_TELEMETRY_OPT_OUT=YES`; input/output chỉ gửi tới judge đã khai báo và provider/model thật được ghi trong `geval.json`.
+  3. `adapters/deepeval_adapter.py`, **hai hàm**:
+     - `build_cmd`: **kiểm judge ≠ SUT trước tiên**, gồm model fallback: model trùng `inputs.sut_model` ⟹ `AdapterParseError("judge trùng model của SUT")` (`[arch D5]`: không âm thầm chạy). Kiểm `outputs_path` tồn tại; đặt `QC_EVAL_OUTPUTS` thành path tuyệt đối, `QC_EVAL_OUT_DIR=<workdir>`, `DEEPEVAL_RESULTS_FOLDER=<workdir>/deepeval-results`, provider/model primary/fallback và `DEEPEVAL_TELEMETRY_OPT_OUT=YES`; chạy pytest với `--junitxml=<workdir>/junit.xml`.
+     - `parse_output`: thiếu/hỏng JUnit ⟹ `AdapterParseError`; yêu cầu đúng một testcase `test_geval_advisory` và đủ mọi cặp `test_metric[<metric>-<case_id>]` lấy từ `outputs.json`; JUnit error/skip, tên lạ, cặp thiếu/trùng ⟹ `AdapterParseError`. Regex metric là `test_metric\[(?P<metric>[a-z_]+)-(?P<case>[a-z0-9]+)\]` (`PARSER_VERSION="2"`). Mỗi metric pass khi mọi case pass; mỗi case fail tạo finding `deterministic_assert` (`detected_by:"metric:<metric>"`, severity high). Chỉ exit code pytest 0/1 được chấp nhận và phải khớp với có/không failure trong JUnit; mã lỗi hạ tầng khác thành `error`. `geval.json` chỉ hợp lệ khi có đủ case ID, điểm từng case hữu hạn trong 0..1, score tổng khớp trung bình và có provider/model ⟹ một finding `llm_judgment`, `confidence=score` (D-10), `metrics["GEval.score"]`; report lỗi/hỏng ⟹ không finding G-Eval, chỉ adapter note; deterministic gate không đổi. `tokens`/`usd` là `None`; evidence gồm JUnit, `geval.json` nếu có và stdout.
+  4. `tests/test_deepeval_adapter.py` — **11 test** với JUnit/JSON fixture tạo trong test; fallback được mock ở helper để unit test không gọi API: (1) JUnit sạch + G-Eval 0.71 ⟹ mọi check `True`, đúng 1 finding `llm_judgment`; (2) một metric/case fail ⟹ finding `deterministic_assert`; (3) judge trùng SUT ⟹ `AdapterParseError`; (4) thiếu JUnit/count sai ⟹ `AdapterParseError`; (5) exit code 1 không khớp JUnit và exit code 2 dù có metric failure ⟹ `AdapterParseError`; (6) G-Eval lỗi hoặc score/cases thiếu, ngoài miền, sai trung bình ⟹ advisory bị bỏ qua, deterministic gate vẫn hợp lệ; (7) OpenAI lỗi + Gemini hợp lệ ⟹ retry một lần, provider thật là `gemini`; (8) cả hai lỗi ⟹ không có `llm_judgment`, key không lọt output; (9) điểm case primary không hợp lệ ⟹ fallback được thử đúng một lần.
   ```powershell
+  . .\scripts\env.ps1
   pytest tests\test_deepeval_adapter.py -q
-  .\scripts\toyapp.ps1 start
-  python -m adapters.collect_adapter --spec tests\fixtures\task_collect.json --out runs\collect.json
-  python -m adapters.deepeval_adapter --spec tests\fixtures\task_de.json --out runs\de_bug.json;  "bug3_on  exit=$LASTEXITCODE"
-  .\scripts\toyapp.ps1 start -Bugs none
-  python -m adapters.collect_adapter --spec tests\fixtures\task_collect.json --out runs\collect.json
-  python -m adapters.deepeval_adapter --spec tests\fixtures\task_de.json --out runs\de_clean.json; "bug3_off exit=$LASTEXITCODE"
-  python -m adapters.deepeval_adapter --spec tests\fixtures\task_de_badpath.json --out runs\de_crash.json; "crash exit=$LASTEXITCODE"
+  $appPort = ([uri]$env:APP_BASE_URL).Port; $runRoot = $env:QC_RUNS_DIR
+  .\scripts\toyapp.ps1 start -Port $appPort
+  function New-Step37Tasks($runId) {
+    $collect = Get-Content tests\fixtures\task_collect.json -Raw | ConvertFrom-Json
+    $collect.run_id = $runId; $collect.target.base_url = $env:APP_BASE_URL
+    $collect | ConvertTo-Json -Depth 20 | Set-Content "$runRoot\task_collect_live.json" -Encoding UTF8
+    $de = Get-Content tests\fixtures\task_de.json -Raw | ConvertFrom-Json
+    $de.run_id = $runId; $de.inputs.outputs_path = "$runRoot/$runId/t-000/outputs.json"
+    $de | ConvertTo-Json -Depth 20 | Set-Content "$runRoot\task_de_live.json" -Encoding UTF8
+  }
+  New-Step37Tasks "r-step37-bug"
+  python -m adapters.collect_adapter --spec "$runRoot\task_collect_live.json" --out "$runRoot\collect_bug.json"
+  python -m adapters.deepeval_adapter --spec "$runRoot\task_de_live.json" --out "$runRoot\de_bug.json"
+  .\scripts\toyapp.ps1 start -Bugs none -Port $appPort
+  New-Step37Tasks "r-step37-clean"
+  python -m adapters.collect_adapter --spec "$runRoot\task_collect_live.json" --out "$runRoot\collect_clean.json"
+  python -m adapters.deepeval_adapter --spec "$runRoot\task_de_live.json" --out "$runRoot\de_clean.json"
+  python -m adapters.deepeval_adapter --spec tests\fixtures\task_de_badpath.json --out "$runRoot\de_crash.json"
   .\scripts\toyapp.ps1 stop
-  python tools\validate.py result runs\de_bug.json runs\de_clean.json runs\de_crash.json
-  git add -A; git commit -m "STEP 37: deepeval adapter + test_summarize"; git push
+  python tools\validate.py result "$runRoot\collect_bug.json" "$runRoot\de_bug.json" "$runRoot\collect_clean.json" "$runRoot\de_clean.json" "$runRoot\de_crash.json"
+  # de_bug = fail; de_clean = pass; de_crash = error. Judge API calls cost usage.
   ```
-  (`tests/fixtures/task_de.json`: spec `t-003`, `capability:"llmapp.eval"`, `lane:"gate"`, `inputs:{"outputs_path":"runs/r-0001/t-000/outputs.json","judge_config":{"model":"…"},"sut_model":"stub-rule-v1"}` (chỗ `"…"` là **tên model chấm C đang dùng, cùng giá trị `QC_JUDGE_MODEL` trong `.env`** — tên model không phải bí mật; file fixture này commit được), `oracle:{"kind":"checks","required":["summary_not_empty","summary_shorter_than_body","summary_json_valid"]}`, `evidence_required:["raw_output"]`, `budget:{"wallclock_s":180,"tokens":50000,"usd":0.5}`; `task_de_badpath.json` = như trên nhưng `outputs_path` trỏ file không tồn tại.)
-- **DoD:** `pytest tests\test_deepeval_adapter.py -q` in **`8 passed`**; `validate.py` `PASS` cả ba; `status` lần lượt **`fail`** (`de_bug`: case g3 hỏng), **`pass`** (`de_clean`), **`error`** (`de_crash`); **`de_bug.json` và `de_clean.json` đều có finding `llm_judgment`** *(nếu có provider dùng được)* — chính hai file này chứng minh **một result, hai `verdict_source`**.
-- **Nếu fail:** cả OpenAI và Gemini đều không dùng được ⟹ ca `llm_judgment` dùng G-Eval **mock** (fixture `geval.json` viết tay, `adapter_notes` ghi `mock`); đây là cắt #5 một phần — vẫn còn nhánh AI chạy thật với metric tất định. Nếu `error` vì DeepEval treo chờ tương tác ⟹ áp biến tắt đã ghi ở STEP 35 (c).
+  (`tests/fixtures/task_de.json`: spec `t-003`, capability `llmapp.eval`, output mẫu `tests/fixtures/outputs_collect.json` (g3 bug-on), primary/fallback provider/model không chứa key, `sut_model:"stub-rule-v1"`; `task_de_badpath.json` trỏ tới file không tồn tại.)
+- **DoD:** `pytest tests\test_deepeval_adapter.py -q` in **`11 passed`**; `validate.py` `PASS` cả ba; `status` lần lượt **`fail`** (`de_bug`: case g3 hỏng), **`pass`** (`de_clean`), **`error`** (`de_crash`); **de_bug và de_clean có finding `llm_judgment` khi judge dùng được** — cùng deterministic findings tạo hai `verdict_source` trong một result.
+- **Nếu fail:** nếu cả OpenAI và Gemini đều không dùng được, ghi `geval.json` dạng lỗi tổng quát; không giả lập `llm_judgment` trong result thật. Unit test có thể dùng response cố định để kiểm parser, nhưng chỉ kết quả judge thật mới được ghi thành finding. Lỗi judge vẫn giữ nguyên verdict tất định.
+
+- **Kết quả thực hiện/review (2026-09-22):** sau review độc lập, HTTP collection được chuyển vào worker chịu task timeout; URL được truyền qua env và URL có userinfo/query/fragment bị từ chối. Orchestrator vẫn lưu nguyên task spec trước khi adapter chạy, nên task spec không được chứa secret. Parser DeepEval từ chối mã pytest hạ tầng ngoài 0/1; G-Eval parser kiểm tra case ID, miền điểm và trung bình. Lượt app bug-on cho ra `fail` đúng ở g3; bug-off cho ra `pass`; cả hai có G-Eval thật qua Gemini fallback (lượt clean đầu gặp `ClientError` tạm thời, retry thành công); no-key, bad path và judge trùng SUT đã kiểm tra; artifacts qua `tools/validate.py` và hai checklist `review_adapter.py` đều **5/5 PASS**. Test mục tiêu: **20 passed, 2 skipped**; toàn suite: **171 passed, 2 skipped**, một deprecation warning từ Starlette. Port 8000 đang do tiến trình không phải toyapp chiếm, nên lượt chạy thật dùng cổng tạm.
 
 ### STEP 38 — A review `deepeval_adapter` + `collect_adapter`
 - **Owner:** Nghĩa (Role A) · **Depends on:** 37 · **Parallel-safe:** STEP 39 (cùng owner — tuần tự) · **Time:** 45'

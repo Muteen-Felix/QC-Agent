@@ -1,0 +1,19 @@
+name: deepeval
+version_probe: "deepeval --version"
+adapter: "adapters/deepeval_adapter.py"
+lanes: [gate, discovery]
+capabilities:
+  - id: llmapp.eval
+    oracle_kinds: [checks]
+    verdict_sources: [deterministic_assert, llm_judgment]
+    gating_metrics:
+      - summary_not_empty
+      - summary_shorter_than_body
+      - summary_json_valid
+    advisory_metrics: [GEval]
+    parallel_safe: true
+requires:
+  env: []
+  binaries: []
+data_egress: [app_input, app_output]
+cost_profile: {tokens_per_run: 50000, typical_wallclock_s: 180}

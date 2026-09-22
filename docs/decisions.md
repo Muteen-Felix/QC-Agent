@@ -83,3 +83,16 @@ Với toyapp sạch (`QC_BUGS=none`, `QC_LATENCY_MS=0`), lượt pass đo đư�
 Trong summary JSON thật, key nguồn là `metrics.http_req_duration["p(95)"]` (đơn vị ms) và `metrics.http_req_failed.value` (tỉ lệ 0–1; ánh xạ sang metric chuẩn `http_req_failed.rate`). Giá trị này được xác nhận từ summary và stdout của k6 v2.2.0; không dùng tên key minh họa trong ví dụ kiến trúc thay cho dữ liệu thật.
 
 Mẫu đã lưu và được Git track: `tests/samples/k6_summary.pass.json`, `k6_summary.threshold_fail.json`, `k6_summary.server_down.json`, `k6_stdout.script_error.txt`. Lượt server-down 10 VU/30 giây tạo nhiều log `connection refused`; khi chạy lại thủ công có thể dùng `--quiet --log-output=none` để tránh in các cảnh báo lặp lại.
+
+## DeepEval matrix
+
+Đã kiểm tra với DeepEval **4.2.3**. `assert_test` chạy metric tự viết mà không cần key; pytest exit code và JUnit phản ánh đúng case tất định đỏ. G-Eval trực tiếp dùng `GeminiModel` với `gemini-3.5-flash-lite`; lần smoke test trả điểm **1.0**. DeepEval không hỏi đăng nhập, không mở trình duyệt và không chờ prompt tương tác trong các lệnh đã chạy. `deepeval test run` ghi JSON vào `DEEPEVAL_RESULTS_FOLDER`; adapter STEP 37 dùng pytest/JUnit làm nguồn verdict và không phụ thuộc file JSON này. DeepEval tự nạp `.env`, vì vậy lượt no-key phải đặt `DEEPEVAL_DISABLE_DOTENV=1`, không chỉ xóa key khỏi process environment.
+
+| case | exit code | có JUnit? | ghi chú |
+|---|---:|---|---|
+| metric_pass | **0** | Có | `test_not_empty[ok]` pass khi chạy riêng; không cần key |
+| metric_fail | **1** | Có | `test_not_empty[empty]` có `<failure>`; ca đỏ được tạo có chủ đích |
+| geval_with_key | **0** | Có | G-Eval gọi Gemini thật, `GEVAL_SCORE 1.0`; không cần login Confident AI |
+| geval_no_key | **1** | Có | G-Eval skip khi dotenv bị tắt; metric pass vẫn chạy và ca `empty` cố ý fail |
+
+Mẫu đã lưu: `tests/samples/de_junit_mixed.xml`, `de_junit_pass.xml`, `de_geval_stdout.txt`. `deepeval test run` được kiểm tra riêng khi tắt dotenv/telemetry; nó lưu report JSON ở `runs/step35/deepeval-results/`. `workers/deepeval.yaml` buộc tắt telemetry của DeepEval để dữ liệu gửi ra ngoài chỉ đi qua judge đã khai báo. `GeminiModel` cần gói `google-genai`; gói này đã được thêm vào dependency và lock sau khi smoke test phát hiện môi trường ban đầu thiếu SDK.
