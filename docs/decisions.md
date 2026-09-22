@@ -99,14 +99,20 @@ Mẫu đã lưu: `tests/samples/de_junit_mixed.xml`, `de_junit_pass.xml`, `de_ge
 
 ## Midscene STEP 29 live run
 
-Ngày 2026-09-22, lỗi `document-start-failed` đã được truy tới `puppeteer.launch()`: Chrome GPU process crash lặp lại với exit `-1073741790` (`0xC0000022`, Access Denied), sau đó Chrome báo `GPU process isn't usable`. Phép thử Puppeteer tối thiểu cũng timeout 30 giây; thêm duy nhất `--no-sandbox` thì browser launch thành công trong khoảng 1.4 giây. Hai flow STEP 29 khai báo cờ này bằng `web.chromeArgs`.
+Ngày 2026-09-22, lỗi `document-start-failed` đã được truy tới `puppeteer.launch()`: Chrome GPU process crash lặp lại với exit `-1073741790` (`0xC0000022`, Access Denied), sau đó Chrome báo `GPU process isn't usable`. Phép thử Puppeteer tối thiểu cũng timeout 30 giây. `--no-sandbox` giúp browser launch nhưng screenshot bị đen; kết hợp `--no-sandbox` và `--disable-gpu` vừa launch được vừa render đúng. Hai flow STEP 29 khai báo hai cờ này bằng `web.chromeArgs`.
 
 Sau bản sửa browser, canary chạy thật qua model và cho đúng `status=fail`, `gating=false`, finding `implicit_signal:element_not_found`; result qua schema. Ca no-key cần tạm chuyển `.env` ra ngoài thư mục làm việc vì Midscene tự nạp file này; adapter đã được bổ sung nhận diện `Model configuration is incomplete` là lỗi hạ tầng, nên kết quả đúng `status=error`. Adapter cũng xoá summary cũ trước mỗi run để không đọc nhầm output của lượt trước.
 
 | run | status | findings | kết luận |
 |---|---|---:|---|
-| explore | error | 0 | browser đã chạy; key mới thêm được note (`render_done`, count 1) rồi Gemini 429 trước bước xoá |
+| explore | pass | 1 | đúng `dom_unchanged`, `deterministic_assert`, có `promote_candidate` |
 | canary | fail | 1 | đúng `element_not_found`, non-gating |
 | no_key | error | 0 | đúng lỗi cấu hình model thiếu; phải cô lập `.env` |
 
-Chưa chạy bảng biến thiên explore 3 lần vì Gemini trả `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, giới hạn 20 request/ngày. Đổi API key nhưng quota vẫn cạn sau canary và các request của explore (key có thể cùng project/quota); flow đã được tách thành bốn `aiAct` ngắn và `max_steps` giảm còn 8. Cần chờ quota ngày reset hoặc dùng key thuộc project có billing/quota riêng rồi chạy lại; không dùng fixture STEP 28 để giả làm số đo live.
+Flow cuối dùng bốn Instant Action (`aiInput`/`aiTap`) để tránh lỗi XML của auto-planning và giữ request dưới quota phút; `max_steps` giảm còn 8. Ba lượt explore live cho số đo:
+
+| explore run | status | findings | wallclock_s | ghi chú |
+|---|---|---:|---:|---|
+| 1 | pass | 1 | 77.639 | `dom_unchanged` |
+| 2 | pass | 1 | 77.475 | `dom_unchanged` |
+| 3 | error | 0 | 50.490 | Gemini 503 `high demand`; giữ nguyên số đo, không retry để biến lỗi thành pass |

@@ -2,10 +2,13 @@ web:
   url: http://127.0.0.1:8000
   chromeArgs:
     - --no-sandbox
+    - --disable-gpu
 tasks:
   - name: them-va-xoa-note
     flow:
-      - aiAct: nhập "Họp" vào ô Tiêu đề
-      - aiAct: nhập "Chốt scope" vào ô Nội dung
-      - aiAct: bấm nút Thêm
-      - aiAct: bấm nút Xoá của note đầu tiên
+      - aiInput: Họp
+        locate: ô Tiêu đề
+      - aiInput: Chốt scope
+        locate: ô Nội dung
+      - aiTap: nút Thêm
+      - aiTap: nút Xoá của note đầu tiên
