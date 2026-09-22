@@ -7,3 +7,4 @@ pyyaml
 pytest
 schemathesis
 deepeval
+google-genai
