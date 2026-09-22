@@ -90,7 +90,7 @@ def test_06_only_with_unknown_task_exits_3(tmp_path):
 
 def test_07_yellow_exit_flag(tmp_path):
     def skipped_gate_task(tasks):  # capability hợp lệ nhưng không worker nào nhận ⟹ skipped ở gate lane ⟹ YELLOW
-        tasks.append({**tasks[0], "task_id": "t-e04", "capability": "http.load"})
+        tasks.append({**tasks[0], "task_id": "t-e99", "capability": "http.load"})
 
     plan = str(write_plan(tmp_path, skipped_gate_task))
     default = run_cli(tmp_path, "--plan", plan)
