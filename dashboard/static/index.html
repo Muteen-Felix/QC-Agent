@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QC-Agent Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* Fallback tối thiểu nếu mất mạng (Tailwind CDN không tải được): badge + bảng vẫn đọc được */
+  body { font-family: system-ui, "Segoe UI", sans-serif; margin: 0; background: #f1f5f9; color: #0f172a; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 12px; }
+  .b-PASS, .b-pass { background: #dcfce7; color: #166534; }
+  .b-FAIL, .b-fail { background: #fee2e2; color: #991b1b; }
+  .b-YELLOW { background: #fef9c3; color: #854d0e; }
+  .b-INCOMPLETE, .b-skipped, .b-error, .b-UNKNOWN { background: #e2e8f0; color: #334155; }
+  .b-RUNNING { background: #dbeafe; color: #1e40af; }
+  .b-mock { background: #fde68a; color: #78350f; }
+  tr.sel { background: #e0e7ff !important; }
+  .spin { width: 16px; height: 16px; border: 3px solid #fff6; border-top-color: #fff; border-radius: 50%; animation: s 0.8s linear infinite; display: inline-block; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  pre { white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body class="bg-slate-100 text-slate-900">
+
+<header class="bg-slate-900 text-white">
+  <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center gap-4 justify-between">
+    <div>
+      <h1 class="text-xl font-bold">QC-Agent · Quality Gate Dashboard</h1>
+      <p class="text-slate-400 text-sm">plan.yaml → orchestrator (deterministic) → verdict · Discovery lane không chặn gate</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="sut" class="text-sm"></span>
+      <button id="runBtn" onclick="trigger()"
+        class="bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-bold text-lg px-6 py-3 rounded-xl shadow-lg flex items-center gap-2">
+        🚀 Kích hoạt QC Pipeline
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+  <!-- Job progress -->
+  <section id="jobBox" class="hidden bg-white rounded-xl shadow p-4">
+    <div class="flex items-center justify-between mb-2">
+      <div class="font-semibold" id="jobTitle">Pipeline đang chạy…</div>
+      <div class="text-sm text-slate-500" id="jobMeta"></div>
+    </div>
+    <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+      <div id="jobBar" class="bg-indigo-500 h-3 transition-all" style="width:0%"></div>
+    </div>
+    <details class="mt-3"><summary class="text-sm text-slate-500 cursor-pointer">Log (40 dòng cuối)</summary>
+      <pre id="jobLog" class="mt-2 text-xs bg-slate-900 text-slate-100 p-3 rounded max-h-72 overflow-auto"></pre>
+    </details>
+  </section>
+
+  <!-- KPI -->
+  <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="bg-white rounded-xl shadow p-4">
+      <div class="text-sm text-slate-500">Tổng số run</div>
+      <div id="kRuns" class="text-3xl font-bold">–</div>
+    </div>
+    <div class="bg-white rounded-xl shadow p-4">
+      <div class="text-sm text-slate-500">Gate gần nhất · <span id="kWindow"></span></div>
+      <div class="flex items-center gap-3 mt-1">
+        <span id="kLatest" class="badge">–</span>
+        <span id="kRate" class="text-lg font-semibold"></span>
+      </div>
+    </div>
+    <div class="bg-white rounded-xl shadow p-4">
+      <div class="text-sm text-slate-500">Tổng chi phí LLM (đã báo cáo)</div>
+      <div id="kCost" class="text-3xl font-bold">–</div>
+      <div id="kCostNote" class="text-xs text-slate-500"></div>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <!-- Runs table -->
+    <section class="lg:col-span-2 bg-white rounded-xl shadow overflow-hidden">
+      <h2 class="font-semibold px-4 py-3 border-b">Lịch sử Runs</h2>
+      <div class="max-h-[640px] overflow-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 sticky top-0">
+            <tr><th class="text-left px-4 py-2">Run</th><th class="text-left">Gate</th><th class="text-right">Wallclock</th><th class="text-right px-4">Gate tasks pass</th></tr>
+          </thead>
+          <tbody id="runsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Run detail -->
+    <section class="lg:col-span-3 space-y-4" id="detail">
+      <div class="bg-white rounded-xl shadow p-6 text-slate-500">Chọn một run để xem chi tiết.</div>
+    </section>
+  </div>
+
+  <!-- Visual evidence -->
+  <section id="evidenceBox" class="hidden bg-white rounded-xl shadow overflow-hidden">
+    <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b">
+      <h2 class="font-semibold">🎥 Bằng chứng thị giác (Midscene report)</h2>
+      <div class="flex items-center gap-2 text-sm">
+        <select id="evSelect" class="border rounded px-2 py-1" onchange="showEvidence(this.value)"></select>
+        <a id="evOpen" target="_blank" class="text-indigo-600 hover:underline">Mở tab mới ↗</a>
+      </div>
+    </div>
+    <iframe id="evFrame" class="w-full" style="height:75vh;border:0"></iframe>
+  </section>
+</main>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed bottom-6 right-6 max-w-md bg-emerald-600 text-white rounded-xl shadow-2xl p-4 z-50">
+  <div id="toastText" class="font-semibold"></div>
+  <button onclick="openTicket()" class="underline text-sm mt-1">Xem payload ticket</button>
+</div>
+
+<!-- Ticket modal -->
+<div id="modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-5">
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="font-bold" id="modalTitle"></h3>
+      <button onclick="document.getElementById('modal').classList.add('hidden')" class="text-slate-500 text-xl">×</button>
+    </div>
+    <p class="text-xs text-slate-500 mb-2"><span class="badge b-mock">MOCK</span> Chưa nối Jira thật — ticket nháp lưu tại dashboard/_state/tickets.json. SHA256 là hash thật của file evidence.</p>
+    <pre id="modalBody" class="text-xs bg-slate-900 text-slate-100 p-3 rounded max-h-[60vh] overflow-auto"></pre>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtS = s => s == null ? "—" : (s >= 60 ? `${Math.floor(s/60)}m${String(Math.round(s%60)).padStart(2,"0")}s` : `${s.toFixed(1)}s`);
+const badge = v => `<span class="badge b-${esc(v)}">${esc(v)}</span>`;
+const WORKER_ICON = {"schemathesis":"🧪","k6":"⚡","deepeval":"🧠","midscene-cli":"👁️","http-collect":"📥"};
+let selected = null, lastTicket = null, polling = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+
+async function loadSummary() {
+  const s = await api("/api/summary");
+  $("kRuns").textContent = s.total_runs;
+  $("kWindow").textContent = `${s.recent_window} run gần nhất`;
+  if (s.latest) { $("kLatest").className = `badge b-${s.latest.gate_verdict}`; $("kLatest").textContent = `${s.latest.run_id} · ${s.latest.gate_verdict}`; }
+  $("kRate").innerHTML = `<span class="text-emerald-600">${s.recent_pass} PASS</span> / <span class="text-red-600">${s.recent_fail} FAIL</span>`;
+  $("kCost").textContent = `$${s.usd_total.toFixed(2)}`;
+  $("kCostNote").textContent = `${s.tokens_total} token · ${s.unreported_tasks} task không báo cost (n/a, không tính là $0)`;
+  $("sut").innerHTML = s.sut_alive ? `<span class="badge b-PASS">SUT :8000 online</span>` : `<span class="badge b-FAIL">SUT :8000 offline</span>`;
+  if (s.job === "running" && !polling) startPolling();
+}
+
+async function loadRuns() {
+  const rows = await api("/api/runs");
+  $("runsBody").innerHTML = rows.map(r => `
+    <tr class="border-b hover:bg-slate-50 cursor-pointer ${r.run_id === selected ? "sel" : ""}" onclick="selectRun('${r.run_id}')">
+      <td class="px-4 py-2 font-mono">${r.run_id}</td>
+      <td>${badge(r.gate_verdict)}</td>
+      <td class="text-right">${r.complete ? fmtS(r.wallclock_s) : "—"}</td>
+      <td class="text-right px-4">${r.complete ? `${r.gating_pass}/${r.gating_total}` : "—"}</td>
+    </tr>`).join("");
+  if (!selected) { const first = rows.find(r => r.complete); if (first) selectRun(first.run_id); }
+}
+
+function workerCard(w) {
+  const metrics = Object.entries(w.metrics).map(([k, v]) => `${esc(k)}=${typeof v === "number" ? +v.toFixed(3) : esc(v)}`).join(" · ");
+  const border = w.gating ? (w.status === "pass" ? "border-emerald-400" : "border-red-400") : "border-slate-300";
+  return `<div class="border-l-4 ${border} bg-slate-50 rounded p-3">
+    <div class="flex justify-between items-center">
+      <div class="font-semibold">${WORKER_ICON[w.worker] || "🔧"} ${esc(w.worker)} <span class="text-xs text-slate-500 font-mono">${esc(w.task_id)}</span></div>
+      ${badge(w.status)}
+    </div>
+    <div class="text-xs text-slate-500 mt-1">${esc(w.verdict_source)} · ${fmtS(w.wallclock_s)}${metrics ? " · " + metrics : ""}</div>
+    ${w.findings.slice(0, 2).map(f => `<div class="text-xs mt-1 text-slate-700">• ${esc(f)}</div>`).join("")}
+  </div>`;
+}
+
+async function selectRun(id) {
+  selected = id;
+  document.querySelectorAll("#runsBody tr").forEach(tr => tr.classList.toggle("sel", tr.firstElementChild.textContent === id));
+  const d = await api(`/api/runs/${id}`);
+  const gate = d.workers.filter(w => w.gating), disc = d.workers.filter(w => !w.gating);
+  const r = d.run;
+  $("detail").innerHTML = `
+    <div class="bg-white rounded-xl shadow p-4 flex flex-wrap items-center justify-between gap-2">
+      <div><span class="font-mono font-bold text-lg">${esc(r.run_id)}</span> ${badge(r.gate_verdict)}
+        <span class="text-sm text-slate-500 ml-2">${esc(r.generated_at || "")} · ${fmtS(r.wallclock_s)} · exit ${r.exit_code ?? "—"}</span></div>
+      ${d.has_report_md ? `<a href="/api/runs/${r.run_id}/report.md" target="_blank" class="text-indigo-600 text-sm hover:underline">report.md ↗</a>` : ""}
+    </div>
+    <div class="bg-white rounded-xl shadow p-4">
+      <h3 class="font-semibold mb-3">Khối 1 · Worker CHẶN GATE <span class="text-xs text-slate-500 font-normal">(deterministic assert — gate = AND của các task này)</span></h3>
+      <div class="grid sm:grid-cols-2 gap-3">${gate.map(workerCard).join("") || "<i>không có</i>"}</div>
+      <h3 class="font-semibold mt-5 mb-3">Discovery lane <span class="text-xs text-slate-500 font-normal">(Midscene — heuristic, KHÔNG chặn gate)</span></h3>
+      <div class="grid sm:grid-cols-2 gap-3">${disc.map(workerCard).join("") || "<i>không có</i>"}</div>
+      ${d.canary.map(c => `<div class="text-sm mt-3">${c.ok ? "✅" : "🚨"} ${esc(c.message)}</div>`).join("")}
+    </div>
+    <div class="bg-white rounded-xl shadow p-4">
+      <h3 class="font-semibold mb-3">Khối 2 · Discovery Findings (Midscene)</h3>
+      ${d.findings.length ? d.findings.map(f => `
+        <div class="border rounded-lg p-3 mb-3">
+          <div class="flex justify-between gap-3 items-start">
+            <div>
+              <div class="font-semibold">${esc(f.title)}</div>
+              <div class="text-xs text-slate-500 font-mono mt-1">${esc(f.finding_id)} · ${esc(f.task_id)} · ${esc(f.detected_by)}${f.severity ? ` · severity ${esc(f.severity)}` : ""}</div>
+            </div>
+            <button onclick="createTicket('${esc(r.run_id)}','${esc(f.finding_id)}')" class="shrink-0 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-3 py-2 rounded-lg">📌 Tạo Ticket Jira</button>
+          </div>
+          ${f.repro_steps.length ? `<ol class="list-decimal ml-5 text-sm mt-2">${f.repro_steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}
+          <div class="text-xs text-slate-500 mt-2">${f.evidence.map(e => `<div class="font-mono">${esc(e.uri)} · sha256 ${esc((e.sha256 || "").slice(0, 12))}…</div>`).join("")}</div>
+        </div>`).join("") : `<div class="text-slate-500 text-sm">Không có finding.</div>`}
+    </div>`;
+  const reports = d.workers.flatMap(w => w.midscene.map(m => ({...m, task_id: w.task_id})));
+  renderEvidence(reports);
+}
+
+function renderEvidence(reports) {
+  if (!reports.length) { $("evidenceBox").classList.add("hidden"); return; }
+  $("evidenceBox").classList.remove("hidden");
+  $("evSelect").innerHTML = reports.map(m => `<option value="${m.exists ? esc(m.file) : ""}">${esc(m.task_id)} · ${esc(m.script)} ${m.success ? "✅" : "❌"}${m.exists ? "" : " (report đã bị xoá)"}</option>`).join("");
+  showEvidence(reports[0].exists ? reports[0].file : "");
+}
+
+function showEvidence(file) {
+  if (!file) { $("evFrame").srcdoc = "<p style='font-family:sans-serif;padding:2em;color:#64748b'>File report Midscene của run này không còn trong midscene_run/report.</p>"; $("evOpen").removeAttribute("href"); return; }
+  const url = `/midscene/${encodeURIComponent(file)}`;
+  $("evFrame").removeAttribute("srcdoc"); $("evFrame").src = url; $("evOpen").href = url;
+}
+
+async function createTicket(runId, findingId) {
+  try {
+    const t = await api("/api/tickets", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({run_id: runId, finding_id: findingId})});
+    lastTicket = t;
+    const sha = (t.evidence[0] || {}).sha256 || "";
+    toast(`📌 Đã tạo ticket ${t.key} (mock) kèm evidence SHA256 ${sha.slice(0, 8)}…`, true);
+  } catch (e) { toast("Lỗi: " + e.message, false); }
+}
+
+function openTicket() {
+  if (!lastTicket) return;
+  $("modalTitle").textContent = `${lastTicket.key} · ${lastTicket.summary}`;
+  $("modalBody").textContent = JSON.stringify(lastTicket, null, 2);
+  $("modal").classList.remove("hidden");
+}
+
+function toast(text, ok) {
+  $("toastText").textContent = text;
+  $("toast").className = `fixed bottom-6 right-6 max-w-md ${ok ? "bg-emerald-600" : "bg-red-600"} text-white rounded-xl shadow-2xl p-4 z-50`;
+  $("toast").querySelector("button").style.display = ok ? "" : "none";
+  clearTimeout(toast.t); toast.t = setTimeout(() => $("toast").classList.add("hidden"), 6000);
+}
+
+async function trigger() {
+  try { await api("/api/run", {method: "POST"}); startPolling(); }
+  catch (e) { toast(e.message, false); }
+}
+
+function startPolling() {
+  $("runBtn").disabled = true;
+  $("runBtn").innerHTML = `<span class="spin"></span> Đang chạy…`;
+  $("jobBox").classList.remove("hidden");
+  polling = setInterval(pollJob, 1000); pollJob();
+}
+
+async function pollJob() {
+  const j = await api("/api/job");
+  const {done, total} = j.progress;
+  $("jobBar").style.width = total ? `${Math.round(100 * done / total)}%` : "3%";
+  $("jobMeta").textContent = `${j.run_id || "đang khởi tạo"} · ${total ? `${done}/${total} task` : "probe worker…"} · ${fmtS(j.elapsed_s)}`;
+  $("jobLog").textContent = j.log_tail;
+  if (j.state === "running") { if (j.run_id && done !== pollJob.last) { pollJob.last = done; loadRuns(); } return; }
+  clearInterval(polling); polling = null;
+  $("runBtn").disabled = false; $("runBtn").innerHTML = "🚀 Kích hoạt QC Pipeline";
+  if (j.state === "done") {
+    $("jobTitle").textContent = `✅ Pipeline hoàn tất (exit ${j.exit_code} = ${j.exit_code === 0 ? "gate PASS" : "gate FAIL"})`;
+    $("jobBar").style.width = "100%";
+    toast(`Run ${j.run_id} hoàn tất — exit ${j.exit_code}`, true);
+  } else {
+    $("jobTitle").textContent = `⚠️ Pipeline lỗi hệ thống (exit ${j.exit_code}) — xem log`;
+    $("jobBar").className = "bg-red-500 h-3";
+  }
+  await loadSummary(); await loadRuns();
+  if (j.run_id) selectRun(j.run_id);
+}
+
+loadSummary(); loadRuns();
+setInterval(loadSummary, 15000);
+</script>
+</body>
+</html>
