@@ -1,0 +1,14 @@
+name: midscene-cli
+version_probe: "npx @midscene/cli --version"
+adapter: "adapters/midscene_adapter.py"
+lanes: [discovery]
+capabilities:
+  - id: ui.explore
+    oracle_kinds: [implicit_signals]
+    verdict_sources: [deterministic_assert, llm_judgment, heuristic]
+    parallel_safe: false
+requires:
+  env: [MIDSCENE_MODEL_API_KEY, MIDSCENE_MODEL_NAME, MIDSCENE_MODEL_BASE_URL, APP_BASE_URL]
+  binaries: [node]
+data_egress: [screenshot, dom]
+cost_profile: {tokens_per_run: null, typical_wallclock_s: 120}
