@@ -96,6 +96,21 @@ def test_probe_records_first_stdout_line(tmp_path):
     assert worker.probe_reason is None
 
 
+def test_probe_executes_the_path_resolved_by_which(monkeypatch):
+    worker = ready_worker(version_probe="npx package --version")
+    monkeypatch.setattr(registry.shutil, "which", lambda binary: r"C:\tools\npx.cmd")
+
+    def completed(argv, **_kwargs):
+        assert argv == [r"C:\tools\npx.cmd", "package", "--version"]
+        return subprocess.CompletedProcess(argv, 0, stdout="version 1\n", stderr="")
+
+    monkeypatch.setattr(registry.subprocess, "run", completed)
+    registry.probe(worker)
+
+    assert worker.probe_ok
+    assert worker.version == "version 1"
+
+
 def test_probe_timeout_is_reported(tmp_path, monkeypatch):
     worker = ready_worker()
 

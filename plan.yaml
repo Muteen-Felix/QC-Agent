@@ -1,6 +1,6 @@
 # plan.yaml — plan THẬT của PoC (thay plans/demo.yaml làm plan mặc định để chạy gate).
 # Chạy:  . .\scripts\env.ps1; .\scripts\toyapp.ps1 start; python orchestrator.py --plan plan.yaml
-# STEP 40: đủ 5 task — t-000 (collect), t-001 (schemathesis), t-002 (k6), t-003 (deepeval), t-101 (midscene).
+# STEP 42: đủ 6 task — t-000 (collect), t-001 (schemathesis), t-002 (k6), t-003 (deepeval), t-101 (midscene), t-canary-01 (canary).
 plan_version: 1
 name: noteboard-poc
 sut:
@@ -128,6 +128,21 @@ tasks:
       llm_observations_allowed: true
     expected_result_kind: candidate_finding
     budget: {wallclock_s: 600, tokens: 150000, usd: 1.0}
+    determinism: {seed: null, replayable: false}
+    evidence_required: [raw_output]
+    retry: {max: 0, "on": []}
+    prefer: [midscene-cli]
+
+  - task_id: t-canary-01
+    capability: ui.explore
+    lane: discovery
+    intent: "CANARY: task chắc chắn phải fail (nút 'Thanh toán' không tồn tại). Worker báo pass = worker hỏng, không phải app tốt"
+    target: {kind: web_app, base_url: "${env.APP_BASE_URL}", entry_path: "/"}
+    expect_status: fail
+    inputs: {flow: "midscene/canary_checkout.yaml", max_steps: 8}
+    oracle: {kind: implicit_signals, signals: [element_not_found], llm_observations_allowed: false}
+    expected_result_kind: candidate_finding
+    budget: {wallclock_s: 300, tokens: 80000, usd: 0.5}
     determinism: {seed: null, replayable: false}
     evidence_required: [raw_output]
     retry: {max: 0, "on": []}

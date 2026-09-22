@@ -160,12 +160,12 @@ def probe(worker: Worker) -> Worker:
         worker.probe_reason = "thiếu version_probe"
         return worker
 
-    resolved = shutil.which(argv[0])
-    if resolved is None and not Path(argv[0]).is_file():
+    resolved_executable = shutil.which(argv[0])
+    if resolved_executable is not None:
+        argv[0] = resolved_executable
+    elif not Path(argv[0]).is_file():
         worker.probe_reason = f"thiếu binary {argv[0]}"
         return worker
-    if resolved is not None:
-        argv = [resolved, *argv[1:]]
     try:
         completed = subprocess.run(
             argv,
