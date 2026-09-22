@@ -96,3 +96,23 @@ Mẫu đã lưu và được Git track: `tests/samples/k6_summary.pass.json`, `k
 | geval_no_key | **1** | Có | G-Eval skip khi dotenv bị tắt; metric pass vẫn chạy và ca `empty` cố ý fail |
 
 Mẫu đã lưu: `tests/samples/de_junit_mixed.xml`, `de_junit_pass.xml`, `de_geval_stdout.txt`. `deepeval test run` được kiểm tra riêng khi tắt dotenv/telemetry; nó lưu report JSON ở `runs/step35/deepeval-results/`. `workers/deepeval.yaml` buộc tắt telemetry của DeepEval để dữ liệu gửi ra ngoài chỉ đi qua judge đã khai báo. `GeminiModel` cần gói `google-genai`; gói này đã được thêm vào dependency và lock sau khi smoke test phát hiện môi trường ban đầu thiếu SDK.
+
+## Midscene STEP 29 live run
+
+Ngày 2026-09-22, lỗi `document-start-failed` đã được truy tới `puppeteer.launch()`: Chrome GPU process crash lặp lại với exit `-1073741790` (`0xC0000022`, Access Denied), sau đó Chrome báo `GPU process isn't usable`. Phép thử Puppeteer tối thiểu cũng timeout 30 giây. `--no-sandbox` giúp browser launch nhưng screenshot bị đen; kết hợp `--no-sandbox` và `--disable-gpu` vừa launch được vừa render đúng. Hai flow STEP 29 khai báo hai cờ này bằng `web.chromeArgs`.
+
+Sau bản sửa browser, canary chạy thật qua model và cho đúng `status=fail`, `gating=false`, finding `implicit_signal:element_not_found`; result qua schema. Ca no-key cần tạm chuyển `.env` ra ngoài thư mục làm việc vì Midscene tự nạp file này; adapter đã được bổ sung nhận diện `Model configuration is incomplete` là lỗi hạ tầng, nên kết quả đúng `status=error`. Adapter cũng xoá summary cũ trước mỗi run để không đọc nhầm output của lượt trước.
+
+| run | status | findings | kết luận |
+|---|---|---:|---|
+| explore | pass | 1 | đúng `dom_unchanged`, `deterministic_assert`, có `promote_candidate` |
+| canary | fail | 1 | đúng `element_not_found`, non-gating |
+| no_key | error | 0 | đúng lỗi cấu hình model thiếu; phải cô lập `.env` |
+
+Flow cuối dùng bốn Instant Action (`aiInput`/`aiTap`) để tránh lỗi XML của auto-planning và giữ request dưới quota phút; `max_steps` giảm còn 8. Ba lượt explore live cho số đo:
+
+| explore run | status | findings | wallclock_s | ghi chú |
+|---|---|---:|---:|---|
+| 1 | pass | 1 | 77.639 | `dom_unchanged` |
+| 2 | pass | 1 | 77.475 | `dom_unchanged` |
+| 3 | error | 0 | 50.490 | Gemini 503 `high demand`; giữ nguyên số đo, không retry để biến lỗi thành pass |
