@@ -1,7 +1,7 @@
 # Seeded-fault mutation results
 
 STEP 48 reduced scope: M0/M1/M3/M5. M2 needs Midscene and M4/M6 were cut from this sprint scope.
-Run root: `runs/mutants/20260922T074329Z`
+Run root: `runs/mutants/20260922T074732Z`
 
 | Mutant | file/dòng | loại lỗi mô phỏng | test nào phải bắt | kết quả thực tế |
 |---|---|---|---|---|

@@ -1,0 +1,55 @@
+{
+  "task_id": "t-101",
+  "capability": "ui.explore",
+  "lane": "discovery",
+  "intent": "Khám phá trang /: thêm note, xoá note; tìm trạng thái kẹt hoặc lỗi runtime",
+  "target": {
+    "kind": "web_app",
+    "base_url": "http://127.0.0.1:8000",
+    "entry_path": "/"
+  },
+  "inputs": {
+    "flow": "midscene/explore_notes.yaml",
+    "max_steps": 8,
+    "promote_hints": {
+      "dom_unchanged": {
+        "repro_steps": [
+          "mở /",
+          "thêm một note",
+          "bấm Xoá"
+        ],
+        "suggested_assertion": "sau khi bấm Xoá, note không còn trong danh sách"
+      }
+    }
+  },
+  "oracle": {
+    "kind": "implicit_signals",
+    "signals": [
+      "console_error",
+      "http_5xx",
+      "dom_unchanged",
+      "element_not_found"
+    ],
+    "llm_observations_allowed": true
+  },
+  "expected_result_kind": "candidate_finding",
+  "budget": {
+    "wallclock_s": 600,
+    "tokens": 150000,
+    "usd": 1.0
+  },
+  "determinism": {
+    "seed": null,
+    "replayable": false
+  },
+  "evidence_required": [
+    "raw_output"
+  ],
+  "retry": {
+    "max": 0,
+    "on": []
+  },
+  "plan_id": "plan-f4a3467c",
+  "run_id": "r-0004",
+  "sut_identity_ref": "sut-f560000f"
+}

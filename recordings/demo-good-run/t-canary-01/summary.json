@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total": 1,
+    "successful": 0,
+    "failed": 1,
+    "partialFailed": 0,
+    "notExecuted": 0,
+    "totalDuration": 5053,
+    "generatedAt": "9/22/2026, 2:59:11 PM"
+  },
+  "results": [
+    {
+      "script": "../../../midscene/canary_checkout.yaml",
+      "success": false,
+      "resultType": "failed",
+      "report": "../../../midscene_run/report/canary_checkout-2026-09-22_14-59-06-c25880d2.html",
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": false,
+          "resultType": "failed",
+          "report": "../../../midscene_run/report/canary_checkout-2026-09-22_14-59-06-c25880d2.html",
+          "error": "Task failed: Không thấy nút \"Thanh toán\" trong ảnh hiện tại.\n",
+          "duration": 5053
+        }
+      ],
+      "error": "Task failed: Không thấy nút \"Thanh toán\" trong ảnh hiện tại.\n",
+      "duration": 5053
+    }
+  ]
+}
