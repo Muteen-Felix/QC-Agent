@@ -96,3 +96,17 @@ Mẫu đã lưu và được Git track: `tests/samples/k6_summary.pass.json`, `k
 | geval_no_key | **1** | Có | G-Eval skip khi dotenv bị tắt; metric pass vẫn chạy và ca `empty` cố ý fail |
 
 Mẫu đã lưu: `tests/samples/de_junit_mixed.xml`, `de_junit_pass.xml`, `de_geval_stdout.txt`. `deepeval test run` được kiểm tra riêng khi tắt dotenv/telemetry; nó lưu report JSON ở `runs/step35/deepeval-results/`. `workers/deepeval.yaml` buộc tắt telemetry của DeepEval để dữ liệu gửi ra ngoài chỉ đi qua judge đã khai báo. `GeminiModel` cần gói `google-genai`; gói này đã được thêm vào dependency và lock sau khi smoke test phát hiện môi trường ban đầu thiếu SDK.
+
+## Midscene STEP 29 live run
+
+Ngày 2026-09-22, ba lệnh adapter đều exit **0** và ba `result.json` đều qua schema validation, nhưng STEP 29 **chưa đạt DoD**. Explore, canary và lượt no-key đều có `status=error`, không có finding; Midscene 1.13.0 tạo summary thất bại với `Timed out after waiting 30000ms`.
+
+Report Midscene ghi `document-start-failed` và `hostErrors.phase=setup`, nên flow chưa bắt đầu và telemetry còn rỗng. Vì lỗi xảy ra trước thao tác UI, không giảm `max_steps` hoặc diễn giải thành lỗi sản phẩm. Đã kiểm tra không còn process Node/Chrome mang command line Midscene/Puppeteer bị mồ côi. Các lượt thử với runtime sạch, `MIDSCENE_MODEL_TIMEOUT=120000`, và ghim `MIDSCENE_CHROME_PATH` tới Chrome hệ thống vẫn lỗi đúng tại setup 30 giây; dừng retry để tránh tốn quota.
+
+| run | status | findings | kết luận |
+|---|---|---:|---|
+| explore | error | 0 | setup timeout, chưa đo được BUG-2 |
+| canary | error | 0 | setup timeout, chưa tới bước tìm element |
+| no_key | error | 0 | setup timeout; Midscene tự nạp `.env`, nên chỉ xoá key trong process chưa tạo được ca no-key độc lập |
+
+Chưa chạy bảng biến thiên explore 3 lần vì chưa có lượt explore thành công; không dùng fixture STEP 28 để giả làm số đo live.
