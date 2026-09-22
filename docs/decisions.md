@@ -105,8 +105,8 @@ Sau bản sửa browser, canary chạy thật qua model và cho đúng `status=f
 
 | run | status | findings | kết luận |
 |---|---|---:|---|
-| explore | error | 0 | browser đã chạy; Gemini 429 vì hết quota ngày 20 request, chưa đo được BUG-2 |
+| explore | error | 0 | browser đã chạy; key mới thêm được note (`render_done`, count 1) rồi Gemini 429 trước bước xoá |
 | canary | fail | 1 | đúng `element_not_found`, non-gating |
 | no_key | error | 0 | đúng lỗi cấu hình model thiếu; phải cô lập `.env` |
 
-Chưa chạy bảng biến thiên explore 3 lần vì Gemini trả `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, giới hạn 20 request/ngày. Cần chờ quota ngày reset hoặc dùng project/key có quota rồi chạy lại; không dùng fixture STEP 28 để giả làm số đo live.
+Chưa chạy bảng biến thiên explore 3 lần vì Gemini trả `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, giới hạn 20 request/ngày. Đổi API key nhưng quota vẫn cạn sau canary và các request của explore (key có thể cùng project/quota); flow đã được tách thành bốn `aiAct` ngắn và `max_steps` giảm còn 8. Cần chờ quota ngày reset hoặc dùng key thuộc project có billing/quota riêng rồi chạy lại; không dùng fixture STEP 28 để giả làm số đo live.

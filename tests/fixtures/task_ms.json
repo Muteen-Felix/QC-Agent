@@ -5,7 +5,7 @@
   "target": {"kind": "web_app", "base_url": "http://127.0.0.1:8000", "entry_path": "/"},
   "inputs": {
     "flow": "midscene/explore_notes.yaml",
-    "max_steps": 15,
+    "max_steps": 8,
     "promote_hints": {
       "dom_unchanged": {
         "repro_steps": ["mở /", "thêm một note", "bấm Xoá"],

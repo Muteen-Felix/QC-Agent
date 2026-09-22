@@ -11,7 +11,8 @@ from adapters._base import Adapter, AdapterParseError, ParsedOutput
 PARSER_VERSION = "1"
 _ELEMENT_NOT_FOUND = re.compile(r"kh[oô]ng t[iì]m th[aấ]y|not found|unable to find|could not find", re.IGNORECASE)
 _INFRA_ERROR = re.compile(
-    r"\b429\b|resource_exhausted|model request failed|model configuration is incomplete|timed out|timeout",
+    r"\b429\b|resource_exhausted|model request failed|model configuration is incomplete|"
+    r"xml parse error|incomplete planning response|timed out|timeout",
     re.IGNORECASE,
 )
 

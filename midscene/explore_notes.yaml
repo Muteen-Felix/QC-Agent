@@ -5,5 +5,7 @@ web:
 tasks:
   - name: them-va-xoa-note
     flow:
-      - aiAct: nhập "Họp" vào ô Tiêu đề, nhập "Chốt scope" vào ô Nội dung, bấm nút Thêm
+      - aiAct: nhập "Họp" vào ô Tiêu đề
+      - aiAct: nhập "Chốt scope" vào ô Nội dung
+      - aiAct: bấm nút Thêm
       - aiAct: bấm nút Xoá của note đầu tiên

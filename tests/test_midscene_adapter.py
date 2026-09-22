@@ -90,21 +90,15 @@ def test_missing_summary_and_missing_model_config_are_adapter_errors(tmp_path, m
     with pytest.raises(AdapterParseError, match="summary.json"):
         MidsceneAdapter().parse_output(_completed(1), tmp_path, copy.deepcopy(SPEC))
 
-    (tmp_path / "summary.json").write_text(
-        json.dumps(
-            {
-                "results": [
-                    {
-                        "success": False,
-                        "error": "Model configuration is incomplete: model name is required",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    with pytest.raises(AdapterParseError, match="lỗi hạ tầng"):
-        MidsceneAdapter().parse_output(_completed(1), tmp_path, copy.deepcopy(SPEC))
+    for error in (
+        "Model configuration is incomplete: model name is required",
+        "XML parse error: Incomplete planning response",
+    ):
+        (tmp_path / "summary.json").write_text(
+            json.dumps({"results": [{"success": False, "error": error}]}), encoding="utf-8"
+        )
+        with pytest.raises(AdapterParseError, match="lỗi hạ tầng"):
+            MidsceneAdapter().parse_output(_completed(1), tmp_path, copy.deepcopy(SPEC))
 
 
 def test_exit_code_and_summary_contradiction_is_an_adapter_error(tmp_path, monkeypatch):
