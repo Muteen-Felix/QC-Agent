@@ -38,3 +38,15 @@ tasks:
     determinism: {seed: null, replayable: false}
     evidence_required: [raw_output]
     retry: {max: 0, "on": []}
+  - task_id: t-e04
+    capability: demo.echo2
+    lane: gate
+    intent: "Worker giả thứ hai: chứng minh thêm worker không cần sửa core"
+    target: {kind: none, base_url: "http://127.0.0.1:8000"}
+    inputs: {fixture: "tests/fixtures/mock_ok.json"}
+    oracle: {kind: trivial}
+    expected_result_kind: verdict
+    budget: {wallclock_s: 30, tokens: 0, usd: 0}
+    determinism: {seed: null, replayable: true}
+    evidence_required: [raw_output, stdout]
+    retry: {max: 1, "on": [error]}
