@@ -116,3 +116,35 @@ Flow cuối dùng bốn Instant Action (`aiInput`/`aiTap`) để tránh lỗi XM
 | 1 | pass | 1 | 77.639 | `dom_unchanged` |
 | 2 | pass | 1 | 77.475 | `dom_unchanged` |
 | 3 | error | 0 | 50.490 | Gemini 503 `high demand`; giữ nguyên số đo, không retry để biến lỗi thành pass |
+
+## Midscene STEP 52 stability run
+
+Ngày 2026-09-22, chạy `repeat.ps1 -Times 3 -Only "t-101,t-canary-01"` với Midscene live. Lần chạy trong sandbox bị loại khỏi số đo vì Node bị chặn mạng (`EACCES`). Khi chạy lại với quyền truy cập mạng, QRS của cả sáu result đều hợp lệ nhưng `repeat exit=1` vì exploration gặp lỗi hạ tầng ở cả ba lượt:
+
+| run | canary | explore_status | findings | tokens |
+|---|---|---|---:|---:|
+| r-0009 | fail | error | 0 | null |
+| r-0010 | fail | error | 0 | null |
+| r-0011 | fail | error | 0 | null |
+
+Canary đạt **3/3** lần `fail` đúng kỳ vọng. Cả ba exploration đều nhận `503 UNAVAILABLE` với thông báo model `gemini-3.5-flash` đang có nhu cầu cao; đây là lỗi provider, không phải lỗi flow hay verdict của SUT. `t-101` đã dùng `max_steps: 8` và flow bốn Instant Action từ STEP 29, nên không sửa flow để che lỗi hạ tầng. Live stability chưa đạt `ALL 3 RUNS OK`; demo phải dùng `-Fast` cùng `recordings/demo-good-run` từ STEP 51 và ghi rõ nhãn **RECORDED**.
+
+Chạy lại cùng cấu hình và key sau đó cho thấy provider có lúc phục hồi nhưng không ổn định:
+
+| run | canary | explore_status | findings | lỗi hạ tầng |
+|---|---|---|---:|---|
+| r-0012 | fail | pass | 1 | không |
+| r-0013 | error | error | 0 | explore: 503 high demand; canary: 429 quota |
+| r-0014 | error | error | 0 | cả hai: 429 quota |
+
+Lượt `r-0012` chứng minh flow hiện tại vẫn chạy đúng khi provider phục vụ. Hai lượt sau cho thấy quota/rate limit bị cạn trong phép thử liên tiếp, nên đổi flow không giải quyết được. Kết quả chạy lại vẫn là `repeat exit=1`; giữ fallback **RECORDED** cho demo.
+
+Sau khi đổi API key, chạy ba lượt lần nữa:
+
+| run | canary | explore_status | findings | lỗi hạ tầng |
+|---|---|---|---:|---|
+| r-0015 | fail | error | 0 | explore: 503 high demand |
+| r-0016 | fail | error | 0 | explore: 503 high demand |
+| r-0017 | fail | pass | 1 | không |
+
+Key mới loại bỏ lỗi quota: canary đạt **3/3** và không còn 429. Exploration vẫn chỉ đạt **1/3** do hai phản hồi 503 từ provider; lần pass tạo đúng một finding. Kết quả vẫn là `repeat exit=1`, xác nhận giới hạn nằm ở độ sẵn sàng của model chứ không phải API key hay flow.
