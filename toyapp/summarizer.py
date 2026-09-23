@@ -13,4 +13,5 @@ def summarize(body: str, bug3: bool = True) -> str:
     if bug3 and "[[long]]" in body:
         return (body + " ") * 2 + "(tóm tắt mở rộng)"
     first = body.split(".")[0].strip() or body
-    return first[: max(1, len(body) - 1)]
+    # return first[: max(1, len(body) - 1)]
+    return body
