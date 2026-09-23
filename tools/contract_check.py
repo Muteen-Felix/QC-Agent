@@ -5,6 +5,7 @@
   MAJOR (sửa/xoá/thu hẹp)           -> lock bump MAJOR + >= 3 approval hợp lệ, trong đó >= 1 người thuộc `core` (Lead/Core)
 
 Approval hợp lệ = review APPROVED mới nhất của người có tên trong .github/contract-reviewers.yaml, không phải tác giả PR.
+Ngoại lệ: ở MAJOR, tác giả (nếu nằm trong danh sách) được tính là 1 trong 3 người chấp thuận; ở MINOR/PATCH thì không.
 Danh sách rỗng => FAIL (fail-closed), không bao giờ mặc định cho qua.
 
     python tools/contract_check.py --base-ref origin/main --reviews-file reviews.json --author <login>
@@ -59,7 +60,8 @@ def load_reviewers(root: pathlib.Path) -> tuple[set[str], set[str]]:
     return core, others | core
 
 
-def evaluate(root: pathlib.Path, base_ref: str, approvals: set[str], core: set[str], eligible: set[str]) -> tuple[bool, list[str]]:
+def evaluate(root: pathlib.Path, base_ref: str, approvals: set[str], core: set[str], eligible: set[str],
+             author: str = "") -> tuple[bool, list[str]]:
     msgs: list[str] = []
     lock, now = fc.read_lock(root), fc.current_hashes(root)
     if any(lock["files"].get(f) != now[f] for f in fc.FILES):
@@ -90,6 +92,9 @@ def evaluate(root: pathlib.Path, base_ref: str, approvals: set[str], core: set[s
         msgs.append("LƯU Ý: base chưa có CONTRACT.lock, bỏ qua kiểm bump.")
 
     valid = approvals & eligible
+    author = author.lower()
+    if level == contract_diff.MAJOR and author in eligible:
+        valid = valid | {author}  # MAJOR: tác giả tính là 1 trong 3 người chấp thuận (quyết định của chủ repo)
     need_n = MIN_APPROVALS[level]
     if not eligible:
         return False, msgs + [f"FAIL: {REVIEWERS_FILE} chưa có ai (fail-closed) — điền username GitHub của người duyệt."]
@@ -112,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     root = pathlib.Path(args.root)
     reviews = load_reviews(pathlib.Path(args.reviews_file).read_text(encoding="utf-8"))
     core, eligible = load_reviewers(root)
-    ok, msgs = evaluate(root, args.base_ref, latest_approvals(reviews, args.author), core, eligible)
+    ok, msgs = evaluate(root, args.base_ref, latest_approvals(reviews, args.author), core, eligible, args.author)
     for line in msgs:
         print(line)
     return 0 if ok else 1

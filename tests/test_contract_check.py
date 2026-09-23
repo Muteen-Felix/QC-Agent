@@ -144,3 +144,21 @@ def test_latest_review_state_wins_and_author_excluded():
 
 def test_load_reviews_handles_paginated_concatenated_arrays():
     assert cc.load_reviews('[{"a":1}]\n[{"a":2}]') == [{"a": 1}, {"a": 2}]
+
+
+def test_major_counts_author_as_one_of_three(repo):
+    _bump(repo, drop_required, "2.0.0")
+    assert cc.evaluate(repo, "HEAD", {"lead", "a"}, CORE, ELIG, author="c")[0] is True  # 2 người khác (có Lead) + tác giả
+    assert cc.evaluate(repo, "HEAD", {"lead"}, CORE, ELIG, author="c")[0] is False  # chỉ 2 người chấp thuận
+    assert cc.evaluate(repo, "HEAD", {"lead", "a"}, CORE, ELIG, author="stranger")[0] is False  # tác giả ngoài danh sách
+
+
+def test_major_author_alone_and_a_lead_still_needs_core(repo):
+    _bump(repo, drop_required, "2.0.0")
+    ok, msgs = cc.evaluate(repo, "HEAD", {"a", "b"}, {"lead"}, ELIG, author="c")
+    assert ok is False and any("Lead/Core" in m for m in msgs)
+
+
+def test_minor_does_not_count_author(repo):
+    _bump(repo, add_optional, "1.1.0")
+    assert cc.evaluate(repo, "HEAD", set(), CORE, ELIG, author="a")[0] is False
