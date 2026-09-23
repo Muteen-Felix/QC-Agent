@@ -41,7 +41,8 @@ class RunResult:
 
 
 def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int = 0,
-             workers_dirs=None, run_id: str | None = None, on_skipped_gate_task: str = "yellow") -> RunResult:
+             workers_dirs=None, run_id: str | None = None, on_skipped_gate_task: str = "yellow",
+             sut_ref: str | None = None) -> RunResult:
     """Chạy một plan. `run_id=None` => cấp `r-NNNN` (nguyên tử: hai lời gọi song song không bao giờ trùng id).
     Lỗi plan/cấu hình raise PlanError/ManifestError TRƯỚC khi worker chạy, và dọn thư mục run đã tạo."""
     if on_skipped_gate_task not in SKIPPED_POLICIES:
@@ -55,7 +56,7 @@ def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int =
     runs_dir_existed = runs_dir.exists()
     run_id, run_dir = _reserve_run_dir(runs_dir, run_id)
     try:
-        ctx = {"plan_id": plan_id, "run_id": run_id, "sut_identity_ref": "sut-pending", "sut": plan["sut"]}
+        ctx = {"plan_id": plan_id, "run_id": run_id, "sut_identity_ref": "sut-pending", "sut": {**plan["sut"], "ref": sut_ref} if sut_ref else plan["sut"]}
         specs, extras = {}, {}
         for task_id in order:  # chỉ resolve task được chọn: biến ${env.X} của task khác không được làm hỏng lần chạy này
             specs[task_id], extras[task_id] = resolve(by_id[task_id], ctx)

@@ -117,15 +117,29 @@ def _probe_config(probe_url: Any) -> Any:
 
 
 def sut_identity(cfg: dict, root: str | Path) -> dict[str, Any]:
-    """Build a minimal SUT identity from source files, declared attrs, and optional runtime probe."""
+    """Build a minimal SUT identity from source files, declared attrs, and optional runtime probe.
+
+    The SUT need not live in the qc-agent repo:
+      cfg.root  optional directory of the SUT checkout (default: `root`); `files` are resolved and confined under it
+      cfg.ref   optional explicit commit/ref (e.g. the PR head SHA); default: `git rev-parse HEAD` of the SUT root
+      cfg.files optional (default none): source files/dirs hashed into the identity
+    """
     if not isinstance(cfg, dict):
         raise TypeError("cfg phải là object")
-    root_path = Path(root).resolve()
+    sut_root = cfg.get("root")
+    if sut_root is not None and (not isinstance(sut_root, str) or not sut_root.strip()):
+        raise ValueError("cfg.root phải là chuỗi không rỗng")
+    root_path = Path(sut_root or root).resolve()
+    if not root_path.is_dir():
+        raise ValueError(f"cfg.root không phải thư mục: {root_path}")
+    ref = cfg.get("ref")
+    if ref is not None and (not isinstance(ref, str) or not ref.strip()):
+        raise ValueError("cfg.ref phải là chuỗi không rỗng")
     attrs = cfg.get("attrs", {})
     if not isinstance(attrs, dict):
         raise ValueError("cfg.attrs phải là object")
     return {
-        "code_commit": _code_commit(root_path),
+        "code_commit": ref.strip() if ref else _code_commit(root_path),
         "files_sha256": _files_sha256(cfg.get("files", []), root_path),
         "attrs": copy.deepcopy(attrs),
         "probe": _probe_config(cfg.get("probe_url")),

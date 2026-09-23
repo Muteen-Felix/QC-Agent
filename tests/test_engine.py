@@ -68,3 +68,11 @@ def test_worker_version_from_probe_is_recorded_in_results(tmp_path):
     result = engine.run_plan(DEMO, tmp_path / "runs")
     data = json.loads((result.run_dir / "results" / "t-e01.json").read_text(encoding="utf-8"))
     assert data["worker"]["version"].startswith("Python")
+
+
+def test_sut_ref_is_recorded_in_sut_identity(tmp_path):
+    result = engine.run_plan(DEMO, tmp_path / "runs", sut_ref="deadbeef")
+    ident = json.loads((result.run_dir / "sut_identity.json").read_text(encoding="utf-8"))
+    assert ident["code_commit"] == "deadbeef"
+    other = engine.run_plan(DEMO, tmp_path / "runs", sut_ref="cafe1234")
+    assert other.run_ctx.sut_id != result.run_ctx.sut_id  # ref khác => SUT khác => run_signature không so sánh được

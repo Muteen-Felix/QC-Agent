@@ -135,3 +135,44 @@ def test_discovery_results_do_not_change_signature_but_skipped_gate_worker_does(
 
     assert signature.run_signature("plan-a", "sut-a", with_discovery, specs) == initial
     assert signature.run_signature("plan-a", "sut-a", skipped_gate, specs) != initial
+
+
+def _git(path, *args):
+    import subprocess
+    subprocess.run(["git", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@t", *args], check=True, capture_output=True)
+
+
+def test_sut_ref_overrides_git_head_and_files_are_optional(tmp_path):
+    identity = signature.sut_identity({"ref": "  abc123  "}, tmp_path)
+    assert identity["code_commit"] == "abc123"
+    assert identity["files_sha256"] == signature.sut_identity({"ref": "zzz", "files": []}, tmp_path)["files_sha256"]
+    assert signature.sut_id(identity) != signature.sut_id(signature.sut_identity({"ref": "def456"}, tmp_path))
+
+
+def test_sut_root_is_a_separate_repo_with_its_own_commit_and_files(tmp_path):
+    qc_root, sut_root = tmp_path / "qc", tmp_path / "sut"
+    qc_root.mkdir()
+    (sut_root / "src").mkdir(parents=True)
+    (sut_root / "src" / "app.py").write_text("print(1)", encoding="utf-8")
+    _git(sut_root, "init", "-q")
+    _git(sut_root, "add", "-A")
+    _git(sut_root, "commit", "-qm", "sut")
+    head = __import__("subprocess").run(["git", "-C", str(sut_root), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+    identity = signature.sut_identity({"root": str(sut_root), "files": ["src"]}, qc_root)
+    assert identity["code_commit"] == head  # commit của SUT, không phải của qc_root (không có git)
+    (sut_root / "src" / "app.py").write_text("print(2)", encoding="utf-8")
+    assert signature.sut_identity({"root": str(sut_root), "files": ["src"]}, qc_root)["files_sha256"] != identity["files_sha256"]
+
+
+def test_sut_files_cannot_escape_sut_root_and_bad_ref_or_root_rejected(tmp_path):
+    import pytest
+    sut_root = tmp_path / "sut"
+    sut_root.mkdir()
+    (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+    with pytest.raises(ValueError):
+        signature.sut_identity({"root": str(sut_root), "files": ["../secret.txt"]}, tmp_path)
+    with pytest.raises(ValueError):
+        signature.sut_identity({"ref": ""}, tmp_path)
+    with pytest.raises(ValueError):
+        signature.sut_identity({"root": str(tmp_path / "khong-co")}, tmp_path)
