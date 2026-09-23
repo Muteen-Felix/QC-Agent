@@ -13,6 +13,7 @@ không kéo sập service. Executor chỉ điều phối: nhận job, heartbeat,
 from __future__ import annotations
 
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -33,9 +34,10 @@ from qc_agent.core.project import ProjectResolver
 from qc_agent.core.evidence import sha256_file
 from qc_agent.jobs import repository as repo
 from qc_agent.jobs.db import make_engine, session_scope
-from qc_agent.jobs.models import Job, Project
+from qc_agent.jobs.models import TERMINAL_STATUSES, Job, Project
 
 _LOG_TAIL = 2000
+log = logging.getLogger("qc_agent.executor")
 
 
 @dataclass
@@ -56,6 +58,7 @@ class ExecutorConfig:
     sut_root_for: Callable[[Job, str], Path | None] | None = None  # (job, project_slug) -> checkout của SUT
     max_artifacts: int = 2000
     max_hash_bytes: int = 100 * 1024 * 1024
+    on_finish: Callable[[Job, str, Path], None] | None = None  # (job đã kết thúc, slug, run_dir): thông báo... Lỗi của hook bị nuốt
 
 
 class _AdvisoryLock:
@@ -159,6 +162,19 @@ class Executor:
         finally:
             if lock is not None:
                 lock.close()
+        self._notify_finished(job.id, slug)
+
+    def _notify_finished(self, job_id: uuid.UUID, slug: str) -> None:
+        """Gọi hook khi job đã ở trạng thái kết thúc. Hook hỏng không được ảnh hưởng job/executor."""
+        if self.cfg.on_finish is None:
+            return
+        try:
+            with session_scope(self.engine) as s:
+                job = repo.get_job(s, job_id)
+            if job.status in TERMINAL_STATUSES:
+                self.cfg.on_finish(job, slug, self.cfg.runs_root / slug / str(job_id))
+        except Exception:  # noqa: BLE001
+            log.exception("on_finish hook lỗi (job %s)", job_id)
 
     def _argv(self, job: Job, slug: str) -> list[str]:
         args = ["run", "--project", slug, "--mode", job.mode, "--runs-dir", str(self.cfg.runs_root / slug),
@@ -331,8 +347,14 @@ def main() -> int:
     for sig in (signal.SIGINT, signal.SIGTERM):
         with suppress(ValueError, OSError):
             signal.signal(sig, lambda *_: stop.set())
-    Executor(make_engine(), ExecutorConfig(runs_root=Path(cfg_env.runs_dir).resolve(),
-                                           projects_dir=cfg_env.resolved_projects_dir)).serve(stop)
+    def notify_hook(job: Job, slug: str, run_dir: Path) -> None:
+        from qc_agent.integrations import notify
+        base = os.environ.get("DASHBOARD_URL", "").rstrip("/")
+        notify.notify_run(run_dir, exit_code=job.exit_code, status=job.status, verdict=job.gate_verdict,
+                          label=f"{slug}/{job.mode}", link=f"{base}/#project={slug}&job={job.id}" if base else None)
+
+    Executor(make_engine(), ExecutorConfig(runs_root=Path(cfg_env.runs_dir).resolve(), projects_dir=cfg_env.resolved_projects_dir,
+                                           on_finish=notify_hook if os.environ.get("ALERT_WEBHOOK_URL") else None)).serve(stop)
     return 0
 
 

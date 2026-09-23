@@ -270,3 +270,36 @@ def test_sut_root_comes_only_from_the_server_side_resolver(env):
     args = env.executor._argv(job, "demo")
     assert "/etc" not in args and args[args.index("--sut-root") + 1] == str(env.sut)
     assert args[args.index("--sut-ref") + 1] == "abc123" and args[args.index("--run-id") + 1] == str(job.id)
+
+
+# ---- hook on_finish (thông báo) ----
+
+def test_on_finish_hook_gets_the_finished_job_and_run_dir(env):
+    seen = []
+    env.cfg.on_finish = lambda job, slug, run_dir: seen.append((job.status, job.gate_verdict, slug, run_dir.name, (run_dir / "report.json").is_file()))
+    ok_id = submit(env)
+    bad_id = submit(env, suites=["khong-co-suite"])
+    ex = Executor(env.engine, env.cfg)
+    ex.run_once()
+    ex.run_once()
+    assert seen == [("succeeded", "PASS", "demo", str(ok_id), True), ("failed", None, "demo", str(bad_id), False)]
+
+
+def test_on_finish_hook_errors_never_affect_the_job_or_the_executor(env):
+    calls = []
+
+    def boom(job, slug, run_dir):
+        calls.append(job.id)
+        raise RuntimeError("webhook sập")
+    env.cfg.on_finish = boom
+    first, second = submit(env), submit(env)
+    ex = Executor(env.engine, env.cfg)
+    assert ex.run_once() is True and ex.run_once() is True  # hook lỗi không làm executor dừng
+    assert calls == [first, second]
+    assert job_of(env, first).status == "succeeded" and job_of(env, second).status == "succeeded"
+
+
+def test_no_hook_is_the_default(env):
+    assert env.cfg.on_finish is None
+    submit(env)
+    assert env.executor.run_once() is True

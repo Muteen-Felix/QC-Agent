@@ -114,22 +114,14 @@ jobs:
             tests/fixtures/sut/noteboard/midscene_run/report/
           retention-days: 14
 
-      - name: Notify webhook (Slack/Discord/Telegram) — dùng chung dashboard/notifier.py
+      - name: Notify webhook (Slack/Discord/Telegram) — qc_agent.integrations.notify
         if: always()
         env:
           ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
           ALERT_TELEGRAM_CHAT_ID: ${{ secrets.ALERT_TELEGRAM_CHAT_ID }}
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
         run: |
-          python -c "
-          import glob, os
-          from pathlib import Path
-          from dashboard import notifier
-          runs_dir = Path('runs')
-          run_dirs = sorted((p for p in runs_dir.iterdir() if p.is_dir() and __import__('re').match(r'^r-\d{4}\$', p.name)),
-                             key=lambda p: int(p.name[2:]))
-          if run_dirs:
-              run_id = run_dirs[-1].name
-              exit_code = 0 if '${{ job.status }}' == 'success' else 1
-              print(notifier.notify_run(runs_dir, run_id, exit_code, Path('dashboard/_state')))
-          "
+          RUN=$(ls -d runs/r-* 2>/dev/null | sort | tail -1)
+          if [ -n "$RUN" ]; then
+            python -m qc_agent.integrations.notify --run-dir "$RUN" --exit-code "${{ job.status == 'success' && 0 || 1 }}"
+          fi
