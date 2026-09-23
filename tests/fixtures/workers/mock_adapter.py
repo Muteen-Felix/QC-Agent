@@ -11,6 +11,9 @@ class MockAdapter(Adapter):
     ADAPTER_VERSION = "0.1.0"
 
     def build_cmd(self, spec: dict, workdir: Path) -> list[str]:
+        sleep_s = spec["inputs"].get("sleep_s")  # test: worker chạy lâu để thử huỷ/timeout
+        if sleep_s:
+            return [sys.executable, "-c", f"import time; time.sleep({float(sleep_s)})"]
         return [sys.executable, "-c", "pass"]
 
     def parse_output(self, proc, workdir: Path, spec: dict) -> ParsedOutput:

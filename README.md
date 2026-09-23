@@ -8,4 +8,5 @@
 - **Cấu hình:** `QC_RUNS_DIR`, `QC_WORKERS_PATH` (nhiều thư mục, ngăn cách `os.pathsep`), `QC_SCHEMAS_DIR`. Xem `src/qc_agent/settings.py`.
 - **CLI:** `qc-agent --plan ...` (tương đương `python orchestrator.py`). Plan demo cần worker giả: `QC_WORKERS_PATH="workers;tests/fixtures/workers"` (Windows; dùng `:` trên Linux).
 - **Chạy theo project (đa dự án):** `qc-agent run --project noteboard --mode pr --sut-root tests/fixtures/sut/noteboard` (cần `APP_BASE_URL`). Project + policy chặn/không chặn ở `configs/projects/<slug>.yaml` (tập trung); suite ở repo SUT tại `.qc-agent/suites/` (worker chạy với cwd = SUT root). Chỉ một số suite: `--suites api-contract`.
+- **Job store + executor (service):** `docker compose up -d postgres`, `export QC_DATABASE_URL=postgresql://qc:qc-dev-only@127.0.0.1:5433/qc_agent`, `python -m qc_agent.jobs.migrate upgrade`, rồi `python -m qc_agent.jobs.executor` (nhận job, chạy bằng CLI trong tiến trình con; hỗ trợ huỷ, timeout, khoá môi trường, requeue). Test DB: `QC_TEST_DATABASE_URL=... pytest tests/test_jobs_db.py tests/test_executor.py`.
 - **Test:** `pytest -q`

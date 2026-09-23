@@ -2,12 +2,15 @@
 Exit code: PASS=0 · YELLOW=--yellow-exit · FAIL=1 · lỗi của HỆ THỐNG (PlanError, lỗi nội bộ, gọi sai lệnh)=3.
 Phải chạy từ thư mục gốc repo: adapter được spawn bằng `python -m <module>` và đọc đường dẫn tương đối theo cwd."""
 import argparse
+import os
+import signal
 import json
 import sys
+import threading
 from pathlib import Path
 
 from qc_agent import settings
-from qc_agent.core import engine, registry, report, signature
+from qc_agent.core import engine, registry, report, runner, signature
 from qc_agent.core.plan import PlanError, load_plan
 from qc_agent.core.verdict import canary_alerts
 
@@ -23,6 +26,7 @@ def main(argv: list[str]) -> int:
     for stream in (sys.stdout, sys.stderr):  # report có tiếng Việt + emoji; console Windows mặc định là cp1252
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
+    _install_sigterm_handler()
     try:
         if argv and argv[0] == "run":  # `qc-agent run --project ...` và `qc-agent --plan ...` đều được
             argv = argv[1:]
@@ -54,6 +58,7 @@ def _parser() -> argparse.ArgumentParser:
                     help="task gate bị skipped: yellow (theo --yellow-exit) hoặc fail (gate FAIL, exit 1); mặc định: policy của mode, rồi yellow")
     ap.add_argument("--sut-ref", metavar="SHA",
                     help="commit/ref của SUT đang được gate (vd. PR head SHA); mặc định plan.sut.ref hoặc git HEAD của SUT root")
+    ap.add_argument("--run-id", metavar="ID", help="id của run (mặc định r-NNNN); executor dùng id của job để run_dir khớp job")
     ap.add_argument("--runs-dir", default=str(settings.get().runs_dir), help="mặc định $QC_RUNS_DIR hoặc runs")
     ap.add_argument("--workers-dir", action="append", metavar="DIR",
                     help="thư mục manifest worker (lặp được); mặc định $QC_WORKERS_PATH hoặc workers/")
@@ -65,7 +70,7 @@ def _parser() -> argparse.ArgumentParser:
 def _run(args) -> int:
     if bool(args.plan) == bool(args.project):
         raise PlanError("cần đúng một trong --plan hoặc --project (chỉ được bỏ cả hai khi dùng --rerender)")
-    common = dict(only=args.only, yellow_exit=args.yellow_exit, sut_ref=args.sut_ref,
+    common = dict(run_id=args.run_id, only=args.only, yellow_exit=args.yellow_exit, sut_ref=args.sut_ref,
                   workers_dirs=[Path(d) for d in args.workers_dir] if args.workers_dir else None)
     if args.plan:
         result = engine.run_plan(args.plan, Path(args.runs_dir), on_skipped_gate_task=args.on_skipped_gate_task or "yellow",
@@ -79,6 +84,19 @@ def _run(args) -> int:
             only_suites=[s.strip() for s in args.suites.split(",") if s.strip()] if args.suites else None, **common)
     print(result.report_md, end="")
     return result.exit_code
+
+
+def _install_sigterm_handler() -> None:
+    """POSIX: SIGTERM (huỷ job) => giết cây worker đang chạy rồi thoát 143. Windows không có SIGTERM kiểu này:
+    executor dùng `taskkill /T` giết cả cây từ ngoài."""
+    if os.name == "nt" or threading.current_thread() is not threading.main_thread():
+        return
+
+    def handler(signum, frame):
+        runner.terminate_active()
+        raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, handler)
 
 
 def console() -> None:  # entry point của script `qc-agent`
@@ -126,3 +144,5 @@ def _read_json(path: Path):
         raise PlanError(f"không đọc được {path}: {error}") from None
 
 
+if __name__ == "__main__":
+    console()

@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -132,3 +132,61 @@ def add_job_tasks(session: Session, job_id: uuid.UUID, rows: Iterable[dict]) -> 
 def add_artifacts(session: Session, job_id: uuid.UUID, rows: Iterable[dict]) -> None:
     session.add_all(Artifact(job_id=job_id, **row) for row in rows)
     session.flush()
+
+
+def claim_next(session: Session, *, can_run=None, scan: int = 20) -> Job | None:
+    """Nhận job queued ưu tiên cao nhất (priority DESC, cũ trước) và chuyển sang running trong CÙNG transaction.
+    Danh sách ứng viên đọc KHÔNG khoá; chỉ hàng thực sự được nhận mới bị khoá (`FOR UPDATE SKIP LOCKED`, từng hàng), nên nhiều
+    executor không nhận trùng và không chặn nhau. `can_run(job) -> bool` cho phép bỏ qua job chưa chạy được (vd. khoá môi
+    trường đang bận) mà vẫn để nó ở queued. Lưu ý: nếu can_run có tác dụng phụ (giữ khoá) cho một job rồi hàng đó bị bên khác
+    nhận trước, caller phải nhả phần tác dụng phụ của mọi ứng viên không được trả về."""
+    candidates = session.scalars(
+        select(Job).where(Job.status == "queued").order_by(Job.priority.desc(), Job.created_at, Job.id).limit(scan)).all()
+    for candidate in candidates:
+        if can_run is not None and not can_run(candidate):
+            continue
+        job = session.scalar(select(Job).where(Job.id == candidate.id, Job.status == "queued")
+                             .with_for_update(skip_locked=True).execution_options(populate_existing=True))
+        if job is None:  # đã có bên khác nhận / đang khoá
+            continue
+        now = _now()
+        session.execute(update(Job).where(Job.id == job.id).values(status="running", started_at=now, heartbeat_at=now,
+                                                                     attempts=Job.attempts + 1))
+        session.expire_all()
+        return get_job(session, job.id)
+    return None
+
+
+def heartbeat(session: Session, job_id: uuid.UUID) -> bool | None:
+    """Ghi nhịp sống của job running. Trả cancel_requested; None nếu job không còn running (đã bị requeue/kết thúc)."""
+    row = session.execute(update(Job).where(Job.id == job_id, Job.status == "running")
+                          .values(heartbeat_at=_now()).returning(Job.cancel_requested)).first()
+    return None if row is None else bool(row[0])
+
+
+def requeue_stale(session: Session, *, stale_after_s: float, max_attempts: int) -> dict[str, list[uuid.UUID]]:
+    """Job `running` mà heartbeat quá cũ = executor đã chết. Quyết định theo thứ tự:
+      cancel_requested -> cancelled; hết lượt (attempts >= max_attempts) -> failed('executor lost'); còn lại -> queued (chạy lại).
+    Đây là đường DUY NHẤT đi từ running về queued (không nằm trong TRANSITIONS thường)."""
+    cutoff = func.now() - func.make_interval(0, 0, 0, 0, 0, 0, stale_after_s)
+    stale = (Job.status == "running", Job.heartbeat_at < cutoff)
+    now = _now()
+    out = {"cancelled": [], "failed": [], "requeued": []}
+    for key, condition, values in (
+        ("cancelled", Job.cancel_requested.is_(True), {"status": "cancelled", "finished_at": now}),
+        ("failed", Job.attempts >= max_attempts,
+         {"status": "failed", "finished_at": now, "error": "executor lost: job đang chạy mà không còn heartbeat"}),
+        ("requeued", Job.attempts < max_attempts, {"status": "queued", "started_at": None, "heartbeat_at": None}),
+    ):
+        rows = session.execute(update(Job).where(*stale, condition).values(**values).returning(Job.id)).all()
+        out[key] = [r[0] for r in rows]
+    session.expire_all()
+    return out
+
+
+def replace_job_results(session: Session, job_id: uuid.UUID, tasks: Iterable[dict], artifacts: Iterable[dict]) -> None:
+    """Ghi lại kết quả của job. Xoá bản cũ trước: job bị requeue chạy lại không được đụng unique (job_id, task_id)."""
+    session.execute(delete(JobTask).where(JobTask.job_id == job_id))
+    session.execute(delete(Artifact).where(Artifact.job_id == job_id))
+    add_job_tasks(session, job_id, tasks)
+    add_artifacts(session, job_id, artifacts)

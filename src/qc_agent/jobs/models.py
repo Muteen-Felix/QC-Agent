@@ -91,7 +91,8 @@ class Job(Base):
     mode: Mapped[str] = mapped_column(String(64))
     source: Mapped[str] = mapped_column(String(8))
     status: Mapped[str] = mapped_column(String(16), server_default="queued")
-    priority: Mapped[int] = mapped_column(Integer, server_default="0")  # cao hơn chạy trước (PR > manual, bước 11)
+    priority: Mapped[int] = mapped_column(Integer, server_default="0")  # cao hơn chạy trước (PR > manual)
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")  # số lần executor nhận job; quá max_attempts thì failed
     suites: Mapped[list | None] = mapped_column(JSONB)
     task_ids: Mapped[list | None] = mapped_column(JSONB)
     params: Mapped[dict] = mapped_column(JSONB, server_default="{}")

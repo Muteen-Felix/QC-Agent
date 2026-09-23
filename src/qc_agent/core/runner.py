@@ -5,11 +5,14 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 from qc_agent.core import schema
 
+_ACTIVE: set = set()  # worker đang chạy; terminate_active() giết cây của chúng khi tiến trình bị SIGTERM (huỷ job)
+_ACTIVE_LOCK = threading.Lock()
 SLACK_S = 30  # buffer cho adapter đóng gói kết quả; timeout của chính worker vẫn là budget.wallclock_s (ở _base)
 
 
@@ -104,13 +107,26 @@ def _spawn(module: str, spec: dict, runs_root: Path, cwd: Path | None = None) ->
         env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "QC_RUNS_DIR": str(runs_root)},
         start_new_session=(os.name != "nt"),  # POSIX: để killpg diệt được cả nhóm
     )
+    with _ACTIVE_LOCK:
+        _ACTIVE.add(proc)
     try:
         out, err = proc.communicate(json.dumps(spec, ensure_ascii=False).encode("utf-8"),
                                     timeout=spec["budget"]["wallclock_s"] + SLACK_S)
     except subprocess.TimeoutExpired:
         _kill_tree(proc)
         raise
+    finally:
+        with _ACTIVE_LOCK:
+            _ACTIVE.discard(proc)
     return proc.returncode, out.decode("utf-8", errors="replace"), err.decode("utf-8", errors="replace")
+
+
+def terminate_active() -> None:
+    """Giết cây tiến trình của mọi worker đang chạy (gọi từ signal handler SIGTERM của CLI)."""
+    with _ACTIVE_LOCK:
+        procs = list(_ACTIVE)
+    for proc in procs:
+        _kill_tree(proc)
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
