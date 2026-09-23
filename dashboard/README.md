@@ -14,3 +14,19 @@ python -m pytest dashboard/tests -q
 - Đừng chạy `orchestrator.py` từ CLI **cùng lúc** với nút 🚀: core cấp `run_id` bằng max+1 nên hai run có thể đụng ID.
 - **📌 Tạo Ticket Jira là MOCK**: không gọi Jira; ghi ticket nháp vào `dashboard/_state/tickets.json`, kèm sha256 thật của evidence.
 - Cost: task báo `usd = null` được đếm là "không báo cost", không cộng như $0.
+
+## Webhook alerting (v2)
+
+Đặt `ALERT_WEBHOOK_URL` trong `.env` (Slack incoming webhook / Discord webhook / Telegram bot
+`.../bot<TOKEN>/sendMessage` — thêm `ALERT_TELEGRAM_CHAT_ID`) để mỗi lần pipeline chạy xong tự
+động bắn 1 message tổng hợp (verdict + gate x/y + finding + link `#run=`) qua
+`dashboard/notifier.py`. Không có env → chỉ ghi log vào `dashboard/_state/alerts.log` (không bao
+giờ ghi URL — đó là secret). Nút "Gửi thử" trên header gọi `POST /api/alerts/test`.
+`.github/workflows/qc-gate.yml` dùng lại đúng module này để CI cũng gửi được thông báo.
+
+## Auto-Promote (v2)
+
+Nút **🧬 Promote to Test Case** trên mỗi finding của Midscene gọi `tools/auto_promote.py`, sinh
+2 file test Playwright vào `tests_generated/` (một `.py` sẽ SKIP vì `.venv` chưa có gói Python
+`playwright`, một `.mjs` chạy thật ngay bằng `node_modules/playwright` đã cài sẵn). Xem
+`tests_generated/README.md` để biết cách chạy và giới hạn của cách "dịch" repro_steps → code.

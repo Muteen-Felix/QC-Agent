@@ -31,6 +31,8 @@
     </div>
     <div class="flex items-center gap-3">
       <span id="sut" class="text-sm"></span>
+      <span id="alertBadge" class="text-sm"></span>
+      <button id="alertTestBtn" onclick="testAlert()" class="hidden text-xs bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded">Gửi thử</button>
       <button id="runBtn" onclick="trigger()"
         class="bg-indigo-500 hover:bg-indigo-400 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-bold text-lg px-6 py-3 rounded-xl shadow-lg flex items-center gap-2">
         🚀 Kích hoạt QC Pipeline
@@ -111,7 +113,7 @@
 <!-- Toast -->
 <div id="toast" class="hidden fixed bottom-6 right-6 max-w-md bg-emerald-600 text-white rounded-xl shadow-2xl p-4 z-50">
   <div id="toastText" class="font-semibold"></div>
-  <button onclick="openTicket()" class="underline text-sm mt-1">Xem payload ticket</button>
+  <button onclick="openTicket()" class="underline text-sm mt-1">Xem chi tiết</button>
 </div>
 
 <!-- Ticket modal -->
@@ -121,7 +123,7 @@
       <h3 class="font-bold" id="modalTitle"></h3>
       <button onclick="document.getElementById('modal').classList.add('hidden')" class="text-slate-500 text-xl">×</button>
     </div>
-    <p class="text-xs text-slate-500 mb-2"><span class="badge b-mock">MOCK</span> Chưa nối Jira thật — ticket nháp lưu tại dashboard/_state/tickets.json. SHA256 là hash thật của file evidence.</p>
+    <p class="text-xs text-slate-500 mb-2" id="modalNote"><span class="badge b-mock">MOCK</span> Chưa nối Jira thật — ticket nháp lưu tại dashboard/_state/tickets.json. SHA256 là hash thật của file evidence.</p>
     <pre id="modalBody" class="text-xs bg-slate-900 text-slate-100 p-3 rounded max-h-[60vh] overflow-auto"></pre>
   </div>
 </div>
@@ -132,7 +134,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const fmtS = s => s == null ? "—" : (s >= 60 ? `${Math.floor(s/60)}m${String(Math.round(s%60)).padStart(2,"0")}s` : `${s.toFixed(1)}s`);
 const badge = v => `<span class="badge b-${esc(v)}">${esc(v)}</span>`;
 const WORKER_ICON = {"schemathesis":"🧪","k6":"⚡","deepeval":"🧠","midscene-cli":"👁️","http-collect":"📥"};
-let selected = null, lastTicket = null, polling = null;
+let selected = null, lastTicket = null, lastPromote = null, lastKind = null, polling = null;
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -150,6 +152,9 @@ async function loadSummary() {
   $("kCost").textContent = `$${s.usd_total.toFixed(2)}`;
   $("kCostNote").textContent = `${s.tokens_total} token · ${s.unreported_tasks} task không báo cost (n/a, không tính là $0)`;
   $("sut").innerHTML = s.sut_alive ? `<span class="badge b-PASS">SUT :8000 online</span>` : `<span class="badge b-FAIL">SUT :8000 offline</span>`;
+  const configured = s.alert_channel !== "none";
+  $("alertBadge").innerHTML = configured ? `<span class="badge b-PASS">🔔 ${esc(s.alert_channel)}</span>` : `<span class="badge b-UNKNOWN">🔕 chưa cấu hình</span>`;
+  $("alertTestBtn").classList.toggle("hidden", !configured);
   if (s.job === "running" && !polling) startPolling();
 }
 
@@ -162,7 +167,11 @@ async function loadRuns() {
       <td class="text-right">${r.complete ? fmtS(r.wallclock_s) : "—"}</td>
       <td class="text-right px-4">${r.complete ? `${r.gating_pass}/${r.gating_total}` : "—"}</td>
     </tr>`).join("");
-  if (!selected) { const first = rows.find(r => r.complete); if (first) selectRun(first.run_id); }
+  if (!selected) {
+    const wanted = (location.hash.match(/^#run=(r-\d{4})$/) || [])[1];
+    const target = (wanted && rows.find(r => r.run_id === wanted && r.complete)) || rows.find(r => r.complete);
+    if (target) selectRun(target.run_id);
+  }
 }
 
 function workerCard(w) {
@@ -180,6 +189,7 @@ function workerCard(w) {
 
 async function selectRun(id) {
   selected = id;
+  history.replaceState(null, "", `#run=${id}`);
   document.querySelectorAll("#runsBody tr").forEach(tr => tr.classList.toggle("sel", tr.firstElementChild.textContent === id));
   const d = await api(`/api/runs/${id}`);
   const gate = d.workers.filter(w => w.gating), disc = d.workers.filter(w => !w.gating);
@@ -206,9 +216,14 @@ async function selectRun(id) {
               <div class="font-semibold">${esc(f.title)}</div>
               <div class="text-xs text-slate-500 font-mono mt-1">${esc(f.finding_id)} · ${esc(f.task_id)} · ${esc(f.detected_by)}${f.severity ? ` · severity ${esc(f.severity)}` : ""}</div>
             </div>
-            <button onclick="createTicket('${esc(r.run_id)}','${esc(f.finding_id)}')" class="shrink-0 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-3 py-2 rounded-lg">📌 Tạo Ticket Jira</button>
+            <div class="flex flex-col gap-2 shrink-0">
+              <button onclick="createTicket('${esc(r.run_id)}','${esc(f.finding_id)}')" class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-3 py-2 rounded-lg">📌 Tạo Ticket Jira</button>
+              <button onclick="promoteFinding('${esc(r.run_id)}','${esc(f.finding_id)}')" ${f.promotable ? "" : "disabled"}
+                class="bg-violet-600 hover:bg-violet-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-semibold px-3 py-2 rounded-lg">🧬 Promote to Test Case</button>
+            </div>
           </div>
           ${f.repro_steps.length ? `<ol class="list-decimal ml-5 text-sm mt-2">${f.repro_steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}
+          ${f.suggested_assertion ? `<div class="text-xs text-slate-600 mt-1">✅ assertion đề xuất: ${esc(f.suggested_assertion)}</div>` : ""}
           <div class="text-xs text-slate-500 mt-2">${f.evidence.map(e => `<div class="font-mono">${esc(e.uri)} · sha256 ${esc((e.sha256 || "").slice(0, 12))}…</div>`).join("")}</div>
         </div>`).join("") : `<div class="text-slate-500 text-sm">Không có finding.</div>`}
     </div>`;
@@ -232,16 +247,40 @@ function showEvidence(file) {
 async function createTicket(runId, findingId) {
   try {
     const t = await api("/api/tickets", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({run_id: runId, finding_id: findingId})});
-    lastTicket = t;
+    lastTicket = t; lastKind = "ticket";
     const sha = (t.evidence[0] || {}).sha256 || "";
     toast(`📌 Đã tạo ticket ${t.key} (mock) kèm evidence SHA256 ${sha.slice(0, 8)}…`, true);
   } catch (e) { toast("Lỗi: " + e.message, false); }
 }
 
+async function promoteFinding(runId, findingId) {
+  try {
+    const p = await api("/api/promote", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({run_id: runId, finding_id: findingId})});
+    lastPromote = p; lastKind = "promote";
+    const names = p.files.map(f => f.split(/[\\/]/).pop()).join(", ");
+    const note = p.exists ? " (đã tồn tại từ trước — không ghi đè)" : "";
+    toast(`🧬 Đã sinh test: ${names}${note}`, true);
+  } catch (e) { toast("Lỗi: " + e.message, false); }
+}
+
 function openTicket() {
+  if (lastKind === "promote") { showPromote(); return; }
   if (!lastTicket) return;
   $("modalTitle").textContent = `${lastTicket.key} · ${lastTicket.summary}`;
+  $("modalNote").innerHTML = `<span class="badge b-mock">MOCK</span> Chưa nối Jira thật — ticket nháp lưu tại dashboard/_state/tickets.json. SHA256 là hash thật của file evidence.`;
   $("modalBody").textContent = JSON.stringify(lastTicket, null, 2);
+  $("modal").classList.remove("hidden");
+}
+
+function showPromote() {
+  if (!lastPromote) return;
+  const names = lastPromote.files.map(f => f.split(/[\\/]/).pop());
+  $("modalTitle").textContent = `🧬 Test đã sinh: ${names.join(", ")}`;
+  $("modalNote").textContent = lastPromote.exists
+    ? "File đã tồn tại từ trước — không ghi đè. Xem nội dung hiện có bên dưới."
+    : "GENERATED — review trước khi merge. .py sẽ SKIP nếu chưa cài playwright (python); .mjs chạy thật bằng Node ngay bây giờ.";
+  const bodies = Object.entries(lastPromote.previews || {}).map(([n, c]) => `--- ${n} ---\n${c}`).join("\n\n");
+  $("modalBody").textContent = bodies || JSON.stringify(lastPromote, null, 2);
   $("modal").classList.remove("hidden");
 }
 
@@ -255,6 +294,13 @@ function toast(text, ok) {
 async function trigger() {
   try { await api("/api/run", {method: "POST"}); startPolling(); }
   catch (e) { toast(e.message, false); }
+}
+
+async function testAlert() {
+  try {
+    const r = await api("/api/alerts/test", {method: "POST"});
+    toast(r.ok ? `🔔 Đã gửi thử tới ${esc(r.channel)}` : `Gửi thử thất bại: ${esc(r.error || r.status)}`, r.ok);
+  } catch (e) { toast("Lỗi: " + e.message, false); }
 }
 
 function startPolling() {
