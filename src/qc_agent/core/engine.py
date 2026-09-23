@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from qc_agent import settings
+from qc_agent.core import project as project_lib
 from qc_agent.core import registry, report, runner, signature
 from qc_agent.core.plan import ROOT, PlanError, load_plan, resolve, toposort
 from qc_agent.core.verdict import FAIL, PASS, YELLOW, GateVerdict, canary_alerts, gate_verdict
@@ -42,13 +43,36 @@ class RunResult:
 
 def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int = 0,
              workers_dirs=None, run_id: str | None = None, on_skipped_gate_task: str = "yellow",
-             sut_ref: str | None = None) -> RunResult:
-    """Chạy một plan. `run_id=None` => cấp `r-NNNN` (nguyên tử: hai lời gọi song song không bao giờ trùng id).
+             sut_ref: str | None = None, sut_root=None) -> RunResult:
+    """Chạy một plan (file YAML). `run_id=None` => cấp `r-NNNN` (nguyên tử: hai lời gọi song song không bao giờ trùng id).
     Lỗi plan/cấu hình raise PlanError/ManifestError TRƯỚC khi worker chạy, và dọn thư mục run đã tạo."""
+    return _execute(load_plan(plan_path), Path(plan_path).as_posix(), runs_dir, only=only, yellow_exit=yellow_exit,
+                    workers_dirs=workers_dirs, run_id=run_id, on_skipped_gate_task=on_skipped_gate_task,
+                    sut_ref=sut_ref, sut_root=sut_root)
+
+
+def run_project(project: str, mode: str, runs_dir, *, projects_dir=None, suites_dir=None, sut_root=None,
+                only_suites: list[str] | None = None, only: str | None = None, yellow_exit: int = 0,
+                workers_dirs=None, run_id: str | None = None, on_skipped_gate_task: str | None = None,
+                sut_ref: str | None = None) -> RunResult:
+    """Chạy các suite mà policy của `mode` chọn cho `project`. Suite nằm trong repo SUT (`sut_root`, mặc định cwd);
+    worker chạy với cwd = sut_root nên đường dẫn tương đối trong suite là tương đối repo SUT.
+    `on_skipped_gate_task=None` => lấy từ policy của mode (mặc định yellow)."""
+    sut_root = Path(sut_root or Path.cwd()).resolve()
+    cfg = project_lib.load_project(project, projects_dir or settings.get().resolved_projects_dir)
+    suites = project_lib.load_suites(Path(suites_dir) if suites_dir else sut_root / cfg["suites_dir"])
+    plan, meta = project_lib.build_plan(cfg, mode, suites, only_suites)
+    policy = on_skipped_gate_task or meta["on_skipped_gate_task"] or "yellow"
+    return _execute(plan, None, runs_dir, only=only, yellow_exit=yellow_exit, workers_dirs=workers_dirs, run_id=run_id,
+                    on_skipped_gate_task=policy, sut_ref=sut_ref, sut_root=sut_root, meta=meta)
+
+
+def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit, workers_dirs, run_id,
+             on_skipped_gate_task, sut_ref, sut_root, meta: dict | None = None) -> RunResult:
     if on_skipped_gate_task not in SKIPPED_POLICIES:
         raise PlanError(f"on_skipped_gate_task phải là {'|'.join(SKIPPED_POLICIES)}, nhận {on_skipped_gate_task!r}")
-    plan = load_plan(plan_path)
     runs_dir = Path(runs_dir)
+    cwd = Path(sut_root).resolve() if sut_root else None
     plan_id = signature.plan_id(plan["text"])
     order = _select(plan, only)
     by_id = {task["task_id"]: task for task in plan["tasks"]}
@@ -56,13 +80,13 @@ def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int =
     runs_dir_existed = runs_dir.exists()
     run_id, run_dir = _reserve_run_dir(runs_dir, run_id)
     try:
-        ctx = {"plan_id": plan_id, "run_id": run_id, "sut_identity_ref": "sut-pending", "sut": {**plan["sut"], "ref": sut_ref} if sut_ref else plan["sut"]}
+        ctx = {"plan_id": plan_id, "run_id": run_id, "runs_dir": str(runs_dir.resolve()), "sut_identity_ref": "sut-pending", "sut": {**plan["sut"], "ref": sut_ref} if sut_ref else plan["sut"]}
         specs, extras = {}, {}
         for task_id in order:  # chỉ resolve task được chọn: biến ${env.X} của task khác không được làm hỏng lần chạy này
             specs[task_id], extras[task_id] = resolve(by_id[task_id], ctx)
 
         try:  # ctx["sut"] đã được resolve thay biến; sut_id chỉ biết được sau đó nên điền ngược vào spec
-            identity = signature.sut_identity(ctx["sut"], ROOT)
+            identity = signature.sut_identity(ctx["sut"], cwd or ROOT)
         except (OSError, ValueError, TypeError) as error:
             raise PlanError(f"khối sut không hợp lệ: {error}") from None
         sut = signature.sut_id(identity)
@@ -87,15 +111,15 @@ def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int =
         raise
 
     started = time.perf_counter()
-    results = runner.run_all(specs, extras, _Registry(workers), run_dir)  # runner tự truyền QC_RUNS_DIR cho từng worker
+    results = runner.run_all(specs, extras, _Registry(workers), run_dir, cwd=cwd)  # runner tự truyền QC_RUNS_DIR cho từng worker
     wallclock = time.perf_counter() - started
 
     signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit, on_skipped_gate_task)
     run_ctx = report.RunContext(
-        run_id=run_id, plan_id=plan_id, plan_name=plan["name"], plan_path=Path(plan_path).as_posix(),
+        run_id=run_id, plan_id=plan_id, plan_name=plan["name"], plan_path=plan_label or f"{run_id}/plan.yaml",
         plan_text=plan["text"], sut_id=sut, run_signature=signature_hex, generated_at=now(),
         wallclock_s=round(wallclock, 3), specs=specs, results=results, gate=gate,
-        canary=canary_alerts(results, extras))
+        canary=canary_alerts(results, extras), **{k: v for k, v in (meta or {}).items() if k in ("project", "mode", "suite_sha256")})
     md, _ = report.write(run_ctx, run_dir)
     return RunResult(run_id, run_dir, gate.exit_code, gate, md, run_ctx)
 

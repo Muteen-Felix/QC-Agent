@@ -1,6 +1,6 @@
 plan_version: 1
 name: demo-mock
-sut: {files: ["toyapp"], attrs: {model: "stub-rule-v1"}}
+sut: {files: ["tests/fixtures/sut/noteboard/toyapp"], attrs: {model: "stub-rule-v1"}}
 tasks:
   - task_id: t-e01
     capability: demo.echo

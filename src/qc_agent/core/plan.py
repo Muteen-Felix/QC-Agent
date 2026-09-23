@@ -20,6 +20,7 @@ CAPABILITIES_PATH = settings.get().resolved_schemas_dir / "capabilities.json"
 _PLAN_ONLY_KEYS = ("depends_on", "prefer", "expect_status")
 _ENV_REFERENCE = re.compile(r"\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}")
 _RUN_ID_REFERENCE = re.compile(r"\$\{run_id\}")
+_RUNS_DIR_REFERENCE = re.compile(r"\$\{runs_dir\}")  # thư mục runs TUYỆT ĐỐI: worker chạy với cwd = SUT root nên không dùng được "runs/..."
 
 
 class PlanError(ValueError):
@@ -79,6 +80,11 @@ def _replace_string(value: str, run_ctx: Mapping[str, Any]) -> str:
         if not isinstance(run_id, str) or not run_id:
             raise PlanError("thiếu run_id trong run_ctx")
         value = _RUN_ID_REFERENCE.sub(lambda _match: run_id, value)
+    if _RUNS_DIR_REFERENCE.search(value):
+        runs_dir = run_ctx.get("runs_dir")
+        if not isinstance(runs_dir, str) or not runs_dir:
+            raise PlanError("thiếu runs_dir trong run_ctx")
+        value = _RUNS_DIR_REFERENCE.sub(lambda _match: runs_dir, value)
     return value
 
 

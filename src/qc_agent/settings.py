@@ -2,6 +2,7 @@
 
   QC_RUNS_DIR      thư mục ghi run (mặc định `runs`)
   QC_WORKERS_PATH  các thư mục manifest worker, ngăn cách bằng os.pathsep (mặc định: `workers/` của repo, hoặc bản đóng gói trong wheel)
+  QC_PROJECTS_DIR  thư mục cấu hình project (`<slug>.yaml`; mặc định `configs/projects/`)
   QC_SCHEMAS_DIR   thư mục chứa task_spec.json / result.json / capabilities.json (mặc định như trên)
 
 Chạy từ source (thư mục có pyproject.toml + schemas/): gốc repo là project root.
@@ -28,6 +29,7 @@ class Settings(BaseSettings):
     runs_dir: Path = Path("runs")
     workers_path: str = ""
     schemas_dir: Path | None = None
+    projects_dir: Path | None = None
 
     @property
     def project_root(self) -> Path:
@@ -38,6 +40,12 @@ class Settings(BaseSettings):
         if self.schemas_dir:
             return self.schemas_dir
         return _SOURCE_ROOT / "schemas" if _is_source_checkout() else _PKG / "schemas"
+
+    @property
+    def resolved_projects_dir(self) -> Path:
+        if self.projects_dir:
+            return self.projects_dir
+        return _SOURCE_ROOT / "configs" / "projects" if _is_source_checkout() else _PKG / "configs" / "projects"
 
     @property
     def workers_dirs(self) -> list[Path]:

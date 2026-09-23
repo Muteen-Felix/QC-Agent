@@ -34,3 +34,4 @@ packages = ["src/qc_agent"]
 [tool.hatch.build.targets.wheel.force-include]
 "schemas" = "qc_agent/schemas"
 "workers" = "qc_agent/workers"
+"configs" = "qc_agent/configs"

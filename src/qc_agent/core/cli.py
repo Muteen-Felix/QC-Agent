@@ -24,6 +24,8 @@ def main(argv: list[str]) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     try:
+        if argv and argv[0] == "run":  # `qc-agent run --project ...` và `qc-agent --plan ...` đều được
+            argv = argv[1:]
         args = _parser().parse_args(argv)
         if not 0 <= args.yellow_exit <= 255:
             raise PlanError(f"tham số sai: --yellow-exit phải trong 0..255, nhận {args.yellow_exit}")
@@ -39,11 +41,17 @@ def main(argv: list[str]) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     ap = _Parser(prog="orchestrator.py", description="QC gate: chạy plan, gộp verdict tất định, ghi report.")
-    ap.add_argument("--plan", help="file plan YAML (bắt buộc trừ khi có --rerender)")
+    ap.add_argument("--plan", help="file plan YAML (hoặc dùng --project/--mode; bắt buộc một trong hai trừ khi có --rerender)")
+    ap.add_argument("--project", help="slug project trong configs/projects/ (chạy các suite mà policy của --mode chọn)")
+    ap.add_argument("--mode", help="mode trong policy của project, vd pr | manual (bắt buộc khi có --project)")
+    ap.add_argument("--suites", help="chỉ chạy các suite này (tên, cách nhau dấu phẩy); phải nằm trong policy của mode")
+    ap.add_argument("--suites-dir", metavar="DIR", help="thư mục suite (mặc định <sut-root>/<project.suites_dir>)")
+    ap.add_argument("--sut-root", metavar="DIR", help="thư mục checkout của SUT (mặc định cwd); worker chạy với cwd này")
+    ap.add_argument("--projects-dir", metavar="DIR", help="thư mục configs/projects (mặc định $QC_PROJECTS_DIR)")
     ap.add_argument("--only", help="chỉ chạy các task này, vd t-a,t-b (phải kèm đủ task được depends_on)")
     ap.add_argument("--yellow-exit", type=int, default=0, metavar="N", help="exit code khi gate YELLOW (mặc định 0)")
-    ap.add_argument("--on-skipped-gate-task", choices=engine.SKIPPED_POLICIES, default="yellow",
-                    help="task gate bị skipped: yellow (mặc định, theo --yellow-exit) hoặc fail (gate FAIL, exit 1)")
+    ap.add_argument("--on-skipped-gate-task", choices=engine.SKIPPED_POLICIES, default=None,
+                    help="task gate bị skipped: yellow (theo --yellow-exit) hoặc fail (gate FAIL, exit 1); mặc định: policy của mode, rồi yellow")
     ap.add_argument("--sut-ref", metavar="SHA",
                     help="commit/ref của SUT đang được gate (vd. PR head SHA); mặc định plan.sut.ref hoặc git HEAD của SUT root")
     ap.add_argument("--runs-dir", default=str(settings.get().runs_dir), help="mặc định $QC_RUNS_DIR hoặc runs")
@@ -55,12 +63,20 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _run(args) -> int:
-    if not args.plan:
-        raise PlanError("thiếu --plan (chỉ được bỏ khi dùng --rerender)")
-    result = engine.run_plan(
-        args.plan, Path(args.runs_dir), only=args.only, yellow_exit=args.yellow_exit,
-        workers_dirs=[Path(d) for d in args.workers_dir] if args.workers_dir else None,
-        on_skipped_gate_task=args.on_skipped_gate_task, sut_ref=args.sut_ref)
+    if bool(args.plan) == bool(args.project):
+        raise PlanError("cần đúng một trong --plan hoặc --project (chỉ được bỏ cả hai khi dùng --rerender)")
+    common = dict(only=args.only, yellow_exit=args.yellow_exit, sut_ref=args.sut_ref,
+                  workers_dirs=[Path(d) for d in args.workers_dir] if args.workers_dir else None)
+    if args.plan:
+        result = engine.run_plan(args.plan, Path(args.runs_dir), on_skipped_gate_task=args.on_skipped_gate_task or "yellow",
+                                 sut_root=args.sut_root, **common)
+    else:
+        if not args.mode:
+            raise PlanError("--project cần --mode")
+        result = engine.run_project(
+            args.project, args.mode, Path(args.runs_dir), projects_dir=args.projects_dir, suites_dir=args.suites_dir,
+            sut_root=args.sut_root, on_skipped_gate_task=args.on_skipped_gate_task,
+            only_suites=[s.strip() for s in args.suites.split(",") if s.strip()] if args.suites else None, **common)
     print(result.report_md, end="")
     return result.exit_code
 
@@ -83,7 +99,7 @@ def _rerender(args) -> int:
     }
     plan_id = signature.plan_id(plan["text"])
     sut = signature.sut_id(_read_json(run_dir / "sut_identity.json"))
-    signature_hex, gate = engine.judge(specs, results, plan_id, sut, args.yellow_exit, args.on_skipped_gate_task)
+    signature_hex, gate = engine.judge(specs, results, plan_id, sut, args.yellow_exit, args.on_skipped_gate_task or "yellow")
     try:
         wallclock = float(_read_json(run_dir / "report.json")["details"]["wallclock_s"])
     except (PlanError, KeyError, TypeError, ValueError):

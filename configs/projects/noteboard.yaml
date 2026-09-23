@@ -1,0 +1,16 @@
+# Project `noteboard` = SUT tham chiếu của qc-agent (tests/fixtures/sut/noteboard). TẬP TRUNG: đổi file này phải qua PR vào qc-agent.
+# Suite (nội dung task) nằm trong repo SUT tại suites_dir.
+slug: noteboard
+name: "Noteboard (SUT tham chiếu)"
+suites_dir: .qc-agent/suites
+sut:
+  files: ["toyapp"]
+  attrs: {model: "stub-rule-v1"}
+  probe_url: "${env.APP_BASE_URL}/__qc/config"
+modes:
+  pr:                                    # tự động, mỗi PR
+    blocking_suites: [api-contract, ai-eval]   # mọi task lane=gate: chặn merge
+    advisory_suites: [ui-explore]              # mọi task lane=discovery: không chặn
+    on_skipped_gate_task: fail                 # task gate bị skip không được cho qua
+  manual:                                # QA/Dev chạy trên web; lane giữ như suite khai báo
+    suites: "*"

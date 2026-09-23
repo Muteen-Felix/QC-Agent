@@ -18,7 +18,7 @@ from qc_agent.adapters.collect_runtime import CollectionError, collect, write_co
 
 
 ROOT = Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "tests" / "eval" / "golden.json"
+GOLDEN = ROOT / "tests" / "fixtures" / "sut" / "noteboard" / "tests" / "eval" / "golden.json"
 SPEC = json.loads((ROOT / "tests" / "fixtures" / "task_collect.json").read_text(encoding="utf-8"))
 
 

@@ -24,6 +24,9 @@ class RunContext:
     gate: GateVerdict
     canary: list = field(default_factory=list)
     tickets_draft: list = field(default_factory=list)
+    project: str | None = None  # chỉ có khi chạy qua project/suite
+    mode: str | None = None
+    suite_sha256: dict = field(default_factory=dict)  # sha256 nội dung từng suite đã chạy: reviewer thấy suite có bị sửa không
 
 
 def render(ctx: RunContext) -> tuple[str, dict]:
@@ -90,6 +93,8 @@ def render(ctx: RunContext) -> tuple[str, dict]:
             },
         },
     }
+    if ctx.project is not None:
+        report_json.update(project=ctx.project, mode=ctx.mode, suite_sha256=ctx.suite_sha256)
     return "\n".join(lines).rstrip() + "\n", report_json
 
 

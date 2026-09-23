@@ -7,4 +7,5 @@
 - **Cài đặt:** `pip install uv && uv sync` (tạo `.venv`, cài editable `qc-agent` + phụ thuộc từ `uv.lock`).
 - **Cấu hình:** `QC_RUNS_DIR`, `QC_WORKERS_PATH` (nhiều thư mục, ngăn cách `os.pathsep`), `QC_SCHEMAS_DIR`. Xem `src/qc_agent/settings.py`.
 - **CLI:** `qc-agent --plan ...` (tương đương `python orchestrator.py`). Plan demo cần worker giả: `QC_WORKERS_PATH="workers;tests/fixtures/workers"` (Windows; dùng `:` trên Linux).
+- **Chạy theo project (đa dự án):** `qc-agent run --project noteboard --mode pr --sut-root tests/fixtures/sut/noteboard` (cần `APP_BASE_URL`). Project + policy chặn/không chặn ở `configs/projects/<slug>.yaml` (tập trung); suite ở repo SUT tại `.qc-agent/suites/` (worker chạy với cwd = SUT root). Chỉ một số suite: `--suites api-contract`.
 - **Test:** `pytest -q`

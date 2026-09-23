@@ -14,7 +14,7 @@ SLACK_S = 30  # buffer cho adapter đóng gói kết quả; timeout của chính
 
 
 def run_all(specs: dict[str, dict], plan_only: dict[str, dict], registry, run_dir: Path,
-            parallel: bool = False) -> dict[str, dict]:
+            parallel: bool = False, cwd: Path | None = None) -> dict[str, dict]:
     """Chạy tuần tự theo thứ tự của `specs` (caller đã toposort: phụ thuộc đứng trước). Ghi run_dir/{specs,results}/<task_id>.json.
     Lỗi của một task thành result error/skipped, không dừng cả run. `registry.pick(spec, prefer=()) -> (Worker | None, reason)`."""
     if parallel:
@@ -26,12 +26,12 @@ def run_all(specs: dict[str, dict], plan_only: dict[str, dict], registry, run_di
     runs_root = run_dir.resolve().parent  # adapter dựng workdir từ QC_RUNS_DIR: phải khớp run_dir, truyền qua env của từng tiến trình
     for tid, spec in specs.items():
         _write(run_dir / "specs" / f"{tid}.json", spec)
-        results[tid] = _run_task(spec, plan_only.get(tid, {}), registry, results, runs_root)
+        results[tid] = _run_task(spec, plan_only.get(tid, {}), registry, results, runs_root, cwd)
         _write(run_dir / "results" / f"{tid}.json", results[tid])
     return results
 
 
-def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path) -> dict:
+def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path, cwd: Path | None) -> dict:
     worker, reason = registry.pick(spec, prefer=tuple(extra.get("prefer", ())))
     if worker is None:
         return schema.make_result(spec, "skipped", reason)
@@ -42,10 +42,10 @@ def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path) ->
         if st != "pass":
             return schema.make_result(spec, "skipped", f"phụ thuộc {dep} không đạt (status={st or 'chưa chạy'})", worker.name)
 
-    result = _attempt(spec, worker, runs_root)
+    result = _attempt(spec, worker, runs_root, cwd)
     if result["status"] == "error" and spec["retry"]["max"] > 0:
         first = result["verdict"].get("rationale")
-        result = _attempt(spec, worker, runs_root)  # ĐÚNG 1 lần, kể cả khi lần 2 lại error. Không nhánh nào retry `fail`
+        result = _attempt(spec, worker, runs_root, cwd)  # ĐÚNG 1 lần, kể cả khi lần 2 lại error. Không nhánh nào retry `fail`
         result.setdefault("adapter_notes", []).append(f"retry 1/1 sau error lần đầu: {first}")  # đừng che flakiness
     over = _over_budget(spec, result)
     if over:  # sau retry: vượt budget không được chạy lại (sẽ tiêu thêm)
@@ -56,11 +56,11 @@ def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path) ->
     return result
 
 
-def _attempt(spec: dict, worker, runs_root: Path) -> dict:
+def _attempt(spec: dict, worker, runs_root: Path, cwd: Path | None) -> dict:
     """Một lần chạy adapter. Mọi thất bại (timeout/exit≠0/không phải JSON/sai contract) là `error`, không bao giờ `fail`."""
     t0 = time.perf_counter()
     try:
-        code, out, err = _spawn(worker.module, spec, runs_root)
+        code, out, err = _spawn(worker.module, spec, runs_root, cwd)
     except subprocess.TimeoutExpired:
         limit = spec["budget"]["wallclock_s"] + SLACK_S
         return _error(spec, worker, f"timeout: adapter không trả kết quả sau {limit}s (budget.wallclock_s + {SLACK_S}s)",
@@ -96,11 +96,11 @@ def _error(spec: dict, worker, why: str, wall: float = 0.0) -> dict:
     return res
 
 
-def _spawn(module: str, spec: dict, runs_root: Path) -> tuple[int, str, str]:
+def _spawn(module: str, spec: dict, runs_root: Path, cwd: Path | None = None) -> tuple[int, str, str]:
     # Popen thay vì run(timeout=): run() chỉ giết tiến trình con trực tiếp và trên Windows còn treo ở communicate()
     # nếu tiến trình cháu (worker) giữ pipe.
     proc = subprocess.Popen(
-        [sys.executable, "-m", module], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        [sys.executable, "-m", module], cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "QC_RUNS_DIR": str(runs_root)},
         start_new_session=(os.name != "nt"),  # POSIX: để killpg diệt được cả nhóm
     )
