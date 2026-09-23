@@ -132,6 +132,17 @@ def load(dir: str | Path = "workers") -> dict[str, Worker]:
     return registry
 
 
+def load_many(dirs) -> dict[str, Worker]:
+    """Nạp manifest từ nhiều thư mục (QC_WORKERS_PATH); trùng tên worker giữa các thư mục là lỗi."""
+    merged: dict[str, Worker] = {}
+    for directory in dirs:
+        for name, worker in load(directory).items():
+            if name in merged:
+                raise ManifestError(f"{directory}: name worker bị trùng giữa các thư mục: {name}")
+            merged[name] = worker
+    return merged
+
+
 def probe(worker: Worker) -> Worker:
     """Update and return a worker's preflight status without raising probe failures."""
     worker.probe_ok = False

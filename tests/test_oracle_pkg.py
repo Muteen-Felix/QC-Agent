@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-import oracle
-from core import schema
+from qc_agent import oracle
+from qc_agent.core import schema
 from fake_adapter import FakeAdapter
-from oracle import OracleError
+from qc_agent.oracle import OracleError
 
 _K6 = json.loads((Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "contract" / "task.k6.json").read_text(encoding="utf-8-sig"))
 

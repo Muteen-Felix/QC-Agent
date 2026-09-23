@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-import adapters.midscene_adapter as midscene_module
-from adapters._base import AdapterParseError
-from adapters.midscene_adapter import MidsceneAdapter
+import qc_agent.adapters.midscene_adapter as midscene_module
+from qc_agent.adapters._base import AdapterParseError
+from qc_agent.adapters.midscene_adapter import MidsceneAdapter
 
 
 ROOT = Path(__file__).resolve().parent.parent

@@ -4,7 +4,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from core.verdict import GateVerdict
+from qc_agent import settings
+from qc_agent.core.verdict import GateVerdict
 
 
 @dataclass
@@ -251,7 +252,7 @@ def _task_line(plan_text: str, task_id: str) -> int:
 
 
 def _baselines() -> dict:
-    path = Path(__file__).resolve().parents[1] / "baselines" / "geval.json"
+    path = settings.get().project_root / "baselines" / "geval.json"
     if not path.is_file():
         return {}
     try:

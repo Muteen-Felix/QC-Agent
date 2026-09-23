@@ -1,6 +1,6 @@
 """Second fixture-backed worker used to prove workers can be added without core changes."""
 
-from adapters.mock_adapter import MockAdapter
+from tests.fixtures.workers.mock_adapter import MockAdapter
 
 
 class Mock2Adapter(MockAdapter):

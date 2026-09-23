@@ -7,7 +7,7 @@ import pathlib
 
 import pytest
 
-from core import schema
+from qc_agent.core import schema
 
 
 def L(p):

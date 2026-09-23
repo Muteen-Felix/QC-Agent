@@ -1,13 +1,9 @@
-name: mock
+name: mock2
 version_probe: "python --version"
-adapter: "adapters/mock_adapter.py"
-lanes: [gate, discovery]
+adapter: "tests/fixtures/workers/mock2_adapter.py"
+lanes: [gate]
 capabilities:
-  - id: demo.echo
-    oracle_kinds: [trivial, checks]
-    verdict_sources: [deterministic_assert]
-    parallel_safe: true
-  - id: security.stub
+  - id: demo.echo2
     oracle_kinds: [trivial]
     verdict_sources: [deterministic_assert]
     parallel_safe: true

@@ -12,9 +12,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from adapters._base import AdapterParseError
-from adapters.collect_adapter import CollectAdapter, OUTPUT_NAME, REPORT_NAME
-from adapters.collect_runtime import CollectionError, collect, write_collection_artifacts
+from qc_agent.adapters._base import AdapterParseError
+from qc_agent.adapters.collect_adapter import CollectAdapter, OUTPUT_NAME, REPORT_NAME
+from qc_agent.adapters.collect_runtime import CollectionError, collect, write_collection_artifacts
 
 
 ROOT = Path(__file__).resolve().parent.parent

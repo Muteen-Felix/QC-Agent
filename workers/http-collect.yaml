@@ -1,6 +1,6 @@
 name: http-collect
 version_probe: "python --version"
-adapter: "adapters/collect_adapter.py"
+adapter: "qc_agent/adapters/collect_adapter.py"
 lanes: [gate]
 capabilities:
   - id: http.collect

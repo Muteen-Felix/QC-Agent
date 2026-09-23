@@ -1,8 +1,8 @@
 import copy
 import json
 
-from core.report import RunContext, render, write
-from core.verdict import gate_verdict
+from qc_agent.core.report import RunContext, render, write
+from qc_agent.core.verdict import gate_verdict
 
 
 PLAN = """name: demo

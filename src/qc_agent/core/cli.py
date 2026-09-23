@@ -11,9 +11,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core import registry, report, runner, signature
-from core.plan import ROOT, PlanError, load_plan, resolve, toposort
-from core.verdict import FAIL, PASS, YELLOW, canary_alerts, gate_verdict
+from qc_agent import settings
+from qc_agent.core import registry, report, runner, signature
+from qc_agent.core.plan import ROOT, PlanError, load_plan, resolve, toposort
+from qc_agent.core.verdict import FAIL, PASS, YELLOW, canary_alerts, gate_verdict
 
 SYSTEM_ERROR = 3
 _RUN_ID = re.compile(r"^r-(\d{4})$")
@@ -57,7 +58,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--plan", help="file plan YAML (bắt buộc trừ khi có --rerender)")
     ap.add_argument("--only", help="chỉ chạy các task này, vd t-a,t-b (phải kèm đủ task được depends_on)")
     ap.add_argument("--yellow-exit", type=int, default=0, metavar="N", help="exit code khi gate YELLOW (mặc định 0)")
-    ap.add_argument("--runs-dir", default=os.environ.get("QC_RUNS_DIR") or "runs", help="mặc định $QC_RUNS_DIR hoặc runs")
+    ap.add_argument("--runs-dir", default=str(settings.get().runs_dir), help="mặc định $QC_RUNS_DIR hoặc runs")
+    ap.add_argument("--workers-dir", action="append", metavar="DIR",
+                    help="thư mục manifest worker (lặp được); mặc định $QC_WORKERS_PATH hoặc workers/")
     ap.add_argument("--rerender", metavar="RUN_DIR",
                     help="không chạy worker: tính lại verdict từ RUN_DIR/specs + results, ghi RUN_DIR/report.rerender.md")
     return ap
@@ -86,7 +89,7 @@ def _run(args) -> int:
     for spec in specs.values():
         spec["sut_identity_ref"] = sut
 
-    workers = registry.load(ROOT / "workers")
+    workers = registry.load_many([Path(d) for d in args.workers_dir] if args.workers_dir else settings.get().workers_dirs)
     needed = {spec["capability"] for spec in specs.values()}
     for worker in workers.values():  # chỉ probe worker mà plan này cần: probe worker thừa tốn thời gian và có thể treo
         if needed & set(worker.capabilities):
@@ -111,6 +114,10 @@ def _run(args) -> int:
     md, _ = report.write(run_ctx, run_dir)
     print(md, end="")
     return gate.exit_code
+
+
+def console() -> None:  # entry point của script `qc-agent`
+    sys.exit(main(sys.argv[1:]))
 
 
 def _rerender(args) -> int:

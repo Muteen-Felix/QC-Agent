@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core import plan, schema
+from qc_agent.core import plan, schema
 
 
 ROOT = Path(__file__).resolve().parent.parent

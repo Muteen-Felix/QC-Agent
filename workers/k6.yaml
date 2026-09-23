@@ -1,6 +1,6 @@
 name: k6
 version_probe: "k6 version"
-adapter: "adapters/k6_adapter.py"
+adapter: "qc_agent/adapters/k6_adapter.py"
 lanes: [gate]
 capabilities:
   - id: http.load

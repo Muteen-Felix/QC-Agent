@@ -3,9 +3,9 @@ import math
 
 import pytest
 
-import oracle
-from core import schema
-from oracle import OracleError
+from qc_agent import oracle
+from qc_agent.core import schema
+from qc_agent.oracle import OracleError
 
 P95 = {"metric": "http_req_duration.p95", "op": "<", "value": 300, "unit": "ms"}
 ERR = {"metric": "http_req_failed.rate", "op": "<", "value": 0.01}

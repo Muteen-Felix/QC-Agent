@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from adapters.collect_runtime import CollectionError, collect, write_collection_artifacts
+from qc_agent.adapters.collect_runtime import CollectionError, collect, write_collection_artifacts
 
 
 def main(argv: list[str] | None = None) -> int:

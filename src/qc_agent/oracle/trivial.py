@@ -1,5 +1,5 @@
 """oracle.kind = "trivial": luôn pass. Dành cho task chỉ cần worker chạy xong (vd. demo.echo), không có ngưỡng nào để so."""
-from oracle import OracleOutcome, register
+from qc_agent.oracle import OracleOutcome, register
 
 
 @register("trivial")

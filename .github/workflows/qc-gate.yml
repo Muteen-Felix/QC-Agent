@@ -1,7 +1,6 @@
 # Rủi ro còn lại khi đọc log CI:
 #   - orchestrator.py gọi Midscene (LLM thật) + DeepEval => tốn tiền mỗi lần PR mở/cập nhật.
-#   - requirements.lock có thể chứa pin chỉ build được trên Windows; nếu `pip install -r
-#     requirements.lock` lỗi trên ubuntu-latest, job tự rơi xuống `pip install -r requirements.txt`.
+#   - Phụ thuộc Python cài bằng `uv sync --frozen` từ uv.lock (đa nền tảng); lock lỗi thì job đỏ, không tự lùi về bản không ghim.
 #   - job `qc-gate` LUÔN chạy toyapp sạch (QC_BUGS=none): gate trên PR phải PASS khi code sạch,
 #     không lẫn với việc "gate có bắt được bug đã gài" (test riêng bằng workflow_dispatch + qc_bugs).
 #
@@ -34,7 +33,10 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install Python deps
-        run: pip install -r requirements.lock || pip install -r requirements.txt
+        run: |
+          pip install uv
+          uv sync --frozen
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Run unit tests (tests/)
         run: python -m pytest tests/ -q
 
@@ -51,7 +53,10 @@ jobs:
         with:
           node-version: "20"
       - name: Install Python deps
-        run: pip install -r requirements.lock || pip install -r requirements.txt
+        run: |
+          pip install uv
+          uv sync --frozen
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Install Node deps (Midscene CLI)
         run: npm ci
       - name: Install Playwright Chromium

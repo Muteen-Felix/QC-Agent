@@ -15,10 +15,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import oracle
-from core import evidence as evidence_lib
-from core import schema
-from oracle import OracleError
+from qc_agent import oracle
+from qc_agent.core import evidence as evidence_lib
+from qc_agent.core import schema
+from qc_agent.oracle import OracleError
 
 
 class AdapterParseError(Exception):

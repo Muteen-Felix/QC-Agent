@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from core import schema
+from qc_agent.core import schema
 from fake_adapter import FakeAdapter
 
 ROOT = Path(__file__).resolve().parent.parent

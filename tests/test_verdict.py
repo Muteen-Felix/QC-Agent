@@ -1,6 +1,6 @@
 import pytest
 
-from core.verdict import gate_verdict
+from qc_agent.core.verdict import gate_verdict
 
 
 def R(status="pass", value="pass", gating=True, src="deterministic_assert", rat=None):

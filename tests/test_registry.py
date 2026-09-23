@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core import registry
+from qc_agent.core import registry
 
 
 def manifest(name="worker", **overrides):

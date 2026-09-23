@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from core import signature
+from qc_agent.core import signature
 
 
 def _result(name="k6", version="1.0", adapter_version="adapter-1"):

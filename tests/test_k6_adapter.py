@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-import oracle
-from adapters._base import AdapterParseError
-from adapters.k6_adapter import PARSER_VERSION, SUMMARY_NAME, K6Adapter
+from qc_agent import oracle
+from qc_agent.adapters._base import AdapterParseError
+from qc_agent.adapters.k6_adapter import PARSER_VERSION, SUMMARY_NAME, K6Adapter
 
 
 ROOT = Path(__file__).resolve().parent.parent

@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from core import schema
+from qc_agent.core import schema
 
 spec = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 mode, budget = spec["inputs"]["mode"], spec["budget"]

@@ -6,7 +6,9 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas"
+from qc_agent import settings
+
+SCHEMAS_DIR = settings.get().resolved_schemas_dir
 SCHEMA_FILES = {"task": "task_spec.json", "result": "result.json"}
 
 

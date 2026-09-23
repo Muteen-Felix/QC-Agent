@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from adapters.deepeval_runtime import run_geval_advisory
+from qc_agent.adapters.deepeval_runtime import run_geval_advisory
 
 
 pytestmark = pytest.mark.skipif(

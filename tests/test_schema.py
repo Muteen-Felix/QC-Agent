@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from core import schema
+from qc_agent.core import schema
 
 ROOT = Path(__file__).resolve().parent.parent
 

@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from adapters._base import Adapter, AdapterParseError, ParsedOutput
+from qc_agent.adapters._base import Adapter, AdapterParseError, ParsedOutput
 
 
 PARSER_VERSION = "1"

@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from adapters._base import Adapter, AdapterParseError, ParsedOutput
-from adapters.collect_runtime import OUTPUT_NAME, REPORT_NAME
+from qc_agent.adapters._base import Adapter, AdapterParseError, ParsedOutput
+from qc_agent.adapters.collect_runtime import OUTPUT_NAME, REPORT_NAME
 
 
 STDOUT_NAME = "stdout.log"
@@ -55,7 +55,7 @@ class CollectAdapter(Adapter):
         return [
             sys.executable,
             "-m",
-            "adapters.collect_worker",
+            "qc_agent.adapters.collect_worker",
             "--golden",
             str(path),
             "--out",

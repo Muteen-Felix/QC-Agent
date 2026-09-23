@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 
-from core import schema
+from qc_agent.core import schema
 
 SLACK_S = 30  # buffer cho adapter đóng gói kết quả; timeout của chính worker vẫn là budget.wallclock_s (ở _base)
 

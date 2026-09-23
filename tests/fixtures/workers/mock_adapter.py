@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 
-from adapters._base import Adapter, AdapterParseError, ParsedOutput
+from qc_agent.adapters._base import Adapter, AdapterParseError, ParsedOutput
 
 
 class MockAdapter(Adapter):

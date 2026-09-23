@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from adapters._base import AdapterParseError
-from adapters.schemathesis_adapter import REPORT_NAME, SchemathesisAdapter
+from qc_agent.adapters._base import AdapterParseError
+from qc_agent.adapters.schemathesis_adapter import REPORT_NAME, SchemathesisAdapter
 
 
 ROOT = Path(__file__).resolve().parent.parent

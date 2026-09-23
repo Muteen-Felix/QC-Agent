@@ -11,11 +11,12 @@ from typing import Any
 
 import yaml
 
-from core import schema
+from qc_agent import settings
+from qc_agent.core import schema
 
 
-ROOT = Path(__file__).resolve().parent.parent
-CAPABILITIES_PATH = ROOT / "schemas" / "capabilities.json"
+ROOT = settings.get().project_root
+CAPABILITIES_PATH = settings.get().resolved_schemas_dir / "capabilities.json"
 _PLAN_ONLY_KEYS = ("depends_on", "prefer", "expect_status")
 _ENV_REFERENCE = re.compile(r"\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}")
 _RUN_ID_REFERENCE = re.compile(r"\$\{run_id\}")

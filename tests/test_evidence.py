@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from core import evidence
+from qc_agent.core import evidence
 
 
 def test_sha256_matches_hashlib_on_raw_bytes(tmp_path):

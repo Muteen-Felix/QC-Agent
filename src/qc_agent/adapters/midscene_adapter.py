@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 
-from adapters._base import Adapter, AdapterParseError, ParsedOutput
+from qc_agent.adapters._base import Adapter, AdapterParseError, ParsedOutput
 
 PARSER_VERSION = "1"
 _ELEMENT_NOT_FOUND = re.compile(r"kh[oô]ng t[iì]m th[aấ]y|not found|unable to find|could not find", re.IGNORECASE)

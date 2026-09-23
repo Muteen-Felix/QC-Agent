@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core import runner, schema
+from qc_agent.core import runner, schema
 
 TESTS = Path(__file__).resolve().parent
 ROOT = TESTS.parent

@@ -3,7 +3,7 @@
 Chỉ các check trong `required` tham gia phán. Check bị thiếu KHÔNG được coi là pass: worker chưa chạy check đó thì
 không có quyền khẳng định gì -> OracleError (adapter đổi thành status=error).
 """
-from oracle import OracleError, OracleOutcome, register
+from qc_agent.oracle import OracleError, OracleOutcome, register
 
 
 @register("checks")

@@ -7,7 +7,7 @@ không bao giờ là pass hay fail. Bộ so sánh không kiểm cờ gating: ver
 import math
 import operator
 
-from oracle import OracleError, OracleOutcome, register
+from qc_agent.oracle import OracleError, OracleOutcome, register
 
 _OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge, "==": operator.eq, "!=": operator.ne}
 

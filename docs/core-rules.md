@@ -17,10 +17,10 @@ Exit code: `PASS` 0 · `YELLOW` = `--yellow-exit` (mặc định 0) · `FAIL` 1 
 
 Đúng 5 bước, mỗi bước là **thêm file**:
 
-1. `workers/<tên>.yaml`: copy `workers/_template.yaml` (bản mẫu đã đóng băng, không sửa). Capability mới thì thêm một dòng vào `schemas/capabilities.json`.
+1. `workers/<tên>.yaml` (manifest, `adapter: "qc_agent/adapters/<tên>_adapter.py"`): copy `workers/_template.yaml` (bản mẫu đã đóng băng, không sửa). Capability mới thì thêm một dòng vào `schemas/capabilities.json`.
 2. `schemas/<cap>.inputs.json`: schema của `inputs`. Tuỳ chọn ở PoC (D-08).
-3. `adapters/<tên>_adapter.py`: kế thừa `Adapter` (`adapters/_base.py`), khai `NAME` + `ADAPTER_VERSION`, **chỉ override `build_cmd` và `parse_output`**.
-4. `oracle/<kind>.py` nếu `oracle.kind` là mới: dùng `@register("<kind>")`, không phải sửa `oracle/__init__.py`.
+3. `src/qc_agent/adapters/<tên>_adapter.py`: kế thừa `Adapter` (`src/qc_agent/adapters/_base.py`), khai `NAME` + `ADAPTER_VERSION`, **chỉ override `build_cmd` và `parse_output`**.
+4. `src/qc_agent/oracle/<kind>.py` nếu `oracle.kind` là mới: dùng `@register("<kind>")`, không phải sửa `oracle/__init__.py`.
 5. Thêm task vào `tests/fixtures/plans/<plan>.yaml`. Nhớ quote khoá `"on":` trong `retry`, vì YAML đọc `on` trần thành `True`.
 
 **Tuyệt đối không sửa `core/`.** Nếu bạn thấy phải sửa, thiết kế đang sai: dừng lại và hỏi cả nhóm.

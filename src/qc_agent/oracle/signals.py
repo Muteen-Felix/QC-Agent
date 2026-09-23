@@ -6,7 +6,7 @@ telemetry, DOM, HTTP). Oracle chỉ giữ tín hiệu có tên trong oracle_spec
 Luôn trả value=None: discovery không phán pass/fail cổng gate. LLM chỉ được mô tả, không được phán, nên oracle này
 không nhận nguồn nào ngoài `detected` của adapter.
 """
-from oracle import OracleError, OracleOutcome, register
+from qc_agent.oracle import OracleError, OracleOutcome, register
 
 # Mức nghiêm trọng cố định trong code, không đọc từ spec: worker/plan không tự hạ được mức của một tín hiệu.
 _SEVERITY = {"http_5xx": "high", "dom_unchanged": "high", "element_not_found": "medium", "console_error": "medium"}

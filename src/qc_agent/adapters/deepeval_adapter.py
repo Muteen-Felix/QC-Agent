@@ -11,7 +11,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from adapters._base import Adapter, AdapterParseError, ParsedOutput
+from qc_agent.adapters._base import Adapter, AdapterParseError, ParsedOutput
 
 
 PARSER_VERSION = "2"

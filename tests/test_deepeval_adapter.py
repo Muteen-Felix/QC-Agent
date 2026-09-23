@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from adapters import deepeval_runtime
-from adapters._base import AdapterParseError
-from adapters.deepeval_adapter import (
+from qc_agent.adapters import deepeval_runtime
+from qc_agent.adapters._base import AdapterParseError
+from qc_agent.adapters.deepeval_adapter import (
     GEVAL_NAME,
     JUNIT_NAME,
     METRICS,
