@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine
 
 from qc_agent import settings
@@ -20,6 +21,9 @@ from qc_agent.jobs import repository as repo
 from qc_agent.jobs.db import make_engine, session_scope
 
 _UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
+# Giao diện: chỉ script/style từ cùng origin (không inline, không CDN). Nội dung từ SUT không đáng tin nên không được chạy script.
+_WEB_CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
+            "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 
 
 def create_app(engine: Engine | None = None, *, runs_root: Path | None = None, projects_dir: Path | None = None) -> FastAPI:
@@ -50,8 +54,15 @@ def create_app(engine: Engine | None = None, *, runs_root: Path | None = None, p
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
+        else:
+            response.headers.setdefault("Content-Security-Policy", _WEB_CSP)
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault("Referrer-Policy", "same-origin")
         return response
 
     for module in (health, auth, catalog, jobs, ingest):
         app.include_router(module.router)
+    web_dir = cfg.resolved_web_dir
+    if web_dir.is_dir():  # mount SAU các router: /api/* và /healthz khớp trước, phần còn lại là tệp tĩnh
+        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
     return app

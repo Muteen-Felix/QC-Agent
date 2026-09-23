@@ -39,3 +39,4 @@ packages = ["src/qc_agent"]
 "schemas" = "qc_agent/schemas"
 "workers" = "qc_agent/workers"
 "configs" = "qc_agent/configs"
+"web" = "qc_agent/web"

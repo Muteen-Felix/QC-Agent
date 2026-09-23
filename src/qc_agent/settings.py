@@ -11,6 +11,7 @@
   QC_MAX_OPEN_JOBS_PER_PROJECT  giới hạn job queued+running của một project (mặc định 20)
   QC_MAX_JOB_TIMEOUT_S      trần timeout người dùng được xin (mặc định 86400)
   QC_MAX_INGEST_BYTES       kích thước tối đa một report CI đẩy lên (mặc định 5 MB)
+  QC_WEB_DIR                thư mục giao diện tĩnh (mặc định `web/`, hoặc bản đóng gói trong wheel)
   QC_SCHEMAS_DIR   thư mục chứa task_spec.json / result.json / capabilities.json (mặc định như trên)
 
 Chạy từ source (thư mục có pyproject.toml + schemas/): gốc repo là project root.
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
     schemas_dir: Path | None = None
     projects_dir: Path | None = None
     database_url: str = ""
+    web_dir: Path | None = None
     allowed_email_domains: str = ""
     session_ttl_hours: int = 168
     login_max_failures: int = 5
@@ -63,6 +65,12 @@ class Settings(BaseSettings):
         if self.projects_dir:
             return self.projects_dir
         return _SOURCE_ROOT / "configs" / "projects" if _is_source_checkout() else _PKG / "configs" / "projects"
+
+    @property
+    def resolved_web_dir(self) -> Path:
+        if self.web_dir:
+            return self.web_dir
+        return _SOURCE_ROOT / "web" if _is_source_checkout() else _PKG / "web"
 
     @property
     def workers_dirs(self) -> list[Path]:
