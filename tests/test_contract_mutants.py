@@ -1,6 +1,6 @@
 """Mutation testing CỦA HỢP ĐỒNG: cố tình làm hỏng một result/task hợp lệ, schema PHẢI từ chối.
 Mutant nào không bị từ chối = lỗ hổng của contract (đây là N2/N4 ở dạng test).
-Tên test = ID mutant (C1.., T1..) — tools/run_mutants.py đọc kết quả theo tên này."""
+Tên test = ID mutant (C1.., T1..)."""
 import copy
 import json
 import pathlib

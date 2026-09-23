@@ -5,9 +5,9 @@
 Chạy từ thư mục gốc repo (adapter được spawn bằng `python -m`, đường dẫn trong plan là tương đối).
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1        # 1. dựng .venv + cài phụ thuộc
-.\scripts\toyapp.ps1 start                                              # 2. bật toy app (127.0.0.1:8000)
-. .\scripts\env.ps1; python orchestrator.py --plan testsixtures\plans\demo.yaml      # 3. chạy gate, in report, ghi runs\r-NNNN\
+pip install -r requirements.txt                                        # 1. cài phụ thuộc
+python -m uvicorn toyapp.app:app --host 127.0.0.1 --port 8000  # 2. bật toy app
+python orchestrator.py --plan tests\fixtures\plans\demo.yaml      # 3. chạy gate, in report, ghi runs\r-NNNN\
 ```
 
 Exit code: `PASS` 0 · `YELLOW` = `--yellow-exit` (mặc định 0) · `FAIL` 1 · lỗi plan/hệ thống **3**.
@@ -36,7 +36,7 @@ Nếu A (chủ `core/`) kẹt, hai người còn lại nhận việc theo bảng
 | C | `core/plan.py` | `pytest tests\test_plan.py -q` |
 | C | `core/schema.py` | `pytest tests\test_schema.py -q` |
 
-Toàn bộ: `pytest -q`. Cổng kiểm tay: `python orchestrator.py --plan testsixtures\plans\demo.yaml` phải `exit=0`, `testsixtures\plans\demo_fail.yaml` phải `exit=1`.
+Toàn bộ: `pytest -q`. Cổng kiểm tay: `python orchestrator.py --plan tests\fixtures\plans\demo.yaml` phải `exit=0`, `tests\fixtures\plans\demo_fail.yaml` phải `exit=1`.
 
 ## Cấm
 
