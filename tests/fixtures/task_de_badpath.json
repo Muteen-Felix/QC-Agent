@@ -1,0 +1,32 @@
+{
+  "task_id": "t-003",
+  "plan_id": "plan-poc-001",
+  "run_id": "r-deepeval-badpath",
+  "capability": "llmapp.eval",
+  "lane": "gate",
+  "intent": "Kiểm tra output path không tồn tại",
+  "target": {
+    "kind": "llm_app",
+    "base_url": "http://127.0.0.1:8000"
+  },
+  "inputs": {
+    "outputs_path": "runs/this-file-does-not-exist.json",
+    "judge_config": {
+      "provider": "openai",
+      "model": "gemini-3.5-flash-lite",
+      "fallback_provider": "gemini",
+      "fallback_model": "gemini-3.5-flash-lite"
+    },
+    "sut_model": "stub-rule-v1"
+  },
+  "oracle": {
+    "kind": "checks",
+    "required": ["summary_not_empty", "summary_shorter_than_body", "summary_json_valid"]
+  },
+  "expected_result_kind": "verdict",
+  "budget": {"wallclock_s": 180, "tokens": 50000, "usd": 0.5},
+  "determinism": {"seed": null, "replayable": true},
+  "sut_identity_ref": "sut-poc",
+  "evidence_required": ["raw_output", "stdout"],
+  "retry": {"max": 1, "on": ["error"]}
+}

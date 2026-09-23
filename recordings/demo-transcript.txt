@@ -1,0 +1,247 @@
+**********************
+PowerShell transcript start
+Start time: 20260922150913
+Username: Huy-3\mac
+RunAs User: Huy-3\mac
+Configuration Name:
+Machine: Huy-3 (Unix 27.0.0)
+Host Application: /opt/homebrew/Cellar/powershell/7.6.6_1/libexec/pwsh.dll -NoProfile -Command $env:APP_BASE_URL = "http://127.0.0.1:8000"; Start-Transcript -Path "recordings/demo-transcript.txt" -Force | Out-Null; try { & "./scripts/demo.ps1" -Auto -Fast; $scriptExit = $LASTEXITCODE } finally { Stop-Transcript | Out-Null }; exit $scriptExit
+Process ID: 18190
+PSVersion: 7.6.6
+PSEdition: Core
+GitCommitId: 7.6.6
+OS: macOS 27.0.0
+Platform: Unix
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.4
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+
+=== 1. plan.yaml is COMMITTED. CI runs exactly this file. No LLM decides what runs. ===
+# plan.yaml — plan THẬT của PoC (thay plans/demo.yaml làm plan mặc định để chạy gate).
+# Chạy:  . .\scripts\env.ps1; .\scripts\toyapp.ps1 start; python orchestrator.py --plan plan.yaml
+# STEP 42: đủ 6 task — t-000 (collect), t-001 (schemathesis), t-002 (k6), t-003 (deepeval), t-101 (midscene), t-canary-01 (canary).
+plan_version: 1
+name: noteboard-poc
+sut:
+  files: ["toyapp"]
+  attrs: {model: "stub-rule-v1"}
+  probe_url: "http://127.0.0.1:8000/__qc/config"
+tasks:
+  - task_id: t-000
+    capability: http.collect
+    lane: gate
+    intent: "Thu thập input/output của API tóm tắt ghi chú qua golden set, làm nguồn cho t-003"
+    target:
+      kind: http_service
+      base_url: "http://127.0.0.1:8000"
+    # inputs/oracle SAO CHÉP nguyên từ tests/fixtures/task_collect.json (Role C, STEP 39) — nguồn duy nhất; đổi ở đó thì đồng bộ lại đây.
+    inputs:
+      golden: "tests/eval/golden.json"
+    oracle:
+      kind: checks
+      required: [all_http_2xx, count_matches_golden]
+    expected_result_kind: verdict
+    budget: {wallclock_s: 60, tokens: 0, usd: 0}
+    determinism: {seed: null, replayable: true}
+    evidence_required: [raw_output, stdout]
+    retry: {max: 1, "on": [error]}   # "on" phải đặt trong ngoặc kép: YAML 1.1 đọc on → true
+    prefer: [http-collect]
+
+  - task_id: t-001
+    capability: api.property
+    lane: gate
+    intent: "GET /notes/{id} và POST /notes: schema conformance + không 5xx (property-based)"
+    target:
+      kind: http_service
+      base_url: "http://127.0.0.1:8000"
+      spec_ref: "http://127.0.0.1:8000/openapi.json"
+    # inputs/oracle SAO CHÉP nguyên từ tests/fixtures/task_st.json (Role C, STEP 24/25) — nguồn duy nhất; đổi ở đó thì đồng bộ lại đây.
+    inputs:
+
+=== 2. run the orchestrator (safe workers in parallel; k6 and Midscene run alone) ===
+(-Fast: gate tasks run LIVE; the discovery lane is shown from the RECORDED run in recordings/demo-good-run)
+# QC Gate Report — run r-0014
+plan: plan.yaml (plan-f4a3467c) · SUT: sut-f560000f · 2026-09-22T08:10:09+00:00
+wallclock 54s · LLM tokens: 0 (tasks: —) · cost $0.00
+
+## VERDICT: ❌ FAIL
+
+## 1. DETERMINISTIC ASSERT (chặn gate)
+
+| task | worker | capability | status | chi tiết |
+|---|---|---|---|---|
+| t-000 | http-collect | http.collect | pass | — |
+| t-001 | schemathesis | api.property | fail | GET /notes/{note_id}: not_a_server_error không đạt |
+| t-002 | k6 | http.load | pass | http_req_duration.p95=40.0071, http_req_failed.rate=0 |
+| t-003 | deepeval | llmapp.eval | fail | summary_shorter_than_body: case g3 không đạt |
+
+→ gate_verdict = pass AND fail AND pass AND fail = **FAIL**
+
+## 2. LLM JUDGMENT (KHÔNG chặn gate — chỉ tham khảo)
+
+| task | metric | điểm | baseline | delta | confidence |
+|---|---|---:|---:|---:|---:|
+| t-003 | GEval | 0.58 | 0.78 | -0.2 | 0.58 |
+
+Các số này không cộng vào 'pass rate' và không chặn gate.
+
+## 3. HEURISTIC / DISCOVERY (KHÔNG chặn gate)
+
+- Không có result discovery.
+
+## 4. SKIPPED / ERROR
+
+- Không có.
+
+## 5. AUDIT
+
+### t-000
+- oracle: plan.yaml:L11
+- evidence: runs/r-0014/t-000/outputs.json (sha256 2da5870b…)
+- evidence: runs/r-0014/t-000/collection.json (sha256 624ee4b4…)
+- evidence: runs/r-0014/t-000/stdout.log (sha256 e3b0c442…)
+- replay: /Users/mac/Desktop/QC/QC-Agent/.venv/bin/python -m adapters.collect_worker --golden /Users/mac/Desktop/QC/QC-Agent/tests/eval/golden.json --out /Users/mac/Desktop/QC/QC-Agent/runs/r-0014/t-000/outputs.json --report /Users/mac/Desktop/QC/QC-Agent/runs/r-0014/t-000/collection.json
+
+### t-001
+- oracle: plan.yaml:L31
+- evidence: runs/r-0014/t-001/schemathesis.junit.xml (sha256 79ec4bc7…)
+- evidence: runs/r-0014/t-001/stdout.log (sha256 ce72c062…)
+- replay: st --config-file /Users/mac/Desktop/QC/QC-Agent/runs/r-0014/t-001/schemathesis.toml run http://127.0.0.1:8000/openapi.json --checks not_a_server_error,response_schema_conformance --max-examples 25 --seed 1337 --exclude-path '/notes/{note_id}/summarize' --generation-database none --report junit --report-junit-path /Users/mac/Desktop/QC/QC-Agent/runs/r-0014/t-001/schemathesis.junit.xml --no-color
+
+### t-002
+- oracle: plan.yaml:L56
+- evidence: runs/r-0014/t-002/k6-summary.json (sha256 8529db3d…)
+- evidence: runs/r-0014/t-002/stdout.log (sha256 52675643…)
+- replay: k6 run --summary-export=/Users/mac/Desktop/QC/QC-Agent/runs/r-0014/t-002/k6-summary.json --vus 10 --duration 30s tests/perf/notes_list.js
+
+### t-003
+- oracle: plan.yaml:L80
+- evidence: runs/r-0014/t-003/junit.xml (sha256 151e33fc…)
+- evidence: runs/r-0014/t-003/geval.json (sha256 61fa75fd…)
+- evidence: runs/r-0014/t-003/stdout.log (sha256 9c6f132d…)
+- replay: /Users/mac/Desktop/QC/QC-Agent/.venv/bin/python -m pytest /Users/mac/Desktop/QC/QC-Agent/tests/eval/test_summarize.py --junitxml=/Users/mac/Desktop/QC/QC-Agent/runs/r-0014/t-003/junit.xml -q -p no:cacheprovider
+orchestrator exit code = 1
+
+=== 3. report: three sections that NEVER add up into one pass-rate ===
+# QC Gate Report — run r-0004
+plan: plan.yaml (plan-f4a3467c) · SUT: sut-f560000f · 2026-09-22T07:59:29+00:00
+wallclock 1m16s · LLM tokens: 0 (tasks: —) · cost $0.00
+
+## VERDICT: ❌ FAIL
+
+## 1. DETERMINISTIC ASSERT (chặn gate)
+
+| task | worker | capability | status | chi tiết |
+|---|---|---|---|---|
+| t-000 | http-collect | http.collect | pass | — |
+| t-001 | schemathesis | api.property | fail | GET /notes/{note_id}: not_a_server_error không đạt |
+| t-002 | k6 | http.load | pass | http_req_duration.p95=21.038, http_req_failed.rate=0 |
+| t-003 | deepeval | llmapp.eval | fail | summary_shorter_than_body: case g3 không đạt |
+
+→ gate_verdict = pass AND fail AND pass AND fail = **FAIL**
+
+## 2. LLM JUDGMENT (KHÔNG chặn gate — chỉ tham khảo)
+
+| task | metric | điểm | baseline | delta | confidence |
+|---|---|---:|---:|---:|---:|
+| t-003 | GEval | 0.52 | 0.78 | -0.26 | 0.52 |
+
+Các số này không cộng vào 'pass rate' và không chặn gate.
+
+## 3. HEURISTIC / DISCOVERY (KHÔNG chặn gate)
+
+- `t-101` · midscene-cli · bước — · $— · token —
+  - [f-sig-dom_unchanged] DOM không render lại sau thao tác xoá
+    detected_by: implicit_signal:dom_unchanged ← TẤT ĐỊNH
+    → ứng viên promote: ui.explore
+- `t-canary-01` · midscene-cli · bước — · $— · token —
+- CANARY t-canary-01: OK (fail như kỳ vọng)
+
+## 4. SKIPPED / ERROR
+
+- Không có.
+
+## 5. AUDIT
+
+### t-000
+- oracle: plan.yaml:L11
+- evidence: runs/r-0004/t-000/outputs.json (sha256 b16565c4…)
+- evidence: runs/r-0004/t-000/collection.json (sha256 624ee4b4…)
+- evidence: runs/r-0004/t-000/stdout.log (sha256 e3b0c442…)
+- replay: /Users/mac/Desktop/QC/QC-Agent/.venv/bin/python -m adapters.collect_worker --golden /Users/mac/Desktop/QC/QC-Agent/tests/eval/golden.json --out /Users/mac/Desktop/QC/QC-Agent/runs/r-0004/t-000/outputs.json --report /Users/mac/Desktop/QC/QC-Agent/runs/r-0004/t-000/collection.json
+
+### t-001
+- oracle: plan.yaml:L31
+- evidence: runs/r-0004/t-001/schemathesis.junit.xml (sha256 c6f490cb…)
+- evidence: runs/r-0004/t-001/stdout.log (sha256 eed485b1…)
+- replay: st --config-file /Users/mac/Desktop/QC/QC-Agent/runs/r-0004/t-001/schemathesis.toml run http://127.0.0.1:8000/openapi.json --checks not_a_server_error,response_schema_conformance --max-examples 25 --seed 1337 --exclude-path '/notes/{note_id}/summarize' --generation-database none --report junit --report-junit-path /Users/mac/Desktop/QC/QC-Agent/runs/r-0004/t-001/schemathesis.junit.xml --no-color
+
+### t-002
+- oracle: plan.yaml:L56
+- evidence: runs/r-0004/t-002/k6-summary.json (sha256 45a93759…)
+- evidence: runs/r-0004/t-002/stdout.log (sha256 3c81c143…)
+- replay: k6 run --summary-export=/Users/mac/Desktop/QC/QC-Agent/runs/r-0004/t-002/k6-summary.json --vus 10 --duration 30s tests/perf/notes_list.js
+
+### t-003
+- oracle: plan.yaml:L80
+- evidence: runs/r-0004/t-003/junit.xml (sha256 1a9eba9d…)
+- evidence: runs/r-0004/t-003/geval.json (sha256 328c3bcd…)
+- evidence: runs/r-0004/t-003/stdout.log (sha256 ba0f7009…)
+- replay: /Users/mac/Desktop/QC/QC-Agent/.venv/bin/python -m pytest /Users/mac/Desktop/QC/QC-Agent/tests/eval/test_summarize.py --junitxml=/Users/mac/Desktop/QC/QC-Agent/runs/r-0004/t-003/junit.xml -q -p no:cacheprovider
+
+=== 4. one finding was detected by a deterministic signal -> promote candidate ===
+  - [f-sig-dom_unchanged] DOM không render lại sau thao tác xoá
+    detected_by: implicit_signal:dom_unchanged ← TẤT ĐỊNH
+    → ứng viên promote: ui.explore
+
+=== 5. run the GATE tasks AGAIN (same commit), then diff the deterministic part -> must be IDENTICAL ===
+IDENTICAL — 4 kết quả gating, gate_verdict=FAIL
+
+=== 6. add a 5th worker: how many lines of core/ changed? ===
+commit 5005355649414418336e648abd2a0e6ddd8d7b27
+Merge: ee838e5 7d898de
+Author: Nguyễn Chính Nghĩa <142405185+Muteen-Felix@users.noreply.github.com>
+Date:   Tue Sep 22 14:40:00 2026 +0700
+
+    Merge pull request #23 from Muteen-Felix/role-b-step-44
+
+    add mock2 worker (N5 proof)
+
+ adapters/mock2_adapter.py | 12 ++++++++++++
+ plans/demo.yaml           | 12 ++++++++++++
+ tests/test_cli.py         |  2 +-
+ workers/mock2.yaml        | 12 ++++++++++++
+ 4 files changed, 37 insertions(+), 1 deletion(-)
+
+=== 7. canary: a task that MUST fail, run on the autonomous worker ===
+- `t-canary-01` · midscene-cli · bước — · $— · token —
+- CANARY t-canary-01: OK (fail như kỳ vọng)
+
+=== 8. mutation table: which seeded faults the gate catches ===
+# Seeded-fault mutation results
+
+STEP 48 reduced scope: M0/M1/M3/M5. M2 needs Midscene and M4/M6 were cut from this sprint scope.
+Run root: `runs/mutants/20260922T074732Z`
+
+| Mutant | file/dòng | loại lỗi mô phỏng | test nào phải bắt | kết quả thực tế |
+|---|---|---|---|---|
+| M0 | — | đối chứng sạch: không bật lỗi cài sẵn | gate phải PASS (không false positive) | XANH |
+| M1 | toyapp/app.py:51 | BUG-1: id dài trả HTTP 500 thay vì 4xx | t-001 Schemathesis | BẮT |
+| M3 | toyapp/summarizer.py:2 | BUG-3: summary dài hơn input khi body có [[long]] | t-003 summary_shorter_than_body | BẮT |
+| M5 | tests/perf/broken.js:1 | worker k6 crash vì script JavaScript không hợp lệ | t-002 phải là status=error, không phải fail | BẮT |
+
+stage1 00:00
+stage2 00:55
+stage3 00:55
+stage4 00:55
+stage5 01:49
+stage6 01:49
+stage7 01:49
+stage8 01:49
+TOTAL elapsed 01:49
+**********************
+PowerShell transcript end
+End time: 20260922151103
+**********************

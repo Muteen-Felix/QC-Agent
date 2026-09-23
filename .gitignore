@@ -2,6 +2,7 @@
 node_modules/
 .env
 runs/
+midscene_run/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -12,3 +13,6 @@ __pycache__/
 # Tai lieu rieng cua Role A (Nghia) - khong day len repo chung
 role-a/
 docs/research/qcagent-run*.md
+
+# Dashboard runtime state (job logs, mock tickets)
+dashboard/_state/

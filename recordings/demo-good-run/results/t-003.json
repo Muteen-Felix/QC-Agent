@@ -1,0 +1,77 @@
+{
+  "task_id": "t-003",
+  "run_id": "r-0004",
+  "worker": {
+    "name": "deepeval",
+    "version": null,
+    "adapter_version": "0.1.0"
+  },
+  "status": "fail",
+  "verdict": {
+    "value": "fail",
+    "verdict_source": "deterministic_assert",
+    "gating": true,
+    "confidence": null,
+    "rationale": null
+  },
+  "findings": [
+    {
+      "finding_id": "f-de-summary_shorter_than_body-g3",
+      "title": "summary_shorter_than_body: case g3 không đạt",
+      "detected_by": "metric:summary_shorter_than_body",
+      "verdict_source": "deterministic_assert",
+      "severity_hint": "high"
+    },
+    {
+      "finding_id": "f-de-geval-summary",
+      "title": "G-Eval đánh giá khả năng giữ ý chính",
+      "detected_by": "metric:GEval",
+      "verdict_source": "llm_judgment",
+      "confidence": 0.52,
+      "rationale": "G-Eval 'giữ ý chính' 0.52 (judge=gemini/gemini-3.5-flash-lite)"
+    },
+    {
+      "finding_id": "f-check-summary_shorter_than_body",
+      "title": "check summary_shorter_than_body không đạt",
+      "detected_by": "check:summary_shorter_than_body",
+      "verdict_source": "deterministic_assert",
+      "confidence": null,
+      "severity_hint": "high"
+    }
+  ],
+  "metrics": {
+    "GEval.score": 0.52
+  },
+  "evidence": [
+    {
+      "kind": "raw_output",
+      "uri": "runs/r-0004/t-003/junit.xml",
+      "sha256": "1a9eba9d29e551e4dd8ffdfdbb36d1e966180ebec46fd65bbbed51926296b3b4"
+    },
+    {
+      "kind": "raw_output",
+      "uri": "runs/r-0004/t-003/geval.json",
+      "sha256": "328c3bcd75bd3b9a8cd2c4552b0090e344e3a2e55a7becb42c8235ecd228dc60"
+    },
+    {
+      "kind": "stdout",
+      "uri": "runs/r-0004/t-003/stdout.log",
+      "sha256": "ba0f7009e75fb0294a1e73c0668516643a4641bebd67788be42eee75c4557e88"
+    }
+  ],
+  "cost": {
+    "wallclock_s": 17.05,
+    "tokens": null,
+    "usd": null
+  },
+  "sut_identity_ref": "sut-f560000f",
+  "determinism": {
+    "seed": null,
+    "replay_cmd": "/Users/mac/Desktop/QC/QC-Agent/.venv/bin/python -m pytest /Users/mac/Desktop/QC/QC-Agent/tests/eval/test_summarize.py --junitxml=/Users/mac/Desktop/QC/QC-Agent/runs/r-0004/t-003/junit.xml -q -p no:cacheprovider"
+  },
+  "adapter_notes": [
+    "PARSER_VERSION=2",
+    "confidence := G-Eval score",
+    "G-Eval judge=gemini/gemini-3.5-flash-lite"
+  ]
+}

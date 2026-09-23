@@ -1,0 +1,14 @@
+{
+  "task_id": "t-e02", "plan_id": "plan-poc-001", "run_id": "r-0001",
+  "capability": "demo.echo", "lane": "gate",
+  "intent": "mock",
+  "target": {"kind": "http_service", "base_url": "http://127.0.0.1:8000"},
+  "inputs": {"fixture": "tests/fixtures/mock_fail.json"},
+  "oracle": {"kind": "checks", "required": ["always_true"]},
+  "expected_result_kind": "verdict",
+  "budget": {"wallclock_s": 30, "tokens": 0, "usd": 0},
+  "determinism": {"seed": null, "replayable": true},
+  "sut_identity_ref": "sut-poc",
+  "evidence_required": ["raw_output", "stdout"],
+  "retry": {"max": 1, "on": ["error"]}
+}

@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total": 1,
+    "successful": 0,
+    "failed": 1,
+    "partialFailed": 0,
+    "notExecuted": 0,
+    "totalDuration": 33263,
+    "generatedAt": "9/21/2026, 3:47:36 PM"
+  },
+  "results": [
+    {
+      "script": "..\\..\\..\\midscene\\hello.yaml",
+      "success": false,
+      "resultType": "failed",
+      "report": "..\\..\\report\\hello-2026-09-21_15-47-03-4e360dc8.html",
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": false,
+          "resultType": "failed",
+          "report": "..\\..\\report\\hello-2026-09-21_15-47-03-4e360dc8.html",
+          "error": "Timed out after waiting 30000ms",
+          "duration": 33263
+        }
+      ],
+      "error": "Timed out after waiting 30000ms",
+      "duration": 33263
+    }
+  ]
+}

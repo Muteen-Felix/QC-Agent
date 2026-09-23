@@ -1,0 +1,65 @@
+{
+  "task_id": "t-canary-01",
+  "run_id": "r-0090",
+  "worker": {
+    "name": "midscene-cli",
+    "version": "1.7.2",
+    "adapter_version": "0.1.0"
+  },
+  "status": "fail",
+  "verdict": {
+    "value": "fail",
+    "verdict_source": "deterministic_assert",
+    "gating": false,
+    "confidence": null,
+    "rationale": "Canary: element mục tiêu không tồn tại sau 15 bước. Worker báo fail ĐÚNG như kỳ vọng."
+  },
+  "findings": [
+    {
+      "finding_id": "f-canary-1",
+      "title": "Không tìm thấy nút 'Thanh toán' trên trang /",
+      "detected_by": "implicit_signal:element_not_found",
+      "verdict_source": "deterministic_assert",
+      "confidence": null,
+      "rationale": null,
+      "severity_hint": null,
+      "evidence": [
+        {
+          "kind": "screenshot",
+          "uri": "runs/r-0090/t-canary-01/step-15.png",
+          "sha256": "a93c7e1b05d42f6890ac3e571bd204f8963ca7e015bd48f2703c9a61de85427f"
+        }
+      ],
+      "promote_candidate": null
+    }
+  ],
+  "metrics": {
+    "steps_executed": 15,
+    "unique_states_visited": 3
+  },
+  "evidence": [
+    {
+      "kind": "raw_output",
+      "uri": "runs/r-0090/t-canary-01/midscene-summary.json",
+      "sha256": "c1d05fa72be349608d2fa71e4b9c3850ad7e62f194bc0d3a8571ef26049b3cda"
+    },
+    {
+      "kind": "stdout",
+      "uri": "runs/r-0090/t-canary-01/stdout.log",
+      "sha256": "5e2ab904c7d316f8402be9d1750ca36f8b41ed79025ca6f3bd819e40c7a52d16"
+    }
+  ],
+  "cost": {
+    "wallclock_s": 143,
+    "tokens": 21870,
+    "usd": 0.06
+  },
+  "sut_identity_ref": "sut-9f2c",
+  "determinism": {
+    "seed": null,
+    "replay_cmd": null
+  },
+  "adapter_notes": [
+    "Canary task: kỳ vọng status=fail. status=pass ⟹ WORKER HỎNG, không phải app tốt."
+  ]
+}

@@ -1,0 +1,1 @@
+time="2026-09-21T15:36:10+07:00" level=error msg="could not initialize 'tests/perf/broken.js': could not load JS test 'file://<repo>/tests/perf/broken.js': file://<repo>/tests/perf/broken.js: Line 1:6 Unexpected identifier (and 1 more errors)"

@@ -1,0 +1,7 @@
+[
+  {"id": "g1", "title": "Họp sprint",    "body": "Họp sprint lúc 9h. Chốt scope PoC. Mang laptop."},
+  {"id": "g2", "title": "Deadline",      "body": "Deadline nộp báo cáo là thứ Sáu. Cần slide và demo."},
+  {"id": "g3", "title": "Đi chợ",        "body": "Mua sữa, trứng, bánh mì. Nhớ mang túi. [[long]]"},
+  {"id": "g4", "title": "Lỗi đăng nhập", "body": "Khách hàng phản hồi lỗi đăng nhập trên Android. Đã tái hiện."},
+  {"id": "g5", "title": "Ghi chú",       "body": "Ghi chú ngắn nhưng đủ ý. Không có gì thêm."}
+]

@@ -987,30 +987,29 @@ thì sẽ có ngày chúng lệch nhau.
 `[R4 S12c ca A]` + `[R4 S15.4 lớp 4]`:
 1. File output có tồn tại và **parse được** không? → không: `error`.
 2. Parse được → **giao metrics cho `oracle/`** để so. Kết quả so = `pass`/`fail`.
-3. Exit code chỉ dùng để **đối chiếu**. Exit code nói fail mà oracle nói pass (hoặc ngược lại)
-   ⟹ **mâu thuẫn tín hiệu** ⟹ `error` + ghi `adapter_notes`. Đây là lớp 4 của S15.4 áp cho
-   adapter: *tín hiệu mâu thuẫn thì báo hỏng, không chọn bên*.
+3. Diễn giải exit code theo contract của worker. Nếu worker mã hoá assertion trong exit code,
+   so exit với oracle; hai tín hiệu mâu thuẫn ⟹ `error`. Nếu worker không có threshold trong
+   script như k6 adapter STEP 31, mã khác 0 ⟹ `error` (lỗi worker), còn ngưỡng do oracle quyết.
 
-*(Lý do bước 3 tồn tại: `[R3 9.4]` xác nhận k6 "exit với mã khác 0" khi threshold fail nhưng
-**doc không nói số cụ thể** — `[CHƯA VERIFY, R4 double-check #2]`. Không code theo một con số
-chưa ai chạy.)*
+k6 v2.2.0 exit 99 ở script khám phá riêng có threshold; adapter chạy `notes_list.js` không có
+threshold và vì vậy yêu cầu exit 0. Chi tiết đã xác minh ở `docs/decisions.md`.
 
 ## 5.4 Adapter mẫu viết đầy đủ — `adapters/k6_adapter.py`
 
-Chọn k6 làm mẫu vì nó là worker **được nguồn mô tả đầy đủ nhất**: threshold nằm ngay trong
-script, pass/fail nằm trong exit code, có `--summary-export` `[R3 9.4]` `[R4 S12b]`.
+Chọn k6 làm mẫu vì nó là worker **được nguồn mô tả đầy đủ nhất**: có `--summary-export`
+`[R3 9.4]` `[R4 S12b]`. Trong adapter của STEP 31, script chỉ kiểm tra HTTP 200 và không có
+threshold; adapter đòi exit code 0 rồi chuyển số đo cho oracle chung. Script khám phá riêng có
+threshold có thể exit khác 0 khi ngưỡng bị vượt.
 *(Trong sprint, adapter **thật đầu tiên** là Schemathesis ở slot 2 `[R5 P3]` — nó được viết theo
 đúng khuôn này và do A review làm mẫu cho hai cái sau.)*
 
 ```python
 # adapters/k6_adapter.py   —  ~90 dòng, C viết, A review theo checklist 5 câu
 #
-# ⚠ [NGOÀI RUN 1-5 / CHƯA VERIFY] Ba thứ dưới đây là kiến thức về k6 mà RUN 1-5 KHÔNG xác nhận:
-#     (1) tên flag `--vus` / `--duration`  (RUN 4 chỉ ghi `inputs.vus`, `inputs.duration` và lệnh
-#         `k6 run --summary-export=k6-summary.json <script>`);
-#     (2) cấu trúc JSON của file summary: `metrics.http_req_duration["p(95)"]`, `metrics.http_req_failed.rate`;
-#     (3) cách truyền seed cho k6 (RUN 4 có `determinism.seed: 1337` nhưng không nói k6 nhận nó thế nào).
-#   Ngày 1 phải chạy `k6 run` thật, mở file summary, rồi SỬA adapter cho khớp. Đừng tin dòng nào có ⚠.
+# Đã xác minh trên k6 v2.2.0 (darwin/arm64), xem `docs/decisions.md`:
+#     các cờ --vus / --duration / --summary-export;
+#     p95 ở metrics.http_req_duration["p(95)"], failed-rate ở metrics.http_req_failed.value.
+# Seed không được truyền vào k6 trong adapter này; spec dùng determinism.seed = null.
 from pathlib import Path
 from subprocess import CompletedProcess
 from adapters._base import Adapter, ParsedOutput, AdapterParseError
@@ -1027,13 +1026,12 @@ class K6Adapter(Adapter):
         cmd = [
             "k6", "run",
             f"--summary-export={summary}",                # ✔ có trong RUN 4 S12b
-            "--vus",      str(spec.inputs["vus"]),        # ⚠ tên flag chưa verify
-            "--duration", spec.inputs["duration"],        # ⚠ tên flag chưa verify
+            "--vus",      str(spec.inputs["vus"]),
+            "--duration", spec.inputs["duration"],
             script,
         ]
-        # APP_BASE_URL khai ở workers/k6.yaml `requires.env`. Seed: ⚠ chưa biết k6 nhận thế nào
-        # → ngày 1 quyết; nếu k6 không nhận seed thì determinism.seed = null và ghi adapter_notes.
-        self._env = {"APP_BASE_URL": spec.target["base_url"]}
+        # APP_BASE_URL khai ở workers/k6.yaml `requires.env`; seed không dùng, spec đặt null.
+        self.env = {"APP_BASE_URL": spec.target["base_url"]}
         self._summary_path = summary
         return cmd
 
@@ -1043,6 +1041,8 @@ class K6Adapter(Adapter):
         # (a) Không có file summary ⟹ worker hỏng, KHÔNG phải test fail.
         if not self._summary_path.exists():
             raise AdapterParseError("k6 không xuất được summary — coi là crash, không phải fail")
+        if proc.returncode != 0:
+            raise AdapterParseError(f"k6 kết thúc với exit code {proc.returncode}")
 
         try:
             raw = json.loads(self._summary_path.read_text(encoding="utf-8"))
@@ -1050,12 +1050,12 @@ class K6Adapter(Adapter):
             raise AdapterParseError(f"summary không parse được: {e}")   # → status=error
 
         # (b) TRÍCH SỐ. Tuyệt đối KHÔNG so ngưỡng ở đây — việc đó của oracle/threshold.py
-        #     ⚠ đường dẫn khoá JSON dưới đây chưa verify — sửa theo file summary thật
+        #     Dùng đúng khoá nguồn đã xác minh từ summary thật của k6 v2.2.0.
         try:
             m = raw["metrics"]
             metrics = {
                 "http_req_duration.p95": m["http_req_duration"]["p(95)"],
-                "http_req_failed.rate":  m["http_req_failed"]["rate"],
+                "http_req_failed.rate":  m["http_req_failed"]["value"],
             }
         except (KeyError, TypeError) as e:
             raise AdapterParseError(f"thiếu metric bắt buộc trong summary: {e}")
@@ -1065,9 +1065,7 @@ class K6Adapter(Adapter):
         stdout_path.write_text(proc.stdout or "", encoding="utf-8")
 
         notes = []
-        # (d) ĐỐI CHIẾU exit code với kết quả oracle — xem 5.3 bước 3.
-        #     k6 exit khác 0 khi threshold fail, NHƯNG doc không nói số cụ thể
-        #     [CHƯA VERIFY — RUN 4 double-check #2] ⟹ chỉ dùng làm tín hiệu đối chiếu.
+        # (d) Ghi lại exit code. Script adapter không khai báo threshold nên mã khác 0 là lỗi worker.
         notes.append(f"k6 exit_code={proc.returncode}")
 
         return ParsedOutput(
@@ -1132,8 +1130,8 @@ capabilities:
     advisory_metrics: [GEval]
     parallel_safe: true
 requires:
-  env: [OPENAI_API_KEY]
-data_egress: [app_input, app_output]   # khai TRƯỚC cái gì rời khỏi máy
+  env: []   # OpenAI/Gemini are alternatives; STEP 02 probes primary + fallback
+data_egress: [app_input, app_output]   # sent to selected judge provider; record actual provider/model
 ```
 
 Registry nạp lúc khởi động bằng cách quét `workers/*.yaml`; `version_probe` chạy ở bước
@@ -1514,7 +1512,7 @@ git log --stat -1        # commit "add axe worker"
 | # | Kịch bản | Dấu hiệu **sớm** | Chặn |
 |---|---|---|---|
 | **V1** | **Contract bị Midscene ép méo** — *xác suất cao nhất*. Ngày 2, ai đó thêm `if worker == "midscene"` vào lõi. **Đúng 30 giây đó, N4 và N5 chết** | Tên worker xuất hiện trong `core/`, **hoặc** nghe câu "thêm một trường nhỏ chỉ cho Midscene" | **Viết adapter Midscene TRƯỚC** (slot 3, không phải slot 4). Dừng 15 phút, cả 3 quyết định: sửa schema cho **cả 4** worker, hoặc để adapter **mất thông tin**. **CẤM** thêm trường riêng |
-| **V2** | **Gate xanh vì worker không chạy.** Thiếu `OPENAI_API_KEY` → DeepEval `skipped`. **Failure mode nguy hiểm nhất của cả hệ vì nó im lặng và trông giống thành công** | Không có — đó là vấn đề | `skipped` **bắt buộc** làm gate **vàng** và in ở **ĐẦU** report. Xác nhận key là **việc số 0 của slot 1**, trước cả chốt schema |
+| **V2** | **Gate xanh vì worker không chạy.** Không có provider chấm dùng được (OpenAI và Gemini đều thiếu/lỗi) | Không có — đó là vấn đề | STEP 02 thử primary rồi fallback; registry không thể biểu diễn `one-of` cho env nên worker chạy deterministic metrics với `requires.env: []`. Nếu G-Eval không chạy, ghi rõ `error`/`mock`, không giả là điểm thật; deterministic verdict vẫn chỉ dựa trên các metric gating |
 | **V3** | **Plan mục** | Số endpoint trong app > số task trong plan | Job định kỳ chạy planner, xuất diff, mở PR tự động. **Bắt buộc**, không phải tuỳ chọn |
 | **V4** | **Discovery lane thành nghĩa địa** | Hàng chờ triage tăng đơn điệu | Trần cứng số finding/run; ưu tiên `deterministic_assert`; **tuần nào không ai triage thì tự động TẮT và báo** |
 | **V5** | **Chi phí VLM trôi.** UI đổi → agent đi vòng → số bước ×3 → hoá đơn ×3 mà **vẫn "pass"** | `cost.tokens` tăng giữa hai run cùng plan | `budget` là trần **cứng** trong task spec; `cost` lên report **kể cả khi xanh** |
@@ -1523,18 +1521,21 @@ git log --stat -1        # commit "add axe worker"
 
 Rút từ bảng double-check của `[R4]` + `[R5 (a)]`, giữ những dòng **ảnh hưởng tới code**:
 
+k6 exit code đã được xác minh trên v2.2.0 và được ghi ở `docs/decisions.md`, nên không còn là
+mục chưa kiểm: script threshold fail exit 99 có summary; script cú pháp sai exit 107, không có
+summary. Adapter STEP 31 dùng script không threshold và xử lý exit khác 0 như lỗi worker.
+
 | # | Claim chưa kiểm | Kiểm bằng cách nào (≤10 phút) | Sai thì hỏng gì |
 |---|---|---|---|
-| 1 | **k6 exit code cụ thể** khi threshold fail (doc chỉ nói "non-zero") | Chạy script threshold chắc chắn fail rồi `echo $LASTEXITCODE` | Adapter k6 map sai trạng thái → đã phòng bằng luật 5.3 (ưu tiên oracle, exit code chỉ đối chiếu) |
-| 2 | **DeepEval có export JSON/JUnit không** | `deepeval test run` rồi xem `DEEPEVAL_RESULTS_FOLDER` | Adapter phải parse stdout — xấu nhưng làm được |
-| 3 | **Midscene `--summary` JSON đủ trường để sinh `findings[]`** (doc-verified, **chưa chạy**) | Chạy 1 file YAML, mở file summary | **Rủi ro V1 tăng mạnh** |
-| 4 | **Midscene `aiAssert` fail có làm exit code ≠ 0** | Viết assert chắc chắn sai | Ảnh hưởng quyết định lane của Midscene |
-| 5 | **Schemathesis chạy được trên Windows không cần WSL** | `pip install schemathesis && st --version` | **Mất worker PoC dễ nhất** |
-| 6 | **Schemathesis pin seed được** | Chạy 2 lần, so | **Tiêu chí #4 (tái lập) phải hạ chuẩn** |
-| 7 | Consumer JUnit XML chuẩn **không** gate trên `<properties>` tuỳ biến | Xuất JUnit XML có property lạ, nạp vào ReportPortal/GitHub Actions | Luận điểm chính của prior art yếu đi (không sụp) |
-| 8 | **Assertion node của Hercules là LLM hay tất định** (`FROM-INDEX`, **chưa đọc code**) | Đọc code node đó | Nếu nó tất định, luận điểm phân biệt phải **hẹp lại thêm một bậc** — phải kiểm **trước khi lên slide** |
-| 9 | **4 worker PoC cắm chung một contract chạy được** | Đây là toàn bộ nội dung PoC | Nếu sai, bản propose **không có demo** |
-| 10 | Ước lượng setup cost (10–45 phút/worker) và dòng code (680/110) | Ngày 1 sprint | Kế hoạch 2.5 ngày trượt |
+| 1 | **DeepEval có export JSON/JUnit không** | `deepeval test run` rồi xem `DEEPEVAL_RESULTS_FOLDER` | Adapter phải parse stdout — xấu nhưng làm được |
+| 2 | **Midscene `--summary` JSON đủ trường để sinh `findings[]`** (doc-verified, **chưa chạy**) | Chạy 1 file YAML, mở file summary | **Rủi ro V1 tăng mạnh** |
+| 3 | **Midscene `aiAssert` fail có làm exit code ≠ 0** | Viết assert chắc chắn sai | Ảnh hưởng quyết định lane của Midscene |
+| 4 | **Schemathesis chạy được trên Windows không cần WSL** | `pip install schemathesis && st --version` | **Mất worker PoC dễ nhất** |
+| 5 | **Schemathesis pin seed được** | Chạy 2 lần, so | **Tiêu chí #4 (tái lập) phải hạ chuẩn** |
+| 6 | Consumer JUnit XML chuẩn **không** gate trên `<properties>` tuỳ biến | Xuất JUnit XML có property lạ, nạp vào ReportPortal/GitHub Actions | Luận điểm chính của prior art yếu đi (không sụp) |
+| 7 | **Assertion node của Hercules là LLM hay tất định** (`FROM-INDEX`, **chưa đọc code**) | Đọc code node đó | Nếu nó tất định, luận điểm phân biệt phải **hẹp lại thêm một bậc** — phải kiểm **trước khi lên slide** |
+| 8 | **4 worker PoC cắm chung một contract chạy được** | Đây là toàn bộ nội dung PoC | Nếu sai, bản propose **không có demo** |
+| 9 | Ước lượng setup cost (10–45 phút/worker) và dòng code (680/110) | Ngày 1 sprint | Kế hoạch 2.5 ngày trượt |
 
 ## 9.4 Câu hỏi còn treo — cần quyết sau sprint
 

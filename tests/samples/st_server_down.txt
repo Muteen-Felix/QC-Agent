@@ -1,0 +1,38 @@
+Command argv:
+[
+  "/Users/mac/Desktop/QC/QC-Agent/.venv/bin/st",
+  "run",
+  "http://127.0.0.1:54957/openapi.json",
+  "--checks",
+  "not_a_server_error,response_schema_conformance",
+  "--max-examples",
+  "25",
+  "--seed",
+  "1337",
+  "--exclude-path",
+  "/notes/{note_id}/summarize",
+  "--generation-database",
+  "none",
+  "--report",
+  "junit",
+  "--report-junit-path",
+  "/Users/mac/Desktop/QC/QC-Agent/runs/step24/server_down/st_server_down.junit.xml",
+  "--no-color"
+]
+
+Exit code: 1
+
+Schemathesis v4.27.5
+━━━━━━━━━━━━━━━━━━━━
+
+
+ ❌  Failed to load specification from http://127.0.0.1:54957/openapi.json
+ after 0.01s
+
+ Schema Loading Error
+
+ Connection failed
+
+     Failed to establish a new connection: [Errno 61] Connection refused
+
+Tip: Use `--wait-for-schema=NUM` to wait up to NUM seconds for schema availability.

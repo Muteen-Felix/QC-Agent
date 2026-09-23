@@ -1,0 +1,75 @@
+﻿
+Welcome to @midscene/cli v1.13.0
+
+   Executing YAML files...
+   Scripts:
+     - I:\MinhDuc\Coding\VinAI\VSF\Agent-QC\QC-Agent\midscene\hello.yaml
+📋 Execution plan
+   Concurrency: 1
+   Keep window: false
+   Headed: false
+   Continue on error: false
+   Retry: 0
+   Share browser context: false
+   Summary output: runs\ms_nokey_final.json
+◌ midscene\hello.yaml
+  ◌ them-va-xoa-note
+✘ midscene\hello.yaml
+  report: I:\MinhDuc\Coding\VinAI\VSF\Agent-QC\QC-Agent\midscene_run\report\hello-2026-09-21_15-47-03-4e360dc8.html
+  error: Timed out after waiting 30000ms
+    TimeoutError: Timed out after waiting 30000ms
+    at file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/puppeteer-core/src/common/util.ts:303:17
+    at file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/puppeteer-core/lib/esm/third_party/rxjs/rxjs.js:1944:31
+    at OperatorSubscriber2._this._next (file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/puppeteer-core/lib/esm/third_party/rxjs/rxjs.js:1001:9)
+    at OperatorSubscriber2.Subscriber2.next (file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/puppeteer-core/lib/esm/third_party/rxjs/rxjs.js:704:12)
+    at AsyncAction2.<anonymous> (file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/puppeteer-core/lib/esm/third_party/rxjs/rxjs.js:2288:20)
+    at AsyncAction2._execute (file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/puppeteer-core/lib/esm/third_party/rxjs/rxjs.js:1368:12)
+    at AsyncAction2.execute (file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/puppeteer-core/lib/esm/third_party/rxjs/rxjs.js:1357:22)
+    at AsyncScheduler2.flush (file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/puppeteer-core/lib/esm/third_party/rxjs/rxjs.js:1435:26)
+    at listOnTimeout (node:internal/timers:588:17)
+    at processTimers (node:internal/timers:523:7)
+[33mTest run aborted due to reaching the bail limit of 1 failed test(s).[39m
+npx.cmd :
+At line:1 char:307
++ ... lyContinue; & npx.cmd @midscene/cli midscene\hello.yaml --summary run ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+YAML execution failed:
+midscene/hello.yaml: Error: Timed out after waiting 30000ms
+Report: I:\MinhDuc\Coding\VinAI\VSF\Agent-QC\QC-Agent\midscene_run\report\hello-2026-09-21_15-47-03-4e360dc8.html
+    at createYamlCaseFailure
+(I:\MinhDuc\Coding\VinAI\VSF\Agent-QC\QC-Agent\node_modules\@midscene\cli\src\framework\yaml-case.ts:156:10)
+    at I:\MinhDuc\Coding\VinAI\VSF\Agent-QC\QC-Agent\node_modules\@midscene\cli\src\framework\rstest-entry.ts:173:17
+    at runTestsCase
+(file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/@rstest/core/dist/api%7E0.js:5566:21)
+    at file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/@rstest/core/dist/api%7E0.js:5799:47
+    at runTest
+(file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/@rstest/core/dist/api%7E0.js:5770:29)
+    at runTests
+(file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/@rstest/core/dist/api%7E0.js:5663:32)
+    at TestRunner.runTests
+(file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/@rstest/core/dist/api%7E0.js:5852:9)
+    at Object.runTests
+(file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/@rstest/core/dist/api%7E0.js:6506:33)
+    at runInPool
+(file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/@rstest/core/dist/1452%7E0.js:593:25)
+    at runTask
+(file:///I:/MinhDuc/Coding/VinAI/VSF/Agent-QC/QC-Agent/node_modules/@rstest/core/dist/1452%7E0.js:741:24)
+Execution finished:
+
+📊 Execution Summary:
+   Total files: 1
+   Successful: 0
+   Failed: 1
+   Partial failed: 0
+   Not executed: 0
+   Duration: 33.26s
+   Summary: I:\MinhDuc\Coding\VinAI\VSF\Agent-QC\QC-Agent\midscene_run\output\runs\ms_nokey_final.json
+
+❌ Failed files
+   I:\MinhDuc\Coding\VinAI\VSF\Agent-QC\QC-Agent\midscene\hello.yaml
+     Error: Timed out after waiting 30000ms
+
+⚠️ Some files failed or were not executed.

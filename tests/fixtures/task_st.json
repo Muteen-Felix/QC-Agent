@@ -1,0 +1,29 @@
+{
+  "task_id": "t-001",
+  "plan_id": "plan-poc-001",
+  "run_id": "r-step25",
+  "capability": "api.property",
+  "lane": "gate",
+  "intent": "Kiểm tra API noteboard theo OpenAPI contract",
+  "target": {
+    "kind": "http_service",
+    "base_url": "http://127.0.0.1:8000"
+  },
+  "inputs": {
+    "schema_url": "http://127.0.0.1:8000/openapi.json",
+    "checks": ["not_a_server_error", "response_schema_conformance"],
+    "max_examples": 25,
+    "seed": 1337,
+    "exclude_path": "/notes/{note_id}/summarize"
+  },
+  "oracle": {
+    "kind": "checks",
+    "required": ["not_a_server_error", "response_schema_conformance"]
+  },
+  "expected_result_kind": "verdict",
+  "budget": { "wallclock_s": 120, "tokens": 0, "usd": 0 },
+  "determinism": { "seed": 1337, "replayable": true },
+  "sut_identity_ref": "sut-poc",
+  "evidence_required": ["raw_output", "stdout"],
+  "retry": { "max": 1, "on": ["error"] }
+}

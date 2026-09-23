@@ -1,0 +1,17 @@
+# workers/_template.yaml — bản mẫu manifest. Copy thành workers/<name>.yaml.  FILE NÀY ĐÓNG BĂNG (STEP 07).
+# Registry bỏ qua mọi file bắt đầu bằng "_".
+name: CHANGEME                            # == result.worker.name
+version_probe: "CHANGEME --version"       # lệnh in phiên bản; exit 0 = worker có mặt. Chạy ở preflight (timeout 20s)
+adapter: "adapters/CHANGEME_adapter.py"   # chạy bằng: python -m adapters.CHANGEME_adapter
+lanes: [gate]                             # gate | discovery | cả hai. Worker KHÔNG được nhận task ngoài lane đã khai
+capabilities:
+  - id: CHANGEME.capability               # phải có trong schemas/capabilities.json
+    inputs_schema: schemas/CHANGEME.inputs.json   # TUỲ CHỌN trong PoC (quyết định D-08)
+    oracle_kinds: [threshold]             # oracle.kind worker này chấp nhận (xem oracle/)
+    verdict_sources: [deterministic_assert]   # TẬP GIÁ TRỊ ĐƯỢC PHÉP PHÁT RA — không phải nhãn của một kết quả
+    parallel_safe: true                   # false = ĐỘC QUYỀN: không task nào khác chạy cùng lúc (k6, Midscene)
+requires:
+  env: []                                 # biến môi trường bắt buộc (không rỗng)
+  binaries: []                            # lệnh phải có trong PATH
+data_egress: []                           # khai TRƯỚC cái gì rời máy: app_input | app_output | screenshot | dom | source_code | spec
+cost_profile: { tokens_per_run: 0, typical_wallclock_s: 60 }

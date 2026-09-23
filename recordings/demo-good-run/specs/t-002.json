@@ -1,0 +1,54 @@
+{
+  "task_id": "t-002",
+  "capability": "http.load",
+  "lane": "gate",
+  "intent": "GET /notes chịu 10 VU trong 30s với p95 < 300ms (ngưỡng rộng: demo cơ chế, không phải số đo thật)",
+  "target": {
+    "kind": "http_service",
+    "base_url": "http://127.0.0.1:8000"
+  },
+  "inputs": {
+    "script": "tests/perf/notes_list.js",
+    "vus": 10,
+    "duration": "30s"
+  },
+  "oracle": {
+    "kind": "threshold",
+    "assertions": [
+      {
+        "metric": "http_req_duration.p95",
+        "op": "<",
+        "value": 300,
+        "unit": "ms"
+      },
+      {
+        "metric": "http_req_failed.rate",
+        "op": "<",
+        "value": 0.01
+      }
+    ]
+  },
+  "expected_result_kind": "verdict",
+  "budget": {
+    "wallclock_s": 90,
+    "tokens": 0,
+    "usd": 0
+  },
+  "determinism": {
+    "seed": null,
+    "replayable": true
+  },
+  "evidence_required": [
+    "raw_output",
+    "stdout"
+  ],
+  "retry": {
+    "max": 1,
+    "on": [
+      "error"
+    ]
+  },
+  "plan_id": "plan-f4a3467c",
+  "run_id": "r-0004",
+  "sut_identity_ref": "sut-f560000f"
+}
