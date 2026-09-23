@@ -3,6 +3,7 @@
   QC_RUNS_DIR      thư mục ghi run (mặc định `runs`)
   QC_WORKERS_PATH  các thư mục manifest worker, ngăn cách bằng os.pathsep (mặc định: `workers/` của repo, hoặc bản đóng gói trong wheel)
   QC_PROJECTS_DIR  thư mục cấu hình project (`<slug>.yaml`; mặc định `configs/projects/`)
+  QC_DATABASE_URL  PostgreSQL của service (postgresql://user:pass@host:5432/db); CLI chạy cục bộ không cần
   QC_SCHEMAS_DIR   thư mục chứa task_spec.json / result.json / capabilities.json (mặc định như trên)
 
 Chạy từ source (thư mục có pyproject.toml + schemas/): gốc repo là project root.
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
     workers_path: str = ""
     schemas_dir: Path | None = None
     projects_dir: Path | None = None
+    database_url: str = ""
 
     @property
     def project_root(self) -> Path:

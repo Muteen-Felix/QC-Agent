@@ -1,0 +1,23 @@
+# Postgres cho DEV (job store). Cổng host 5433 để không đụng Postgres cài sẵn ở 5432. Mật khẩu chỉ dùng cho dev.
+#   docker compose up -d postgres
+#   export QC_DATABASE_URL=postgresql://qc:qc-dev-only@127.0.0.1:5433/qc_agent
+#   python -m qc_agent.jobs.migrate upgrade
+# Chạy test DB:  QC_TEST_DATABASE_URL=postgresql://qc:qc-dev-only@127.0.0.1:5433/postgres pytest tests/test_jobs_db.py
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: qc
+      POSTGRES_PASSWORD: qc-dev-only
+      POSTGRES_DB: qc_agent
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qc -d qc_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  pgdata:
