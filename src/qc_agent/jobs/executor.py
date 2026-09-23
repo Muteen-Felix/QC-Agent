@@ -29,6 +29,7 @@ from typing import Callable
 from sqlalchemy import Engine, text
 
 from qc_agent.core import runner
+from qc_agent.core.project import ProjectResolver
 from qc_agent.core.evidence import sha256_file
 from qc_agent.jobs import repository as repo
 from qc_agent.jobs.db import make_engine, session_scope
@@ -78,6 +79,10 @@ class _AdvisoryLock:
 class Executor:
     def __init__(self, engine: Engine, config: ExecutorConfig):
         self.engine, self.cfg = engine, config
+        # cấu hình project phía server: checkout của SUT + biến môi trường của environment (bí mật ${env.X} thay ở đây, không vào DB)
+        self.resolver = ProjectResolver(config.projects_dir) if config.projects_dir else None
+        self._sut_root_for = config.sut_root_for or (
+            (lambda job, slug: self.resolver.sut_checkout(slug)) if self.resolver else None)
 
     # ---- vòng đời ----
 
@@ -162,7 +167,7 @@ class Executor:
             args += ["--suites", ",".join(job.suites)]
         if job.task_ids:
             args += ["--only", ",".join(job.task_ids)]
-        sut_root = self.cfg.sut_root_for(job, slug) if self.cfg.sut_root_for else None
+        sut_root = self._sut_root_for(job, slug) if self._sut_root_for else None
         if sut_root:
             args += ["--sut-root", str(sut_root)]
         if self.cfg.projects_dir:
@@ -171,9 +176,11 @@ class Executor:
             args += ["--sut-ref", job.sha]
         return args
 
-    def _child_env(self, job: Job) -> dict[str, str]:
+    def _child_env(self, job: Job, slug: str | None = None) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if k not in self.cfg.scrub_env}
         env.update(self.cfg.base_env)
+        if self.resolver and slug:
+            env.update(self.resolver.env_vars(slug, (job.params or {}).get("environment")))
         env.update({k: str(v) for k, v in ((job.params or {}).get("env") or {}).items() if k in self.cfg.allowed_env})
         env["PYTHONUTF8"] = "1"
         return env
@@ -186,7 +193,7 @@ class Executor:
         deadline, next_heartbeat = time.monotonic() + timeout, 0.0
         with log_path.open("wb") as log:
             proc = subprocess.Popen([sys.executable, "-m", "qc_agent.core.cli", *self._argv(job, slug)],
-                                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, env=self._child_env(job),
+                                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, env=self._child_env(job, slug),
                                     start_new_session=(os.name != "nt"))
             while True:
                 try:

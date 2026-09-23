@@ -21,6 +21,12 @@ def _config(url: str) -> Config:
     return cfg
 
 
+def head_revision() -> str:
+    """Revision mới nhất trong thư mục migration (so với alembic_version của DB để biết service đã migrate chưa)."""
+    from alembic.script import ScriptDirectory
+    return ScriptDirectory.from_config(_config("postgresql://x/x")).get_current_head()
+
+
 def upgrade(url: str, revision: str = "head") -> None:
     command.upgrade(_config(url), revision)
 

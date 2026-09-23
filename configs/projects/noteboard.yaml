@@ -3,6 +3,16 @@
 slug: noteboard
 name: "Noteboard (SUT tham chiếu)"
 suites_dir: .qc-agent/suites
+sut_checkout: tests/fixtures/sut/noteboard   # trên máy service; project root tương đối. Dự án thật: đường dẫn tuyệt đối tới bản checkout luôn được cập nhật
+environments:
+  local:
+    description: toyapp chạy cục bộ (SUT tham chiếu)
+    env:
+      APP_BASE_URL: http://127.0.0.1:8000
+  # staging:                                  # ví dụ môi trường dùng chung, 1 job / lần
+  #   env: {APP_BASE_URL: "${env.NOTEBOARD_STAGING_URL}"}
+  #   concurrency_key: env:noteboard-staging
+  #   timeout_s: 1800
 sut:
   files: ["toyapp"]
   attrs: {model: "stub-rule-v1"}

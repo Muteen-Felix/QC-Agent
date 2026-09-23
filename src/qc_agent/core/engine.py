@@ -124,6 +124,11 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
     return RunResult(run_id, run_dir, gate.exit_code, gate, md, run_ctx)
 
 
+def select_tasks(plan: dict, only: str | None) -> list[str]:
+    """Task được chọn theo thứ tự chạy (toposort, --only + depends_on); raise PlanError nếu sai. Dùng để validate sớm ở API."""
+    return _select(plan, only)
+
+
 def judge(specs: dict, results: dict, plan_id: str, sut: str, yellow_exit: int, on_skipped_gate_task: str = "yellow"):
     """verdict.gate_verdict không biết --yellow-exit; gán exit_code thật ở đây để report.json khớp exit của tiến trình."""
     gate = gate_verdict(results, specs, skipped_gate_is_fail=(on_skipped_gate_task == "fail"))

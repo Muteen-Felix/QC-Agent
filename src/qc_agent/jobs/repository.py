@@ -8,6 +8,7 @@ from typing import Any, Iterable
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from qc_agent.jobs.models import JOB_SOURCES, TERMINAL_STATUSES, TRANSITIONS, Artifact, Job, JobTask, Project
@@ -190,3 +191,39 @@ def replace_job_results(session: Session, job_id: uuid.UUID, tasks: Iterable[dic
     session.execute(delete(Artifact).where(Artifact.job_id == job_id))
     add_job_tasks(session, job_id, tasks)
     add_artifacts(session, job_id, artifacts)
+
+
+def count_open_jobs(session: Session, project_slug: str) -> int:
+    """Job đang queued hoặc running của project (giới hạn hàng đợi)."""
+    return session.scalar(select(func.count()).select_from(Job).join(Project, Project.id == Job.project_id)
+                          .where(Project.slug == project_slug, Job.status.in_(("queued", "running")))) or 0
+
+
+def create_finished_job(session: Session, project_slug: str, *, external_id: str, mode: str, status: str,
+                        gate_verdict: str | None, exit_code: int | None, pr_number: int | None = None,
+                        sha: str | None = None, branch: str | None = None) -> tuple[Job, bool]:
+    """Ghi một run đã kết thúc do CI đẩy lên (source=ci). Idempotent theo (project, external_id):
+    gửi lại cùng external_id trả về job cũ (created=False), kể cả khi hai request đua nhau."""
+    if status not in TERMINAL_STATUSES:
+        raise ValueError("status phải là trạng thái kết thúc")
+    project = get_project(session, project_slug)
+    existing = session.scalar(select(Job).where(Job.project_id == project.id, Job.external_id == external_id))
+    if existing is not None:
+        return existing, False
+    now = _now()
+    job = Job(id=uuid.uuid4(), project_id=project.id, mode=mode, source="ci", status=status, external_id=external_id,
+              gate_verdict=gate_verdict, exit_code=exit_code, pr_number=pr_number, sha=sha, branch=branch,
+              started_at=now, finished_at=now, params={"ingested": True})
+    try:
+        with session.begin_nested():
+            session.add(job)
+            session.flush()
+    except IntegrityError:
+        existing = session.scalar(select(Job).where(Job.project_id == project.id, Job.external_id == external_id))
+        if existing is None:
+            raise
+        return existing, False
+    job.run_id = str(job.id)
+    session.flush()
+    session.refresh(job)
+    return job, True

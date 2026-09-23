@@ -112,6 +112,7 @@ class Job(Base):
     exit_code: Mapped[int | None] = mapped_column(Integer)
     run_id: Mapped[str | None] = mapped_column(String(64))
     error: Mapped[str | None] = mapped_column(Text)
+    external_id: Mapped[str | None] = mapped_column(String(128))  # id do CI cấp (vd. GITHUB_RUN_ID-attempt): ingest idempotent
 
     tasks: Mapped[list["JobTask"]] = relationship(back_populates="job", cascade="all, delete-orphan", order_by="JobTask.id")
     artifacts: Mapped[list["Artifact"]] = relationship(back_populates="job", cascade="all, delete-orphan", order_by="Artifact.id")
@@ -120,6 +121,7 @@ class Job(Base):
         CheckConstraint("status IN ('queued','running','succeeded','failed','cancelled','timed_out')", name="status_valid"),
         CheckConstraint("source IN ('web','ci')", name="source_valid"),
         CheckConstraint("gate_verdict IS NULL OR gate_verdict IN ('PASS','YELLOW','FAIL')", name="gate_verdict_valid"),
+        UniqueConstraint("project_id", "external_id", name="uq_jobs_project_external"),
         Index("ix_jobs_project_created", "project_id", "created_at"),
         Index("ix_jobs_status_priority_created", "status", "priority", "created_at"),
     )

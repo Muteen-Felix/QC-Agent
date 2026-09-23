@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import os
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 from jsonschema import Draft202012Validator
 
+from qc_agent import settings
 from qc_agent.core.plan import PlanError
 
 _NAME = r"^[a-z0-9][a-z0-9_-]*$"
@@ -41,7 +44,21 @@ PROJECT_SCHEMA = {
                 "probe_url": {"type": "string"},
             },
         },
-        "environments": {"type": "object"},  # chỗ cho staging/perf (bước sau): chưa có ngữ nghĩa
+        "sut_checkout": {"type": "string", "minLength": 1},  # thư mục checkout repo SUT TRÊN MÁY SERVICE (tương đối => theo project root)
+        "environments": {  # môi trường chạy thủ công (staging, perf...): cấu hình TẬP TRUNG, người dùng chỉ chọn theo tên
+            "type": "object",
+            "propertyNames": {"pattern": _NAME},
+            "additionalProperties": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "description": {"type": "string"},
+                    "env": {"type": "object", "additionalProperties": {"type": "string"}},  # giá trị có thể là ${env.TÊN} (bí mật của server)
+                    "concurrency_key": {"type": "string", "minLength": 1},  # 1 job / khoá (vd. perf trên staging dùng chung)
+                    "timeout_s": {"type": "number", "exclusiveMinimum": 0},
+                },
+            },
+        },
         "modes": {
             "type": "object",
             "minProperties": 1,
@@ -189,3 +206,57 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
         "on_skipped_gate_task": policy.get("on_skipped_gate_task"),
     }
     return {"name": plan["name"], "sut": sut, "tasks": tasks, "text": text}, meta
+
+
+_ENV_REF = re.compile(r"\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def list_projects(projects_dir) -> dict[str, dict]:
+    """Nạp và validate MỌI project trong thư mục; một file hỏng làm cả danh sách lỗi (fail-fast lúc khởi động service)."""
+    root = Path(projects_dir)
+    if not root.is_dir():
+        raise PlanError(f"thư mục project không tồn tại: {root}")
+    return {p.stem: load_project(p.stem, root) for p in sorted(root.glob("*.yaml"))}
+
+
+def file_sha256(path) -> str:
+    return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+class ProjectResolver:
+    """Từ cấu hình project (tập trung) suy ra: checkout của SUT, biến môi trường, khoá đồng thời, timeout của một environment.
+    Dùng chung cho API (validate lúc tạo job) và executor (lúc chạy). Bí mật `${env.X}` chỉ được thay ở executor, không bao giờ vào DB/API."""
+
+    def __init__(self, projects_dir, project_root=None):
+        self.projects_dir = Path(projects_dir)
+        self.project_root = Path(project_root) if project_root else settings.get().project_root
+
+    def project(self, slug: str) -> dict:
+        return load_project(slug, self.projects_dir)
+
+    def sut_checkout(self, slug: str) -> Path | None:
+        checkout = self.project(slug).get("sut_checkout")
+        if not checkout:
+            return None
+        path = Path(checkout)
+        return (path if path.is_absolute() else self.project_root / path).resolve()
+
+    def environment(self, slug: str, name: str | None) -> dict | None:
+        if not name:
+            return None
+        envs = self.project(slug).get("environments") or {}
+        if name not in envs:
+            raise PlanError(f"project {slug}: không có environment {name!r} (có: {', '.join(sorted(envs)) or 'không có'})")
+        return envs[name]
+
+    def env_vars(self, slug: str, name: str | None) -> dict[str, str]:
+        """Biến môi trường của environment với `${env.X}` lấy từ môi trường của TIẾN TRÌNH NÀY (secret của server)."""
+        environment = self.environment(slug, name)
+        out = {}
+        for key, value in ((environment or {}).get("env") or {}).items():
+            def sub(match):
+                if match.group(1) not in os.environ:
+                    raise PlanError(f"environment {name!r} cần biến môi trường {match.group(1)} trên máy chủ")
+                return os.environ[match.group(1)]
+            out[key] = _ENV_REF.sub(sub, value)
+        return out

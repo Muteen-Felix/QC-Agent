@@ -7,6 +7,10 @@
   QC_ALLOWED_EMAIL_DOMAINS  domain email được phép có tài khoản, cách nhau dấu phẩy (để trống = KHÔNG AI được thêm: fail-closed)
   QC_SESSION_TTL_HOURS      thời hạn phiên đăng nhập (mặc định 168)
   QC_LOGIN_MAX_FAILURES / QC_LOGIN_LOCKOUT_MINUTES  khoá tài khoản sau N lần sai liên tiếp (5 lần / 15 phút)
+  QC_COOKIE_SECURE          cookie phiên chỉ gửi qua HTTPS (mặc định true; đặt false khi dev bằng http)
+  QC_MAX_OPEN_JOBS_PER_PROJECT  giới hạn job queued+running của một project (mặc định 20)
+  QC_MAX_JOB_TIMEOUT_S      trần timeout người dùng được xin (mặc định 86400)
+  QC_MAX_INGEST_BYTES       kích thước tối đa một report CI đẩy lên (mặc định 5 MB)
   QC_SCHEMAS_DIR   thư mục chứa task_spec.json / result.json / capabilities.json (mặc định như trên)
 
 Chạy từ source (thư mục có pyproject.toml + schemas/): gốc repo là project root.
@@ -39,6 +43,10 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 168
     login_max_failures: int = 5
     login_lockout_minutes: int = 15
+    cookie_secure: bool = True
+    max_open_jobs_per_project: int = 20
+    max_job_timeout_s: float = 86400
+    max_ingest_bytes: int = 5 * 1024 * 1024
 
     @property
     def project_root(self) -> Path:
