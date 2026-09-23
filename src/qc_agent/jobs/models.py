@@ -58,6 +58,9 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))  # null khi đăng nhập qua IdP (Entra sau này)
     display_name: Mapped[str | None] = mapped_column(String(200))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    failed_attempts: Mapped[int] = mapped_column(Integer, server_default="0")  # đăng nhập sai liên tiếp
+    locked_until: Mapped[datetime | None] = _ts(nullable=True)
+    last_login_at: Mapped[datetime | None] = _ts(nullable=True)
     created_at: Mapped[datetime] = _ts(server_default=func.now())
     __table_args__ = (CheckConstraint("email = lower(email)", name="email_lowercase"),)
 

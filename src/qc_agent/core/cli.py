@@ -28,6 +28,9 @@ def main(argv: list[str]) -> int:
             stream.reconfigure(encoding="utf-8")
     _install_sigterm_handler()
     try:
+        if argv and argv[0] in ("user", "token"):  # quản trị tài khoản/token (cần QC_DATABASE_URL)
+            from qc_agent.auth.cli import main as admin_main
+            return admin_main(argv)
         if argv and argv[0] == "run":  # `qc-agent run --project ...` và `qc-agent --plan ...` đều được
             argv = argv[1:]
         args = _parser().parse_args(argv)

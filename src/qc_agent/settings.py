@@ -4,6 +4,9 @@
   QC_WORKERS_PATH  các thư mục manifest worker, ngăn cách bằng os.pathsep (mặc định: `workers/` của repo, hoặc bản đóng gói trong wheel)
   QC_PROJECTS_DIR  thư mục cấu hình project (`<slug>.yaml`; mặc định `configs/projects/`)
   QC_DATABASE_URL  PostgreSQL của service (postgresql://user:pass@host:5432/db); CLI chạy cục bộ không cần
+  QC_ALLOWED_EMAIL_DOMAINS  domain email được phép có tài khoản, cách nhau dấu phẩy (để trống = KHÔNG AI được thêm: fail-closed)
+  QC_SESSION_TTL_HOURS      thời hạn phiên đăng nhập (mặc định 168)
+  QC_LOGIN_MAX_FAILURES / QC_LOGIN_LOCKOUT_MINUTES  khoá tài khoản sau N lần sai liên tiếp (5 lần / 15 phút)
   QC_SCHEMAS_DIR   thư mục chứa task_spec.json / result.json / capabilities.json (mặc định như trên)
 
 Chạy từ source (thư mục có pyproject.toml + schemas/): gốc repo là project root.
@@ -32,6 +35,10 @@ class Settings(BaseSettings):
     schemas_dir: Path | None = None
     projects_dir: Path | None = None
     database_url: str = ""
+    allowed_email_domains: str = ""
+    session_ttl_hours: int = 168
+    login_max_failures: int = 5
+    login_lockout_minutes: int = 15
 
     @property
     def project_root(self) -> Path:
