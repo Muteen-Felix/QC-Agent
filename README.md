@@ -6,3 +6,5 @@
 - **Chạy orchestrator** (STEP 20): `python orchestrator.py --plan plans/demo.yaml`.
 
 Mỗi terminal mới: `. .\scripts\env.ps1` trước. Tài liệu: `docs/architecture.md`, `docs/plan-execution.md`.
+
+<!-- Test PR live demo -->
