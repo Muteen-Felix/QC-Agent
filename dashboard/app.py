@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -22,7 +20,6 @@ RUNS_DIR = Path(os.environ.get("QC_RUNS_DIR") or ROOT / "runs")
 REPORT_DIR = ROOT / "midscene_run" / "report"
 STATE_DIR = Path(__file__).resolve().parent / "_state"
 STATIC = Path(__file__).resolve().parent / "static"
-GENERATED_DIR = ROOT / "tests_generated"
 FIRST_TICKET = 101
 
 
@@ -135,34 +132,3 @@ def create_ticket(body: TicketIn):
         tickets.append(ticket)
         path.write_text(json.dumps(tickets, ensure_ascii=False, indent=2), encoding="utf-8")
     return ticket
-
-
-class PromoteIn(BaseModel):
-    run_id: str
-    finding_id: str
-
-
-@app.post("/api/promote", status_code=201)
-def promote_finding(body: PromoteIn):
-    """Sinh test Playwright thật từ finding qua tools/auto_promote.py (subprocess, timeout 30s)."""
-    finding = runs_reader.find_finding(RUNS_DIR, body.run_id, body.finding_id, REPORT_DIR)
-    if finding is None:
-        raise HTTPException(404, "không tìm thấy finding")
-    if not finding.get("promotable"):
-        raise HTTPException(422, "finding này không có repro_steps để promote")
-    cmd = [sys.executable, str(ROOT / "tools" / "auto_promote.py"),
-           "--run", body.run_id, "--finding", body.finding_id,
-           "--out", str(GENERATED_DIR), "--runs-dir", str(RUNS_DIR), "--report-dir", str(REPORT_DIR)]
-    try:
-        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=30)
-    except subprocess.TimeoutExpired:
-        raise HTTPException(504, "auto_promote.py timeout") from None
-    if proc.returncode != 0:
-        raise HTTPException(500, f"auto_promote.py lỗi: {(proc.stdout or proc.stderr).strip()[:500]}")
-    result = json.loads(proc.stdout.strip().splitlines()[-1])
-    previews = {}
-    for f in result.get("files", []):
-        p = Path(f)
-        if p.is_file():
-            previews[p.name] = p.read_text(encoding="utf-8")
-    return {**result, "previews": previews}

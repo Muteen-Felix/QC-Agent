@@ -171,70 +171,7 @@ def test_notifier_send_ok(tmp_path, monkeypatch):
     assert result["ok"] is True and result["channel"] == "slack"
 
 
-# --- auto_promote -----------------------------------------------------------------------------
-
-import importlib.util as _ilu  # noqa: E402
-_spec = _ilu.spec_from_file_location(
-    "auto_promote", pytest.importorskip("pathlib").Path(__file__).resolve().parents[2] / "tools" / "auto_promote.py")
-auto_promote = _ilu.module_from_spec(_spec)
-_spec.loader.exec_module(auto_promote)
-
-
-def test_auto_promote_generates_both_files_mapped_ok(tree, tmp_path):
-    runs, reports = tree
-    out = tmp_path / "generated"
-    result = auto_promote.promote(runs, reports, out, "r-0002", "f-1")
-    assert result["ok"] is True and result["exists"] is False and result["mapped_ok"] is True
-    py_text = (out / "test_promoted_f_1.py").read_text(encoding="utf-8")
-    js_text = (out / "promoted_f_1.spec.mjs").read_text(encoding="utf-8")
-    assert "page.goto(BASE" in py_text and "wait_for_function" in py_text
-    assert "page.goto(BASE" in js_text and "waitForFunction" in js_text
-    assert "ab" * 32 in py_text  # sha256 của evidence phải xuất hiện trong header
-
-
-def test_auto_promote_unmapped_step_fails_explicitly(tree, tmp_path):
-    runs, reports = tree
-    (runs / "r-0002" / "results" / "t-101.json").write_text(json.dumps({
-        "task_id": "t-101", "status": "pass", "worker": {"name": "midscene-cli"}, "verdict": {"gating": False},
-        "findings": [{"finding_id": "f-weird", "title": "x",
-                      "promote_candidate": {"repro_steps": ["làm một điều gì đó lạ"],
-                                             "suggested_assertion": "không rõ ràng"}}],
-        "evidence": [],
-    }, ensure_ascii=False), encoding="utf-8")
-    out = tmp_path / "generated"
-    result = auto_promote.promote(runs, reports, out, "r-0002", "f-weird")
-    assert result["mapped_ok"] is False
-    py_text = (out / "test_promoted_f_weird.py").read_text(encoding="utf-8")
-    assert "pytest.fail(" in py_text  # không âm thầm pass
-
-
-def test_auto_promote_rejects_path_traversal_finding_id(tree, tmp_path):
-    runs, reports = tree
-    with pytest.raises(ValueError):
-        auto_promote.promote(runs, reports, tmp_path / "generated", "r-0002", "../../evil")
-
-
-def test_auto_promote_does_not_overwrite_without_force(tree, tmp_path):
-    runs, reports = tree
-    out = tmp_path / "generated"
-    first = auto_promote.promote(runs, reports, out, "r-0002", "f-1")
-    (out / "test_promoted_f_1.py").write_text("# edited by hand", encoding="utf-8")
-    second = auto_promote.promote(runs, reports, out, "r-0002", "f-1")
-    assert first["exists"] is False and second["exists"] is True
-    assert (out / "test_promoted_f_1.py").read_text(encoding="utf-8") == "# edited by hand"
-
-
-# --- API: promote & alerts --------------------------------------------------------------------
-
-def test_api_promote_404_and_success(client, tree, tmp_path, monkeypatch):
-    runs, reports = tree
-    monkeypatch.setattr(app_mod, "GENERATED_DIR", tmp_path / "generated")
-    assert client.post("/api/promote", json={"run_id": "r-0002", "finding_id": "nope"}).status_code == 404
-    r = client.post("/api/promote", json={"run_id": "r-0002", "finding_id": "f-1"})
-    assert r.status_code == 201
-    body = r.json()
-    assert body["ok"] is True and len(body["previews"]) == 2
-
+# --- API: alerts ------------------------------------------------------------------------------
 
 def test_api_summary_never_leaks_webhook_url(client, monkeypatch):
     monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.slack.com/services/SECRET")

@@ -134,7 +134,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const fmtS = s => s == null ? "—" : (s >= 60 ? `${Math.floor(s/60)}m${String(Math.round(s%60)).padStart(2,"0")}s` : `${s.toFixed(1)}s`);
 const badge = v => `<span class="badge b-${esc(v)}">${esc(v)}</span>`;
 const WORKER_ICON = {"schemathesis":"🧪","k6":"⚡","deepeval":"🧠","midscene-cli":"👁️","http-collect":"📥"};
-let selected = null, lastTicket = null, lastPromote = null, lastKind = null, polling = null;
+let selected = null, lastTicket = null, lastKind = null, polling = null;
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -218,8 +218,6 @@ async function selectRun(id) {
             </div>
             <div class="flex flex-col gap-2 shrink-0">
               <button onclick="createTicket('${esc(r.run_id)}','${esc(f.finding_id)}')" class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-3 py-2 rounded-lg">📌 Tạo Ticket Jira</button>
-              <button onclick="promoteFinding('${esc(r.run_id)}','${esc(f.finding_id)}')" ${f.promotable ? "" : "disabled"}
-                class="bg-violet-600 hover:bg-violet-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-semibold px-3 py-2 rounded-lg">🧬 Promote to Test Case</button>
             </div>
           </div>
           ${f.repro_steps.length ? `<ol class="list-decimal ml-5 text-sm mt-2">${f.repro_steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}
@@ -253,34 +251,11 @@ async function createTicket(runId, findingId) {
   } catch (e) { toast("Lỗi: " + e.message, false); }
 }
 
-async function promoteFinding(runId, findingId) {
-  try {
-    const p = await api("/api/promote", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({run_id: runId, finding_id: findingId})});
-    lastPromote = p; lastKind = "promote";
-    const names = p.files.map(f => f.split(/[\\/]/).pop()).join(", ");
-    const note = p.exists ? " (đã tồn tại từ trước — không ghi đè)" : "";
-    toast(`🧬 Đã sinh test: ${names}${note}`, true);
-  } catch (e) { toast("Lỗi: " + e.message, false); }
-}
-
 function openTicket() {
-  if (lastKind === "promote") { showPromote(); return; }
   if (!lastTicket) return;
   $("modalTitle").textContent = `${lastTicket.key} · ${lastTicket.summary}`;
   $("modalNote").innerHTML = `<span class="badge b-mock">MOCK</span> Chưa nối Jira thật — ticket nháp lưu tại dashboard/_state/tickets.json. SHA256 là hash thật của file evidence.`;
   $("modalBody").textContent = JSON.stringify(lastTicket, null, 2);
-  $("modal").classList.remove("hidden");
-}
-
-function showPromote() {
-  if (!lastPromote) return;
-  const names = lastPromote.files.map(f => f.split(/[\\/]/).pop());
-  $("modalTitle").textContent = `🧬 Test đã sinh: ${names.join(", ")}`;
-  $("modalNote").textContent = lastPromote.exists
-    ? "File đã tồn tại từ trước — không ghi đè. Xem nội dung hiện có bên dưới."
-    : "GENERATED — review trước khi merge. .py sẽ SKIP nếu chưa cài playwright (python); .mjs chạy thật bằng Node ngay bây giờ.";
-  const bodies = Object.entries(lastPromote.previews || {}).map(([n, c]) => `--- ${n} ---\n${c}`).join("\n\n");
-  $("modalBody").textContent = bodies || JSON.stringify(lastPromote, null, 2);
   $("modal").classList.remove("hidden");
 }
 

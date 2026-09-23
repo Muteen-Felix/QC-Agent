@@ -23,10 +23,3 @@ python -m pytest dashboard/tests -q
 `dashboard/notifier.py`. Không có env → chỉ ghi log vào `dashboard/_state/alerts.log` (không bao
 giờ ghi URL — đó là secret). Nút "Gửi thử" trên header gọi `POST /api/alerts/test`.
 `.github/workflows/qc-gate.yml` dùng lại đúng module này để CI cũng gửi được thông báo.
-
-## Auto-Promote (v2)
-
-Nút **🧬 Promote to Test Case** trên mỗi finding của Midscene gọi `tools/auto_promote.py`, sinh
-2 file test Playwright vào `tests_generated/` (một `.py` sẽ SKIP vì `.venv` chưa có gói Python
-`playwright`, một `.mjs` chạy thật ngay bằng `node_modules/playwright` đã cài sẵn). Xem
-`tests_generated/README.md` để biết cách chạy và giới hạn của cách "dịch" repro_steps → code.
