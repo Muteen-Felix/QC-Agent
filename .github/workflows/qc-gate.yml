@@ -90,7 +90,7 @@ jobs:
           QC_JUDGE_FALLBACK_MODEL: ${{ secrets.QC_JUDGE_FALLBACK_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python orchestrator.py --plan plan.yaml
+        run: python orchestrator.py --plan plan.yaml --on-skipped-gate-task fail
         # exit 0 = gate PASS, exit 1 = gate FAIL (job đỏ, chặn merge nếu bật branch protection),
         # exit khác = lỗi hệ thống (cũng chặn merge).
 

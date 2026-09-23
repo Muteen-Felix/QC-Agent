@@ -16,6 +16,7 @@ from qc_agent.core import registry, report, runner, signature
 from qc_agent.core.plan import ROOT, PlanError, load_plan, resolve, toposort
 from qc_agent.core.verdict import FAIL, PASS, YELLOW, GateVerdict, canary_alerts, gate_verdict
 
+SKIPPED_POLICIES = ("yellow", "fail")
 _RUN_ID = re.compile(r"^r-(\d{4})$")
 
 
@@ -40,9 +41,11 @@ class RunResult:
 
 
 def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int = 0,
-             workers_dirs=None, run_id: str | None = None) -> RunResult:
+             workers_dirs=None, run_id: str | None = None, on_skipped_gate_task: str = "yellow") -> RunResult:
     """Chạy một plan. `run_id=None` => cấp `r-NNNN` (nguyên tử: hai lời gọi song song không bao giờ trùng id).
     Lỗi plan/cấu hình raise PlanError/ManifestError TRƯỚC khi worker chạy, và dọn thư mục run đã tạo."""
+    if on_skipped_gate_task not in SKIPPED_POLICIES:
+        raise PlanError(f"on_skipped_gate_task phải là {'|'.join(SKIPPED_POLICIES)}, nhận {on_skipped_gate_task!r}")
     plan = load_plan(plan_path)
     runs_dir = Path(runs_dir)
     plan_id = signature.plan_id(plan["text"])
@@ -86,7 +89,7 @@ def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int =
     results = runner.run_all(specs, extras, _Registry(workers), run_dir)  # runner tự truyền QC_RUNS_DIR cho từng worker
     wallclock = time.perf_counter() - started
 
-    signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit)
+    signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit, on_skipped_gate_task)
     run_ctx = report.RunContext(
         run_id=run_id, plan_id=plan_id, plan_name=plan["name"], plan_path=Path(plan_path).as_posix(),
         plan_text=plan["text"], sut_id=sut, run_signature=signature_hex, generated_at=now(),
@@ -96,9 +99,9 @@ def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int =
     return RunResult(run_id, run_dir, gate.exit_code, gate, md, run_ctx)
 
 
-def judge(specs: dict, results: dict, plan_id: str, sut: str, yellow_exit: int):
+def judge(specs: dict, results: dict, plan_id: str, sut: str, yellow_exit: int, on_skipped_gate_task: str = "yellow"):
     """verdict.gate_verdict không biết --yellow-exit; gán exit_code thật ở đây để report.json khớp exit của tiến trình."""
-    gate = gate_verdict(results, specs)
+    gate = gate_verdict(results, specs, skipped_gate_is_fail=(on_skipped_gate_task == "fail"))
     code = {PASS: 0, YELLOW: yellow_exit, FAIL: 1}[gate.value]
     return signature.run_signature(plan_id, sut, results, specs), dataclasses.replace(gate, exit_code=code)
 

@@ -42,6 +42,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--plan", help="file plan YAML (bắt buộc trừ khi có --rerender)")
     ap.add_argument("--only", help="chỉ chạy các task này, vd t-a,t-b (phải kèm đủ task được depends_on)")
     ap.add_argument("--yellow-exit", type=int, default=0, metavar="N", help="exit code khi gate YELLOW (mặc định 0)")
+    ap.add_argument("--on-skipped-gate-task", choices=engine.SKIPPED_POLICIES, default="yellow",
+                    help="task gate bị skipped: yellow (mặc định, theo --yellow-exit) hoặc fail (gate FAIL, exit 1)")
     ap.add_argument("--runs-dir", default=str(settings.get().runs_dir), help="mặc định $QC_RUNS_DIR hoặc runs")
     ap.add_argument("--workers-dir", action="append", metavar="DIR",
                     help="thư mục manifest worker (lặp được); mặc định $QC_WORKERS_PATH hoặc workers/")
@@ -55,7 +57,8 @@ def _run(args) -> int:
         raise PlanError("thiếu --plan (chỉ được bỏ khi dùng --rerender)")
     result = engine.run_plan(
         args.plan, Path(args.runs_dir), only=args.only, yellow_exit=args.yellow_exit,
-        workers_dirs=[Path(d) for d in args.workers_dir] if args.workers_dir else None)
+        workers_dirs=[Path(d) for d in args.workers_dir] if args.workers_dir else None,
+        on_skipped_gate_task=args.on_skipped_gate_task)
     print(result.report_md, end="")
     return result.exit_code
 
@@ -78,7 +81,7 @@ def _rerender(args) -> int:
     }
     plan_id = signature.plan_id(plan["text"])
     sut = signature.sut_id(_read_json(run_dir / "sut_identity.json"))
-    signature_hex, gate = engine.judge(specs, results, plan_id, sut, args.yellow_exit)
+    signature_hex, gate = engine.judge(specs, results, plan_id, sut, args.yellow_exit, args.on_skipped_gate_task)
     try:
         wallclock = float(_read_json(run_dir / "report.json")["details"]["wallclock_s"])
     except (PlanError, KeyError, TypeError, ValueError):

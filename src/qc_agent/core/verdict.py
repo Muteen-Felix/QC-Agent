@@ -14,9 +14,11 @@ class GateVerdict:
     banner: list = field(default_factory=list)  # in Ở ĐẦU report: skipped / error
 
 
-def gate_verdict(results: dict, specs: dict) -> GateVerdict:
-    """results: {task_id: result_dict}; specs: {task_id: spec_dict} — chỉ gồm task ĐƯỢC CHỌN."""
-    reasons, banner = [], []
+def gate_verdict(results: dict, specs: dict, skipped_gate_is_fail: bool = False) -> GateVerdict:
+    """results: {task_id: result_dict}; specs: {task_id: spec_dict} — chỉ gồm task ĐƯỢC CHỌN.
+    skipped_gate_is_fail: task lane gate bị skipped (thiếu tool/probe hỏng/phụ thuộc không đạt) => FAIL thay vì YELLOW,
+    để gate không xanh giả khi một phần gate không chạy (mặc định False để giữ hành vi cũ)."""
+    reasons, banner, skipped_gate = [], [], []
     fail = yellow = False
     gating_seen = 0
     for tid, spec in specs.items():
@@ -36,6 +38,7 @@ def gate_verdict(results: dict, specs: dict) -> GateVerdict:
             banner.append((tid, "skipped: " + str((r["verdict"].get("rationale") or ""))[:120]))
             if lane == "gate":
                 yellow = True
+                skipped_gate.append(tid)
         elif r["verdict"]["gating"]:
             gating_seen += 1
             if r["verdict"]["value"] != "pass":
@@ -44,6 +47,9 @@ def gate_verdict(results: dict, specs: dict) -> GateVerdict:
     if lane_has_gate(specs) and gating_seen == 0 and not fail:
         fail = True
         reasons.append(("*", "không có result gating nào — không có gate"))  # chặn AND-rỗng
+    if skipped_gate_is_fail and skipped_gate:
+        fail = True
+        reasons.extend((tid, "skipped ở gate lane (on_skipped_gate_task=fail)") for tid in skipped_gate)
     if fail:
         return GateVerdict(FAIL, 1, reasons, banner)
     if yellow:
