@@ -1,0 +1,4 @@
+# Người được tính là approval hợp lệ cho thay đổi contract (schemas/*, workers/_template.yaml).
+# Điền GitHub username (không có @). Để trống => job contract-check FAIL (fail-closed).
+core: []        # Lead/Core: MAJOR cần >= 1 người trong nhóm này
+reviewers: []   # người duyệt khác

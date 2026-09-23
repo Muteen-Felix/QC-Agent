@@ -44,4 +44,4 @@ Toàn bộ: `pytest -q`. Cổng kiểm tay: `python orchestrator.py --plan tests
 - **Cấm `if worker == ...` trong `core/`**: mọi khác biệt giữa worker phải nằm ở manifest, adapter hoặc oracle.
 - **Cấm thêm trường riêng của một worker vào schema**: một schema chung là thứ cho phép thêm worker mà không sửa `core/`.
 - **Cấm retry khi `fail`**: chỉ `error` (hạ tầng) được retry đúng 1 lần; retry `fail` che flakiness và làm gate xanh giả.
-- **Cấm sửa file contract sau freeze** (`schemas/task_spec.json`, `schemas/result.json`, `workers/_template.yaml`): `python tools\freeze_contract.py --check` phải exit 0; đổi contract cần cả 3 người đồng ý.
+- **Cấm sửa file contract ngoài quy trình SemVer** (`schemas/task_spec.json`, `schemas/result.json`, `workers/_template.yaml`): `python tools/freeze_contract.py --check` phải exit 0. Thêm field an toàn (v1.x): bump minor, CI `contract-check` tự phân loại, cần 1 approval. Sửa/xoá/thu hẹp (v2.0): bump major, cần 3 approval trong đó có Lead/Core, rồi mới `freeze_contract.py --write --version X.Y.Z`. Danh sách người duyệt: `.github/contract-reviewers.yaml`.
