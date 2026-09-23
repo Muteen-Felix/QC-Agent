@@ -7,7 +7,7 @@ Chạy từ thư mục gốc repo (adapter được spawn bằng `python -m`, đ
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1        # 1. dựng .venv + cài phụ thuộc
 .\scripts\toyapp.ps1 start                                              # 2. bật toy app (127.0.0.1:8000)
-. .\scripts\env.ps1; python orchestrator.py --plan plans\demo.yaml      # 3. chạy gate, in report, ghi runs\r-NNNN\
+. .\scripts\env.ps1; python orchestrator.py --plan testsixtures\plans\demo.yaml      # 3. chạy gate, in report, ghi runs\r-NNNN\
 ```
 
 Exit code: `PASS` 0 · `YELLOW` = `--yellow-exit` (mặc định 0) · `FAIL` 1 · lỗi plan/hệ thống **3**.
@@ -21,7 +21,7 @@ Exit code: `PASS` 0 · `YELLOW` = `--yellow-exit` (mặc định 0) · `FAIL` 1 
 2. `schemas/<cap>.inputs.json`: schema của `inputs`. Tuỳ chọn ở PoC (D-08).
 3. `adapters/<tên>_adapter.py`: kế thừa `Adapter` (`adapters/_base.py`), khai `NAME` + `ADAPTER_VERSION`, **chỉ override `build_cmd` và `parse_output`**.
 4. `oracle/<kind>.py` nếu `oracle.kind` là mới: dùng `@register("<kind>")`, không phải sửa `oracle/__init__.py`.
-5. Thêm task vào `plans/<plan>.yaml`. Nhớ quote khoá `"on":` trong `retry`, vì YAML đọc `on` trần thành `True`.
+5. Thêm task vào `tests/fixtures/plans/<plan>.yaml`. Nhớ quote khoá `"on":` trong `retry`, vì YAML đọc `on` trần thành `True`.
 
 **Tuyệt đối không sửa `core/`.** Nếu bạn thấy phải sửa, thiết kế đang sai: dừng lại và hỏi cả nhóm.
 
@@ -36,7 +36,7 @@ Nếu A (chủ `core/`) kẹt, hai người còn lại nhận việc theo bảng
 | C | `core/plan.py` | `pytest tests\test_plan.py -q` |
 | C | `core/schema.py` | `pytest tests\test_schema.py -q` |
 
-Toàn bộ: `pytest -q`. Cổng kiểm tay: `python orchestrator.py --plan plans\demo.yaml` phải `exit=0`, `plans\demo_fail.yaml` phải `exit=1`.
+Toàn bộ: `pytest -q`. Cổng kiểm tay: `python orchestrator.py --plan testsixtures\plans\demo.yaml` phải `exit=0`, `testsixtures\plans\demo_fail.yaml` phải `exit=1`.
 
 ## Cấm
 

@@ -10,7 +10,7 @@ from core import schema
 from fake_adapter import FakeAdapter
 from oracle import OracleError
 
-_K6 = json.loads((Path(__file__).resolve().parent.parent / "examples" / "task.k6.json").read_text(encoding="utf-8-sig"))
+_K6 = json.loads((Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "contract" / "task.k6.json").read_text(encoding="utf-8-sig"))
 
 
 @pytest.fixture(autouse=True)

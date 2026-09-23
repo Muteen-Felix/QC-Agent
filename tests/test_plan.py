@@ -9,7 +9,7 @@ from core import plan, schema
 
 
 ROOT = Path(__file__).resolve().parent.parent
-BASE_TASK = json.loads((ROOT / "examples" / "task.k6.json").read_text(encoding="utf-8-sig"))
+BASE_TASK = json.loads((ROOT / "tests" / "fixtures" / "contract" / "task.k6.json").read_text(encoding="utf-8-sig"))
 for _field in ("plan_id", "run_id", "sut_identity_ref"):
     BASE_TASK.pop(_field)
 

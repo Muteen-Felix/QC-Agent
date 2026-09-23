@@ -9,8 +9,8 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-DEMO = ROOT / "plans" / "demo.yaml"
-DEMO_FAIL = ROOT / "plans" / "demo_fail.yaml"
+DEMO = ROOT / "tests" / "fixtures" / "plans" / "demo.yaml"
+DEMO_FAIL = ROOT / "tests" / "fixtures" / "plans" / "demo_fail.yaml"
 
 
 def run_cli(tmp_path, *args):

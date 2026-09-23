@@ -1,6 +1,6 @@
 """Validate file JSON theo contract.
-    python tools/validate.py result examples/result.*.json
-    python tools/validate.py task   examples/task.*.json
+    python tools/validate.py result tests/fixtures/contract/result.*.json
+    python tools/validate.py task   tests/fixtures/contract/task.*.json
 Exit 0 = tất cả PASS · 1 = có file FAIL.
 """
 import json, pathlib, sys
