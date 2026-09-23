@@ -30,6 +30,7 @@ from typing import Callable
 from sqlalchemy import Engine, text
 
 from qc_agent.core import runner
+from qc_agent.core.proctree import kill_tree
 from qc_agent.core.project import ProjectResolver
 from qc_agent.core.evidence import sha256_file
 from qc_agent.jobs import repository as repo
@@ -254,7 +255,7 @@ class Executor:
             with suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=self.cfg.cancel_grace_s)
                 return
-        runner._kill_tree(proc)
+        kill_tree(proc)
         with suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=5)
 

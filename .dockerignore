@@ -1,0 +1,23 @@
+# Ngữ cảnh build chỉ gồm những gì Dockerfile COPY; loại mọi thứ khác để build nhanh và không lộ dữ liệu cục bộ.
+.git
+.github
+.venv
+node_modules
+__pycache__
+*.pyc
+.pytest_cache
+runs
+midscene_run
+.env
+.env.*
+role-a
+docs
+tests
+tools
+*.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+!package.json
+!package-lock.json
+!docker/npx

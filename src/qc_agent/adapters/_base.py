@@ -7,7 +7,6 @@ KHÔNG được có tên worker cụ thể nào trong file này.
 import argparse
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -18,6 +17,7 @@ from pathlib import Path
 from qc_agent import oracle
 from qc_agent.core import evidence as evidence_lib
 from qc_agent.core import schema
+from qc_agent.core.proctree import kill_tree
 from qc_agent.oracle import OracleError
 
 
@@ -151,21 +151,7 @@ class Adapter(ABC):
 
     @staticmethod
     def _kill_tree(proc: subprocess.Popen) -> None:
-        try:
-            if os.name == "nt":
-                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
-            else:
-                os.killpg(proc.pid, signal.SIGKILL)
-        except OSError:
-            pass  # cây đã chết sẵn
-        try:
-            proc.kill()  # dự phòng cho tiến trình gốc nếu lệnh trên không tới được
-        except OSError:
-            pass
-        try:
-            proc.communicate(timeout=5)  # gom nốt output, tránh zombie
-        except subprocess.TimeoutExpired:
-            pass  # cháu còn giữ pipe: bỏ qua. KHÔNG đóng pipe ở đây — luồng đọc (daemon) đang giữ nó, close() sẽ treo
+        kill_tree(proc)  # cả cây, kể cả hậu duệ ở session khác (core/proctree.py); KHÔNG đóng pipe ở đó: luồng đọc đang giữ nó
 
     def main(self, argv=None) -> int:
         """Luôn exit 0 kể cả khi result là fail/error (verdict nằm trong JSON). Exit 2 nếu spec không đọc/parse/hợp lệ."""

@@ -2,7 +2,6 @@
 Runner chỉ biết `worker.module` do registry trả về. KHÔNG được có tên worker cụ thể nào trong file này."""
 import json
 import os
-import signal
 import subprocess
 import sys
 import threading
@@ -10,6 +9,7 @@ import time
 from pathlib import Path
 
 from qc_agent.core import schema
+from qc_agent.core.proctree import kill_tree
 
 _ACTIVE: set = set()  # worker đang chạy; terminate_active() giết cây của chúng khi tiến trình bị SIGTERM (huỷ job)
 _ACTIVE_LOCK = threading.Lock()
@@ -130,21 +130,7 @@ def terminate_active() -> None:
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
-    try:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
-        else:
-            os.killpg(proc.pid, signal.SIGKILL)
-    except OSError:
-        pass  # cây đã chết sẵn
-    try:
-        proc.kill()  # dự phòng cho tiến trình gốc
-    except OSError:
-        pass
-    try:
-        proc.communicate(timeout=5)  # gom nốt output, tránh zombie
-    except subprocess.TimeoutExpired:
-        pass  # cháu còn giữ pipe: bỏ qua, đóng pipe ở đây sẽ treo luồng đọc
+    kill_tree(proc)  # giết CẢ CÂY kể cả hậu duệ ở session khác (xem core/proctree.py)
 
 
 def _write(path: Path, obj: dict) -> None:
