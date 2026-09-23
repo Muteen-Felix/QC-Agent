@@ -37,8 +37,9 @@ def sut_alive(url: str = SUT_PROBE, timeout: float = 2.0) -> bool:
 
 
 class Job:
-    def __init__(self, root: Path, runs_dir: Path, state_dir: Path):
+    def __init__(self, root: Path, runs_dir: Path, state_dir: Path, on_finish=None):
         self.root, self.runs_dir, self.state_dir = root, runs_dir, state_dir
+        self.on_finish = on_finish  # callback(run_id, exit_code) khi job kết thúc (done hoặc error); lỗi bị nuốt
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
         self.state, self.exit_code, self.log_path = "idle", None, None
@@ -67,6 +68,11 @@ class Job:
         log.close()
         self.exit_code, self.ended = code, time.time()
         self.state = "done" if code in DONE_CODES else "error"
+        if self.on_finish is not None:
+            try:
+                self.on_finish(self.new_run_id(), code)
+            except Exception:  # webhook lỗi không được làm hỏng trạng thái job
+                pass
 
     def _existing(self) -> set[str]:
         if not self.runs_dir.is_dir():

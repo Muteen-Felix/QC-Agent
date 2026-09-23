@@ -133,13 +133,16 @@ def run_detail(runs_dir: Path, run_id: str, report_dir: Path) -> dict | None:
         })
         if not gating:  # discovery lane: heuristic, không chặn gate
             for f in r.get("findings") or []:
+                candidate = f.get("promote_candidate") or {}
                 findings.append({
                     "task_id": task_id,
                     "finding_id": f.get("finding_id"),
                     "title": f.get("title"),
                     "detected_by": f.get("detected_by"),
                     "severity": f.get("severity_hint"),
-                    "repro_steps": (f.get("promote_candidate") or {}).get("repro_steps") or [],
+                    "repro_steps": candidate.get("repro_steps") or [],
+                    "suggested_assertion": candidate.get("suggested_assertion"),
+                    "promotable": bool(candidate.get("repro_steps")),
                     "evidence": evidence,
                 })
     return {

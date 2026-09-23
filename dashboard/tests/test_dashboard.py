@@ -33,7 +33,8 @@ def tree(tmp_path):
     _write(run / "results" / "t-101.json", {
         "task_id": "t-101", "status": "pass", "worker": {"name": "midscene-cli"}, "verdict": {"gating": False},
         "findings": [{"finding_id": "f-1", "title": "DOM không đổi", "severity_hint": "high",
-                      "promote_candidate": {"repro_steps": ["mở /", "bấm Xoá"]}}],
+                      "promote_candidate": {"repro_steps": ["mở /", "thêm một note", "bấm Xoá"],
+                                             "suggested_assertion": "sau khi bấm Xoá, note không còn trong danh sách"}}],
         "evidence": [{"uri": "runs/r-0002/t-101/summary.json", "sha256": "ab" * 32}],
     })
     _write(run / "t-101" / "summary.json", {"results": [
@@ -104,3 +105,139 @@ def test_trigger_refuses_when_sut_offline(client, tree):
     before = sorted(p.name for p in runs.iterdir())
     assert client.post("/api/run").status_code == 412
     assert sorted(p.name for p in runs.iterdir()) == before  # không tạo run mới
+
+
+def test_finding_carries_assertion_and_promotable_flag(tree):
+    runs, reports = tree
+    d = runs_reader.run_detail(runs, "r-0002", reports)
+    f = d["findings"][0]
+    assert f["promotable"] is True
+    assert f["suggested_assertion"] == "sau khi bấm Xoá, note không còn trong danh sách"
+
+
+# --- notifier -------------------------------------------------------------------------------
+
+from dashboard import notifier  # noqa: E402
+
+
+@pytest.mark.parametrize("url,channel,key", [
+    ("https://hooks.slack.com/services/x", "slack", "text"),
+    ("https://discord.com/api/webhooks/x", "discord", "content"),
+    ("https://api.telegram.org/botTOKEN/sendMessage", "telegram", "text"),
+    ("https://example.com/hook", "generic", "text"),
+])
+def test_notifier_payload_shape_per_channel(url, channel, key, monkeypatch):
+    assert notifier.channel_for(url) == channel
+    monkeypatch.setenv("ALERT_TELEGRAM_CHAT_ID", "123")
+    payload = notifier._payload(channel, "hello")
+    assert key in payload and payload[key] == "hello"
+
+
+def test_notifier_build_message_uses_run_detail(tree):
+    runs, reports = tree
+    text = notifier.build_message(runs, "r-0002", 1, reports)
+    assert "r-0002" in text and "FAIL" in text and "DOM không đổi" in text
+    assert "#run=r-0002" in text
+
+
+def test_notifier_no_url_only_logs(tmp_path, monkeypatch):
+    monkeypatch.delenv("ALERT_WEBHOOK_URL", raising=False)
+    state = tmp_path / "_state"
+    result = notifier.send(None, "hi", state, "r-0002")
+    assert result["ok"] is False
+    log = (state / "alerts.log").read_text(encoding="utf-8")
+    assert "r-0002" in log and "hi" not in log  # message text không nhất thiết phải log, URL chắc chắn không
+
+
+def test_notifier_send_never_raises_on_network_error(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise OSError("no network")
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", boom)
+    state = tmp_path / "_state"
+    result = notifier.send("https://hooks.slack.com/services/x", "hi", state, "r-0002")
+    assert result["ok"] is False
+    log = (state / "alerts.log").read_text(encoding="utf-8")
+    assert "hooks.slack.com" not in log  # URL (secret) không bao giờ bị ghi log
+
+
+def test_notifier_send_ok(tmp_path, monkeypatch):
+    class FakeResp:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", lambda *a, **k: FakeResp())
+    state = tmp_path / "_state"
+    result = notifier.send("https://hooks.slack.com/services/x", "hi", state, "r-0002")
+    assert result["ok"] is True and result["channel"] == "slack"
+
+
+# --- auto_promote -----------------------------------------------------------------------------
+
+import importlib.util as _ilu  # noqa: E402
+_spec = _ilu.spec_from_file_location(
+    "auto_promote", pytest.importorskip("pathlib").Path(__file__).resolve().parents[2] / "tools" / "auto_promote.py")
+auto_promote = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(auto_promote)
+
+
+def test_auto_promote_generates_both_files_mapped_ok(tree, tmp_path):
+    runs, reports = tree
+    out = tmp_path / "generated"
+    result = auto_promote.promote(runs, reports, out, "r-0002", "f-1")
+    assert result["ok"] is True and result["exists"] is False and result["mapped_ok"] is True
+    py_text = (out / "test_promoted_f_1.py").read_text(encoding="utf-8")
+    js_text = (out / "promoted_f_1.spec.mjs").read_text(encoding="utf-8")
+    assert "page.goto(BASE" in py_text and "wait_for_function" in py_text
+    assert "page.goto(BASE" in js_text and "waitForFunction" in js_text
+    assert "ab" * 32 in py_text  # sha256 của evidence phải xuất hiện trong header
+
+
+def test_auto_promote_unmapped_step_fails_explicitly(tree, tmp_path):
+    runs, reports = tree
+    (runs / "r-0002" / "results" / "t-101.json").write_text(json.dumps({
+        "task_id": "t-101", "status": "pass", "worker": {"name": "midscene-cli"}, "verdict": {"gating": False},
+        "findings": [{"finding_id": "f-weird", "title": "x",
+                      "promote_candidate": {"repro_steps": ["làm một điều gì đó lạ"],
+                                             "suggested_assertion": "không rõ ràng"}}],
+        "evidence": [],
+    }, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "generated"
+    result = auto_promote.promote(runs, reports, out, "r-0002", "f-weird")
+    assert result["mapped_ok"] is False
+    py_text = (out / "test_promoted_f_weird.py").read_text(encoding="utf-8")
+    assert "pytest.fail(" in py_text  # không âm thầm pass
+
+
+def test_auto_promote_rejects_path_traversal_finding_id(tree, tmp_path):
+    runs, reports = tree
+    with pytest.raises(ValueError):
+        auto_promote.promote(runs, reports, tmp_path / "generated", "r-0002", "../../evil")
+
+
+def test_auto_promote_does_not_overwrite_without_force(tree, tmp_path):
+    runs, reports = tree
+    out = tmp_path / "generated"
+    first = auto_promote.promote(runs, reports, out, "r-0002", "f-1")
+    (out / "test_promoted_f_1.py").write_text("# edited by hand", encoding="utf-8")
+    second = auto_promote.promote(runs, reports, out, "r-0002", "f-1")
+    assert first["exists"] is False and second["exists"] is True
+    assert (out / "test_promoted_f_1.py").read_text(encoding="utf-8") == "# edited by hand"
+
+
+# --- API: promote & alerts --------------------------------------------------------------------
+
+def test_api_promote_404_and_success(client, tree, tmp_path, monkeypatch):
+    runs, reports = tree
+    monkeypatch.setattr(app_mod, "GENERATED_DIR", tmp_path / "generated")
+    assert client.post("/api/promote", json={"run_id": "r-0002", "finding_id": "nope"}).status_code == 404
+    r = client.post("/api/promote", json={"run_id": "r-0002", "finding_id": "f-1"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["ok"] is True and len(body["previews"]) == 2
+
+
+def test_api_summary_never_leaks_webhook_url(client, monkeypatch):
+    monkeypatch.setenv("ALERT_WEBHOOK_URL", "https://hooks.slack.com/services/SECRET")
+    body = client.get("/api/summary").json()
+    assert body["alert_channel"] == "slack"
+    assert "SECRET" not in json.dumps(body)
