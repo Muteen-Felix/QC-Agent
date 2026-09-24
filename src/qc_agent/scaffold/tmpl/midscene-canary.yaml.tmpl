@@ -1,0 +1,10 @@
+# qc-agent:generated — CANARY: bước này CHẮC CHẮN phải thất bại (nút không tồn tại). Worker báo pass = worker hỏng.
+web:
+  url: http://placeholder.invalid/  # bị adapter thay bằng target.base_url + entry_path
+  chromeArgs:
+    - --no-sandbox
+    - --disable-gpu
+tasks:
+  - name: canary-khong-ton-tai
+    flow:
+      - aiAct: bấm nút "qc-agent canary khong ton tai"

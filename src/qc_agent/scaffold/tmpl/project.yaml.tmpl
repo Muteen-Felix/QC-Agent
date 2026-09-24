@@ -1,0 +1,12 @@
+# Project `{{slug}}` — TẬP TRUNG: đổi file này phải qua PR vào qc-agent (nó được đóng gói trong image).
+# Suite (nội dung task) nằm trong repo SUT tại suites_dir.
+slug: {{slug}}
+name: {{name}}
+repo: {{repo}}
+modes:
+  pr:                                  # tự động, mỗi PR
+    blocking_suites: [api-contract]    # mọi task lane=gate: chặn merge
+{{advisory_line}}
+    on_skipped_gate_task: fail         # task chặn mà bị bỏ qua thì KHÔNG được xanh giả
+  manual:                              # chạy tay trên web/API; lane giữ như suite khai báo
+    suites: "*"
