@@ -54,6 +54,27 @@ SUT có giao diện web dựng riêng khỏi API thì khai thêm; không khai th
 
 Workflow dựng container `ui` cùng mạng docker với `sut`, rồi gate nhận `APP_UI_URL=http://ui:<port>` (suite UI dùng `${env.APP_UI_URL}`). Trình duyệt của Midscene chạy trong container gate nên phân giải được cả `sut` và `ui`; UI nhúng địa chỉ API lúc build thì dùng `http://sut:<cổng>`.
 
+## 2b. Sinh sẵn cấu hình (khuyến nghị) và kiểm trước khi đẩy lên CI
+
+Thay vì viết tay suite/`qc.yml`/config project:
+
+```
+qc-agent init --sut-root <repo SUT> --slug myapp --repo owner/myapp   --openapi http://127.0.0.1:8000/openapi.json \      # file hoặc URL của SUT đang chạy
+  --projects-dir <repo qc-agent>/configs/projects   [--ui-dockerfile apps/web-ui/Dockerfile --ui-port 8080 --ui-build-arg VITE_API_URL=http://sut:8000]   [--qc-ref <SHA 40 ký tự> --image ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>] [--dry-run] [--force]
+```
+
+`init` ghi `.qc-agent/suites/*.yaml`, script k6, flow Midscene, `.github/workflows/qc.yml` và `configs/projects/<slug>.yaml`; **không ghi đè** file đã có (trừ `--force`).
+Phần cần hiểu sản phẩm (các bước UI của flow explore, ghim SHA/digest) được đánh dấu `qc-agent:todo`. Trên Git Bash (Windows) đặt `MSYS_NO_PATHCONV=1` để `/api/health` không bị đổi thành đường dẫn Windows.
+
+Kiểm offline (vài giây, không Docker/mạng/SUT) rồi mới mở PR:
+
+```
+qc-agent validate --project myapp --sut-root <repo SUT> --projects-dir <repo qc-agent>/configs/projects [--strict]
+```
+
+Exit `0` = ổn, `3` = có lỗi. Nó bắt: schema suite/project, lane xung đột policy, task không có worker, file tham chiếu thiếu, biến `${env.X}` mà workflow không cấp
+(vd. `APP_UI_URL` khi chưa khai `sut_ui_dockerfile`), `qc.yml` chưa ghim SHA/digest hoặc sai tên input, và mọi dấu `qc-agent:todo` còn sót.
+
 ## 3. Secret (khai ở repo SUT)
 | Secret | Dùng cho |
 |---|---|
