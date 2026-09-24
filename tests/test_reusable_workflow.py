@@ -84,7 +84,7 @@ def test_pr_flow_pass_then_fail_with_sticky_comment_check_runs_and_history(stack
     assert ok["Enforce gate result"]["returncode"] == 0, log  # job xanh theo exit code của gate
     assert len(stack.gh.check_runs) == 1 and stack.gh.check_runs[0]["conclusion"] == "success"
     assert stack.gh.check_runs[0]["name"] == "qc-agent / noteboard" and stack.gh.check_runs[0]["head_sha"] == "abc1234def5678"
-    assert len(stack.gh.comments) == 1 and "PASS" in stack.gh.comments[0]["body"] and "gate 3/3" in stack.gh.comments[0]["body"]
+    assert len(stack.gh.comments) == 1 and "PASS" in stack.gh.comments[0]["body"] and "gate 2/2" in stack.gh.comments[0]["body"]
     assert all(r["auth"] == f"Bearer {GITHUB_TOKEN}" for r in stack.gh.requests)
 
     bad, log = run(stack, bugs="1,3", run_id="2002")  # push tiếp vào PR có lỗi cài sẵn
@@ -92,7 +92,7 @@ def test_pr_flow_pass_then_fail_with_sticky_comment_check_runs_and_history(stack
     assert bad["Enforce gate result"]["returncode"] == 1, log  # job đỏ
     assert len(stack.gh.comments) == 1, "comment phải được cập nhật tại chỗ, không tạo thêm"
     body = stack.gh.comments[0]["body"]
-    assert "FAIL" in body and "gate 1/3" in body and "schemathesis" in body and "deepeval" in body
+    assert "FAIL" in body and "gate 0/2" in body and "schemathesis" in body and "deepeval" in body
     assert [c["conclusion"] for c in stack.gh.check_runs] == ["success", "failure"]
 
     with session_scope(stack.engine) as s:

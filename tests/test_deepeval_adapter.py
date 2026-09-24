@@ -13,7 +13,6 @@ from qc_agent.adapters._base import AdapterParseError
 from qc_agent.adapters.deepeval_adapter import (
     GEVAL_NAME,
     JUNIT_NAME,
-    METRICS,
     DeepEvalAdapter,
 )
 
@@ -22,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUTPUTS = ROOT / "tests" / "fixtures" / "outputs_collect.json"
 SPEC = json.loads((ROOT / "tests" / "fixtures" / "task_de.json").read_text(encoding="utf-8"))
 RECORDS = json.loads(OUTPUTS.read_text(encoding="utf-8"))
+METRICS = tuple(metric["name"] for metric in SPEC["inputs"]["metrics"])
 
 
 def _spec() -> dict:
@@ -178,7 +178,7 @@ def test_malformed_geval_case_scores_are_ignored_as_advisory(tmp_path):
 def test_primary_provider_failure_uses_gemini_fallback_once(tmp_path, monkeypatch):
     attempts: list[tuple[str, str]] = []
 
-    def fake_score(records, provider, model):
+    def fake_score(records, provider, model, geval):
         attempts.append((provider, model))
         if provider == "openai":
             raise RuntimeError("secret response body and key must not be copied")
@@ -204,7 +204,7 @@ def test_primary_provider_failure_uses_gemini_fallback_once(tmp_path, monkeypatc
 def test_all_judges_failing_remains_advisory_and_does_not_leak_errors(tmp_path, monkeypatch):
     attempts: list[str] = []
 
-    def fail_score(records, provider, model):
+    def fail_score(records, provider, model, geval):
         attempts.append(provider)
         raise RuntimeError("provider response contained secret-key-value")
 
@@ -230,7 +230,7 @@ def test_all_judges_failing_remains_advisory_and_does_not_leak_errors(tmp_path, 
 def test_invalid_primary_case_scores_use_the_single_fallback(tmp_path, monkeypatch):
     attempts: list[str] = []
 
-    def fake_score(records, provider, model):
+    def fake_score(records, provider, model, geval):
         attempts.append(provider)
         if provider == "openai":
             return {record["id"]: 2.0 for record in records}
@@ -247,3 +247,84 @@ def test_invalid_primary_case_scores_use_the_single_fallback(tmp_path, monkeypat
     assert attempts == ["openai", "gemini"]
     assert result["judge_provider"] == "gemini"
     assert result["score"] == 0.6
+
+
+def test_geval_baseline_becomes_a_metric_for_the_report(tmp_path):
+    _write_junit(tmp_path)
+    (tmp_path / GEVAL_NAME).write_text(
+        json.dumps({"score": 0.6, "cases": {r["id"]: 0.6 for r in RECORDS}, "judge_provider": "gemini", "judge_model": "m"}), encoding="utf-8")
+
+    parsed = _parse(tmp_path)
+
+    assert parsed.metrics == {"GEval.score": 0.6, "GEval.baseline": 0.78}
+    assert "giu_y_chinh" in next(f for f in parsed.findings if f["verdict_source"] == "llm_judgment")["title"]
+
+
+def test_without_geval_no_geval_testcase_is_expected_or_tolerated(tmp_path):
+    spec = _spec()
+    del spec["inputs"]["geval"], spec["inputs"]["judge_config"], spec["inputs"]["sut_model"]
+    _write_junit(tmp_path)
+    root = ET.parse(tmp_path / JUNIT_NAME).getroot()
+    suite = next(e for e in root.iter() if e.tag == "testsuite")
+    suite.remove(next(c for c in suite if c.attrib["name"] == "test_geval_advisory"))
+    ET.ElementTree(root).write(tmp_path / JUNIT_NAME, encoding="utf-8", xml_declaration=True)
+
+    parsed = _parse(tmp_path, spec=spec)
+
+    assert parsed.metrics == {} and set(parsed.signals["checks"]) == set(METRICS)
+    _write_junit(tmp_path)  # G-Eval testcase xuất hiện dù suite không khai geval => mâu thuẫn, không im lặng bỏ qua
+    with pytest.raises(AdapterParseError, match="G-Eval testcase"):
+        _parse(tmp_path, spec=spec)
+
+
+def test_metrics_come_from_the_spec_not_from_a_fixed_list(tmp_path):
+    spec = _spec()
+    spec["inputs"]["metrics"] = [{"name": "short_enough", "kind": "max_len", "field": "actual_output", "max": 10}]
+    root = ET.Element("testsuites")
+    suite = ET.SubElement(root, "testsuite")
+    for record in RECORDS:
+        ET.SubElement(suite, "testcase", name=f"test_metric[short_enough-{record['id']}]")
+    ET.SubElement(suite, "testcase", name="test_geval_advisory")
+    ET.ElementTree(root).write(tmp_path / JUNIT_NAME, encoding="utf-8", xml_declaration=True)
+
+    assert _parse(tmp_path, spec=spec).signals == {"checks": {"short_enough": True}}
+    with pytest.raises(AdapterParseError, match="metric/case lạ"):
+        _parse(tmp_path, spec=_spec())  # JUnit của metric khác không được chấp nhận cho spec này
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda i: i.pop("metrics"), "inputs.metrics"),
+    (lambda i: i["metrics"].append(dict(i["metrics"][0])), "name trùng"),
+    (lambda i: i["metrics"][0].update(kind="nope"), "kind"),
+    (lambda i: i["metrics"][0].update(extra=1), "đúng các khoá"),
+    (lambda i: i["geval"].update(baseline=2), "baseline"),
+    (lambda i: i["geval"].update(params=["nope"]), "params"),
+    (lambda i: i.pop("outputs_path"), "inputs.collect hoặc inputs.outputs_path"),
+])
+def test_invalid_inputs_are_rejected_before_running_anything(tmp_path, mutate, message):
+    spec = _spec()
+    mutate(spec["inputs"])
+    with pytest.raises(AdapterParseError, match=message):
+        DeepEvalAdapter().build_cmd(spec, tmp_path)
+
+
+def test_collection_failure_exit_code_is_an_adapter_error_with_the_reason(tmp_path):
+    proc = subprocess.CompletedProcess(args=["x"], returncode=3, stdout="", stderr="collect: HTTP transport error: ConnectError\n")
+    with pytest.raises(AdapterParseError, match="thu thập output của SUT thất bại: collect: HTTP transport error"):
+        DeepEvalAdapter().parse_output(proc, tmp_path, _spec())
+
+
+def test_build_cmd_writes_config_and_keeps_base_url_out_of_argv(tmp_path):
+    spec = _spec()
+    spec["inputs"]["collect"] = {"golden": str(ROOT / "tests/fixtures/sut/noteboard/tests/eval/golden.json"),
+                                 "steps": [{"method": "POST", "path": "/x"}], "record": {"input": "a", "actual_output": "b"}}
+    spec["target"]["base_url"] = "http://secret-host.test:8123"
+    adapter = DeepEvalAdapter()
+
+    cmd = adapter.build_cmd(spec, tmp_path)
+
+    assert "secret-host" not in " ".join(cmd) and adapter.env["QC_COLLECT_BASE_URL"] == "http://secret-host.test:8123"
+    assert json.loads((tmp_path / "eval_config.json").read_text(encoding="utf-8"))["metrics"] == spec["inputs"]["metrics"]
+    spec["target"]["base_url"] = "http://u:p@host.test"
+    with pytest.raises(AdapterParseError, match="thông tin đăng nhập"):
+        DeepEvalAdapter().build_cmd(spec, tmp_path)

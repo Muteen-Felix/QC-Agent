@@ -10,7 +10,12 @@ from deepeval.metrics import GEval
 from deepeval.test_case import LLMTestCase, SingleTurnParams
 
 
-def _score_cases(records: list[dict], provider: str, model_name: str) -> dict[str, float]:
+DEFAULT_GEVAL = {"name": "giu_y_chinh", "criteria": "Bản tóm tắt giữ lại các ý chính trong đầu vào.", "params": ["input", "actual_output"]}
+_PARAMS = {"input": SingleTurnParams.INPUT, "actual_output": SingleTurnParams.ACTUAL_OUTPUT,
+           "expected_output": SingleTurnParams.EXPECTED_OUTPUT, "context": SingleTurnParams.CONTEXT}
+
+
+def _score_cases(records: list[dict], provider: str, model_name: str, geval: dict) -> dict[str, float]:
     provider = provider.strip().lower()
     if provider == "openai":
         from deepeval.models import OpenAIModel
@@ -32,15 +37,14 @@ def _score_cases(records: list[dict], provider: str, model_name: str) -> dict[st
     scores: dict[str, float] = {}
     for record in records:
         metric = GEval(
-            name="giu_y_chinh",
-            criteria="Bản tóm tắt giữ lại các ý chính trong đầu vào.",
-            evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
+            name=geval["name"],
+            criteria=geval["criteria"],
+            evaluation_params=[_PARAMS[name] for name in geval["params"]],
             model=model,
             async_mode=False,
         )
-        metric.measure(
-            LLMTestCase(input=record["input"], actual_output=record["actual_output"])
-        )
+        metric.measure(LLMTestCase(input=record["input"], actual_output=record["actual_output"],
+                                   **{name: record[name] for name in geval["params"] if name not in ("input", "actual_output")}))
         score = metric.score
         if isinstance(score, bool) or not isinstance(score, (int, float)):
             raise RuntimeError("judge returned no numeric score")
@@ -56,6 +60,7 @@ def run_geval_advisory(
     output_dir: Path,
     primary: dict[str, str],
     fallback: dict[str, str] | None,
+    geval: dict | None = None,
 ) -> dict:
     """Try the configured primary and at most one fallback; never expose provider errors."""
     candidates = [primary, fallback or {}]
@@ -70,7 +75,7 @@ def run_geval_advisory(
             continue
         attempted.add(identity)
         try:
-            case_scores = _score_cases(records, provider, model_name)
+            case_scores = _score_cases(records, provider, model_name, {**DEFAULT_GEVAL, **(geval or {})})
             if set(case_scores) != {record["id"] for record in records}:
                 raise RuntimeError("judge response is incomplete")
             for score in case_scores.values():

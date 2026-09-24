@@ -4,7 +4,6 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from qc_agent import settings
 from qc_agent.core.verdict import GateVerdict
 
 
@@ -163,7 +162,6 @@ def _llm_section(ctx: RunContext) -> list[str]:
         "| task | metric | điểm | baseline | delta | confidence |",
         "|---|---|---:|---:|---:|---:|",
     ]
-    baselines = _baselines()
     count = 0
     for task_id, result in sorted(ctx.results.items()):
         for finding in result.get("findings", []):
@@ -171,7 +169,7 @@ def _llm_section(ctx: RunContext) -> list[str]:
                 continue
             metric = str(finding.get("detected_by", "—")).removeprefix("metric:")
             score = result.get("metrics", {}).get(f"{metric}.score")
-            baseline = baselines.get(metric)
+            baseline = result.get("metrics", {}).get(f"{metric}.baseline")  # baseline khai cùng suite (inputs.geval.baseline), theo project
             delta = score - baseline if isinstance(score, (int, float)) and isinstance(baseline, (int, float)) else None
             lines.append(
                 f"| {task_id} | {metric} | {_number(score)} | {_number(baseline)} "
@@ -254,16 +252,6 @@ def _audit_section(ctx: RunContext, gating: list) -> list[str]:
 def _task_line(plan_text: str, task_id: str) -> int:
     pattern = re.compile(rf"^\s*-?\s*task_id:\s*{re.escape(task_id)}\s*(?:#.*)?$")
     return next((number for number, line in enumerate(plan_text.splitlines(), 1) if pattern.match(line)), 0)
-
-
-def _baselines() -> dict:
-    path = settings.get().project_root / "baselines" / "geval.json"
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
-        return {}
 
 
 def _number(value) -> str:

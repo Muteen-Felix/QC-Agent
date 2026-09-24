@@ -6,10 +6,8 @@ capabilities:
   - id: llmapp.eval
     oracle_kinds: [checks]
     verdict_sources: [deterministic_assert, llm_judgment]
-    gating_metrics:
-      - summary_not_empty
-      - summary_shorter_than_body
-      - summary_json_valid
+    # metric tất định do suite khai ở inputs.metrics (not_empty | shorter_than | max_len | regex_present | regex_absent | json_schema);
+    # tuỳ chọn inputs.collect tự thu output của SUT qua HTTP; inputs.geval khai tiêu chí G-Eval advisory (+ baseline)
     advisory_metrics: [GEval]
     parallel_safe: true
 requires:
