@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from qc_agent.adapters._base import AdapterParseError
-from qc_agent.adapters.schemathesis_adapter import REPORT_NAME, SchemathesisAdapter
+from qc_agent.adapters.schemathesis_adapter import PARSER_VERSION, REPORT_NAME, SchemathesisAdapter
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,7 +40,7 @@ def test_bug_on_maps_only_the_known_server_error_check(tmp_path):
     parsed = adapter.parse_output(_completed(1, sample_stdout), tmp_path, spec)
 
     assert parsed.signals == {"checks": {"not_a_server_error": False, "response_schema_conformance": True}}
-    assert parsed.adapter_notes == ["PARSER_VERSION=1"]
+    assert parsed.adapter_notes == [f"PARSER_VERSION={PARSER_VERSION}"]
     assert [kind for kind, _ in parsed.evidence_paths] == ["raw_output", "stdout"]
     assert "st run" in parsed.replay_cmd
 
