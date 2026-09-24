@@ -173,10 +173,14 @@ def qc_workflow(*, project: str, qc_ref: str | None = None, image: str | None = 
                                   "with_block": "\n".join(with_lines)})
 
 
-def project_config(*, slug: str, name: str, repo: str, advisory: tuple = ()) -> str:
+def project_config(*, slug: str, name: str, repo: str, advisory: tuple = (), blocking: tuple = ("api-contract",)) -> str:
     _need(_SLUG, slug, "slug")
     _need(_REPO, repo, "repo")
     for suite in advisory:
         _need(_SLUG, suite, "advisory suite")
+    for suite in blocking:
+        _need(_SLUG, suite, "blocking suite")
+    blocking_line = (f"    blocking_suites: [{', '.join(blocking)}]    # mọi task lane=gate: chặn merge" if blocking else
+                     f"    blocking_suites: []    # {TODO} chưa có suite chặn merge nào: gate luôn PASS cho tới khi thêm suite")
     line = f"    advisory_suites: [{', '.join(advisory)}]  # mọi task lane=discovery: chỉ tham khảo, không chặn" if advisory else ""
-    return render("project.yaml.tmpl", {"slug": slug, "name": _q(name), "repo": _q(repo), "advisory_line": line})
+    return render("project.yaml.tmpl", {"slug": slug, "name": _q(name), "repo": _q(repo), "blocking_line": blocking_line, "advisory_line": line})

@@ -34,6 +34,9 @@ def main(argv: list[str]) -> int:
         if argv and argv[0] in ("user", "token"):  # quản trị tài khoản/token (cần QC_DATABASE_URL)
             from qc_agent.auth.cli import main as admin_main
             return admin_main(argv)
+        if argv and argv[0] == "init":  # sinh khung cấu hình cho repo SUT
+            from qc_agent.scaffold.init import main as init_main
+            return init_main(argv[1:])
         if argv and argv[0] == "run":  # `qc-agent run --project ...` và `qc-agent --plan ...` đều được
             argv = argv[1:]
         args = _parser().parse_args(argv)

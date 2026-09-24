@@ -5,7 +5,7 @@ name: {{name}}
 repo: {{repo}}
 modes:
   pr:                                  # tự động, mỗi PR
-    blocking_suites: [api-contract]    # mọi task lane=gate: chặn merge
+{{blocking_line}}
 {{advisory_line}}
     on_skipped_gate_task: fail         # task chặn mà bị bỏ qua thì KHÔNG được xanh giả
   manual:                              # chạy tay trên web/API; lane giữ như suite khai báo
