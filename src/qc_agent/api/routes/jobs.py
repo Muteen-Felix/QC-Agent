@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import Annotated
@@ -10,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from sqlalchemy import select
 
+from qc_agent import logging_setup
 from qc_agent.api.deps import DbDep, StateDep, UserDep, project_or_404
 from qc_agent.api.routes.catalog import load_project_suites
 from qc_agent.api.schemas import JobIn
@@ -21,6 +23,7 @@ from qc_agent.jobs import repository as repo
 from qc_agent.jobs.models import Artifact, Job, Project, User
 
 router = APIRouter(prefix="/api/v1", tags=["jobs"])
+log = logging.getLogger("qc_agent.api")
 _INLINE_TYPES = {".json": "application/json", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8",
                  ".log": "text/plain; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                  ".gif": "image/gif", ".webp": "image/webp"}
@@ -69,6 +72,7 @@ def create_job(slug: str, body: JobIn, state: StateDep, session: DbDep, user: Us
         params["timeout_s"] = min(float(timeout), cfg.max_job_timeout_s)
     job = repo.create_job(session, slug, mode=body.mode, source="web", suites=body.suites, task_ids=body.task_ids,
                           params=params, created_by=user.id)
+    logging_setup.event(log, "job.created", job_id=str(job.id), project=slug, mode=body.mode, source="web", environment=body.environment)
     return _serialize(session, state, [job])[0]
 
 
@@ -94,6 +98,7 @@ def cancel_job(job_id: str, state: StateDep, session: DbDep, user: UserDep):
         job = repo.request_cancel(session, job.id)
     except repo.InvalidTransition:
         raise HTTPException(status_code=409, detail="job đã kết thúc, không huỷ được") from None
+    logging_setup.event(log, "job.cancel_requested", job_id=str(job.id))
     return _serialize(session, state, [job])[0]
 
 

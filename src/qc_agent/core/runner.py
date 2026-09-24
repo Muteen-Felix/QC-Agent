@@ -1,6 +1,7 @@
 """Chạy các task theo thứ tự đã xếp sẵn: chọn worker -> spawn adapter (subprocess) -> validate -> retry/budget -> ghi file.
 Runner chỉ biết `worker.module` do registry trả về. KHÔNG được có tên worker cụ thể nào trong file này."""
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -8,9 +9,11 @@ import threading
 import time
 from pathlib import Path
 
+from qc_agent import logging_setup
 from qc_agent.core import egress, schema
 from qc_agent.core.proctree import kill_tree
 
+log = logging.getLogger("qc_agent.runner")
 _ACTIVE: set = set()  # worker đang chạy; terminate_active() giết cây của chúng khi tiến trình bị SIGTERM (huỷ job)
 _ACTIVE_LOCK = threading.Lock()
 SLACK_S = 30  # buffer cho adapter đóng gói kết quả; timeout của chính worker vẫn là budget.wallclock_s (ở _base)
@@ -30,9 +33,20 @@ def run_all(specs: dict[str, dict], plan_only: dict[str, dict], registry, run_di
     runs_root = run_dir.resolve().parent  # adapter dựng workdir từ QC_RUNS_DIR: phải khớp run_dir, truyền qua env của từng tiến trình
     for tid, spec in specs.items():
         _write(run_dir / "specs" / f"{tid}.json", spec)
-        results[tid] = _run_task(spec, plan_only.get(tid, {}), registry, results, runs_root, cwd, policy, run_dir)
+        with logging_setup.bind(task_id=tid):
+            results[tid] = _run_task(spec, plan_only.get(tid, {}), registry, results, runs_root, cwd, policy, run_dir)
+            _log_task_end(results[tid])
         _write(run_dir / "results" / f"{tid}.json", results[tid])
     return results
+
+
+def _log_task_end(result: dict) -> None:
+    status = result["status"]
+    fields = {"worker": result["worker"]["name"], "status": status, "duration_s": result["cost"].get("wallclock_s")}
+    rationale = result["verdict"].get("rationale")
+    if rationale and status in ("error", "skipped", "fail"):
+        fields["detail"] = logging_setup.short(rationale)
+    logging_setup.event(log, "task.end", logging.WARNING if status == "error" else logging.INFO, **fields)
 
 
 def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path, cwd: Path | None,
@@ -63,6 +77,7 @@ def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path, cw
 
 def _attempt(spec: dict, worker, runs_root: Path, cwd: Path | None, policy: egress.EgressPolicy, run_dir: Path, attempt: int) -> dict:
     """Một lần chạy adapter. Mọi thất bại (timeout/exit≠0/không phải JSON/sai contract) là `error`, không bao giờ `fail`."""
+    logging_setup.event(log, "task.start", worker=worker.name, attempt=attempt, capability=spec.get("capability"))
     decision = egress.record(policy, run_dir, spec, worker, attempt)  # mỗi lần gọi (kể cả retry) là một lần dữ liệu có thể rời máy
     if decision.action == "deny":
         return schema.make_result(spec, "skipped", f"egress: bị chính sách từ chối ({decision.reason or 'không nêu lý do'})", worker.name)

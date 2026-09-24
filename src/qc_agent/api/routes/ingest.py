@@ -3,11 +3,13 @@ Ingest chỉ GHI NHẬN kết quả; verdict chặn merge vẫn do exit code / C
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import ValidationError
 
+from qc_agent import logging_setup
 from qc_agent.api.deps import project_or_404
 from qc_agent.api.schemas import RunIn
 from qc_agent.auth import service
@@ -16,6 +18,7 @@ from qc_agent.jobs import repository as repo
 from qc_agent.jobs.db import session_scope
 
 router = APIRouter(prefix="/api/v1", tags=["ingest"])
+log = logging.getLogger("qc_agent.api")
 _VERDICTS = ("PASS", "YELLOW", "FAIL")
 
 
@@ -92,6 +95,7 @@ async def ingest_run(slug: str, request: Request, response: Response):
                 artifacts.append({"path": name, "size_bytes": path.stat().st_size, "sha256": sha256_file(path),
                                   "storage_uri": path.resolve().as_uri()})
             repo.replace_job_results(session, job_id, _tasks_from_report(report), artifacts)
+    logging_setup.event(log, "job.ingested", job_id=str(job_id), project=slug, mode=run.mode, source="ci", gate=verdict, created=created)
     if not created:
         response.status_code = 200  # gửi lại cùng external_id: trả job cũ, không tạo trùng
     return {"id": str(job_id), "created": created, "project": slug, "status": job.status,

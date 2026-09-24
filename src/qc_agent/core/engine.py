@@ -4,6 +4,7 @@ Không LLM, không tên worker cụ thể."""
 from __future__ import annotations
 
 import dataclasses
+import logging
 import re
 import shutil
 import time
@@ -11,12 +12,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from qc_agent import settings
+from qc_agent import logging_setup, settings
 from qc_agent.core import project as project_lib
 from qc_agent.core import registry, report, runner, signature
 from qc_agent.core.plan import ROOT, PlanError, load_plan, resolve, toposort
 from qc_agent.core.verdict import FAIL, PASS, YELLOW, GateVerdict, canary_alerts, gate_verdict
 
+log = logging.getLogger("qc_agent.engine")
 SKIPPED_POLICIES = ("yellow", "fail")
 _RUN_ID = re.compile(r"^r-(\d{4})$")
 
@@ -111,10 +113,15 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
         raise
 
     started = time.perf_counter()
-    results = runner.run_all(specs, extras, _Registry(workers), run_dir, cwd=cwd)  # runner tự truyền QC_RUNS_DIR cho từng worker
-    wallclock = time.perf_counter() - started
+    with logging_setup.bind(run_id=run_id, project=(meta or {}).get("project")):
+        logging_setup.event(log, "run.start", mode=(meta or {}).get("mode"), plan_id=plan_id, tasks=len(specs))
+        results = runner.run_all(specs, extras, _Registry(workers), run_dir, cwd=cwd)  # runner tự truyền QC_RUNS_DIR cho từng worker
+        wallclock = time.perf_counter() - started
 
-    signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit, on_skipped_gate_task)
+        signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit, on_skipped_gate_task)
+        logging_setup.event(log, "run.end", gate=gate.value, exit_code=gate.exit_code, wallclock_s=round(wallclock, 3),
+                            counts={status: sum(1 for r in results.values() if r["status"] == status) for status in
+                                    sorted({r["status"] for r in results.values()})})
     run_ctx = report.RunContext(
         run_id=run_id, plan_id=plan_id, plan_name=plan["name"], plan_path=plan_label or f"{run_id}/plan.yaml",
         plan_text=plan["text"], sut_id=sut, run_signature=signature_hex, generated_at=now(),

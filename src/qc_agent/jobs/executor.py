@@ -29,6 +29,7 @@ from typing import Callable
 
 from sqlalchemy import Engine, text
 
+from qc_agent import logging_setup
 from qc_agent.core import runner
 from qc_agent.core.proctree import kill_tree
 from qc_agent.core.project import ProjectResolver
@@ -153,6 +154,12 @@ class Executor:
     # ---- chạy job ----
 
     def _run_job(self, job: Job, slug: str, lock: _AdvisoryLock | None) -> None:
+        with logging_setup.bind(job_id=str(job.id), project=slug):  # mỗi job chạy trong luồng riêng: ngữ cảnh không lẫn giữa các job
+            self._run_job_logged(job, slug, lock)
+
+    def _run_job_logged(self, job: Job, slug: str, lock: _AdvisoryLock | None) -> None:
+        logging_setup.event(log, "job.start", mode=job.mode, source=job.source, attempts=job.attempts,
+                            concurrency_key=(job.params or {}).get("concurrency_key"))
         try:
             outcome = self._supervise(job, slug)
             self._finalize(job, slug, outcome)
@@ -163,6 +170,11 @@ class Executor:
         finally:
             if lock is not None:
                 lock.close()
+        with suppress(Exception):  # log không được làm hỏng việc kết thúc job
+            with session_scope(self.engine) as s:
+                done = repo.get_job(s, job.id)
+                logging_setup.event(log, "job.end", status=done.status, gate=done.gate_verdict, exit_code=done.exit_code,
+                                    error=logging_setup.short(done.error) if done.error else None)
         self._notify_finished(job.id, slug)
 
     def _notify_finished(self, job_id: uuid.UUID, slug: str) -> None:
@@ -174,8 +186,8 @@ class Executor:
                 job = repo.get_job(s, job_id)
             if job.status in TERMINAL_STATUSES:
                 self.cfg.on_finish(job, slug, self.cfg.runs_root / slug / str(job_id))
-        except Exception:  # noqa: BLE001
-            log.exception("on_finish hook lỗi (job %s)", job_id)
+        except Exception as exc:  # noqa: BLE001
+            logging_setup.event(log, "job.on_finish_failed", logging.ERROR, error_type=type(exc).__name__)
 
     def _argv(self, job: Job, slug: str) -> list[str]:
         args = ["run", "--project", slug, "--mode", job.mode, "--runs-dir", str(self.cfg.runs_root / slug),
@@ -200,6 +212,9 @@ class Executor:
             env.update(self.resolver.env_vars(slug, (job.params or {}).get("environment")))
         env.update({k: str(v) for k, v in ((job.params or {}).get("env") or {}).items() if k in self.cfg.allowed_env})
         env["PYTHONUTF8"] = "1"
+        env["QC_JOB_ID"] = str(job.id)  # tiến trình con gắn vào mọi dòng log (logging_setup.configure)
+        if slug:
+            env["QC_PROJECT"] = slug
         return env
 
     def _supervise(self, job: Job, slug: str) -> dict:
@@ -343,6 +358,7 @@ def _tail(path: Path) -> str:
 def main() -> int:
     """python -m qc_agent.jobs.executor   (QC_DATABASE_URL, QC_RUNS_DIR, QC_PROJECTS_DIR từ env)"""
     from qc_agent import settings
+    logging_setup.configure()
     cfg_env = settings.get()
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):

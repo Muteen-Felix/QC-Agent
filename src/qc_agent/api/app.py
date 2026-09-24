@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine
 
-from qc_agent import settings
+from qc_agent import logging_setup, settings
 from qc_agent.api.deps import SESSION_COOKIE, AppState
 from qc_agent.api.routes import auth, catalog, health, ingest, jobs
 from qc_agent.core import project as project_lib
@@ -27,6 +27,7 @@ _WEB_CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 's
 
 
 def create_app(engine: Engine | None = None, *, runs_root: Path | None = None, projects_dir: Path | None = None) -> FastAPI:
+    logging_setup.configure()
     cfg = settings.get()
     projects_dir = Path(projects_dir or cfg.resolved_projects_dir)
     state = AppState(engine=engine or make_engine(), runs_root=Path(runs_root or cfg.runs_dir).resolve(),

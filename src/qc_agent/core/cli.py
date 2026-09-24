@@ -5,16 +5,18 @@ import argparse
 import os
 import signal
 import json
+import logging
 import sys
 import threading
 from pathlib import Path
 
-from qc_agent import settings
+from qc_agent import logging_setup, settings
 from qc_agent.core import engine, registry, report, runner, signature
 from qc_agent.core.plan import PlanError, load_plan
 from qc_agent.core.verdict import canary_alerts
 
 SYSTEM_ERROR = 3
+log = logging.getLogger("qc_agent.cli")
 
 
 class _Parser(argparse.ArgumentParser):
@@ -27,6 +29,7 @@ def main(argv: list[str]) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     _install_sigterm_handler()
+    logging_setup.configure()
     try:
         if argv and argv[0] in ("user", "token"):  # quản trị tài khoản/token (cần QC_DATABASE_URL)
             from qc_agent.auth.cli import main as admin_main
@@ -41,8 +44,10 @@ def main(argv: list[str]) -> int:
         return exit_.code if isinstance(exit_.code, int) else 0
     except (PlanError, registry.ManifestError) as error:
         print(f"LỖI PLAN/CẤU HÌNH: {error}", file=sys.stderr)
+        logging_setup.event(log, "run.aborted", logging.ERROR, reason="plan_or_config", detail=logging_setup.short(error))
     except Exception as error:  # noqa: BLE001 — lỗi nội bộ của orchestrator: exit 3, không bao giờ được lẫn với verdict
         print(f"LỖI NỘI BỘ: {type(error).__name__}: {error}", file=sys.stderr)
+        logging_setup.event(log, "run.aborted", logging.ERROR, reason="internal", error_type=type(error).__name__)
     return SYSTEM_ERROR
 
 
