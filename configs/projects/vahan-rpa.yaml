@@ -1,0 +1,8 @@
+slug: vahan-rpa
+name: "VAHAN Report Automation"
+repo: Muteen-Felix/vahan-rpa
+modes:
+  pr:
+    blocking_suites: [api-contract]     # task lane=gate: chặn merge
+    # advisory_suites: [ui-explore]                  # task lane=discovery: chỉ tham khảo (dò live UI drift / exploratory)
+    on_skipped_gate_task: fail                       # task chặn mà bị bỏ qua thì KHÔNG được xanh giả
