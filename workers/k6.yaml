@@ -1,7 +1,7 @@
 name: k6
 version_probe: "k6 version"
 adapter: "qc_agent/adapters/k6_adapter.py"
-lanes: [gate]
+lanes: [gate, discovery]   # gate: perf-full (thủ công); discovery: perf-smoke trên PR (không chặn)
 capabilities:
   - id: http.load
     oracle_kinds: [threshold]

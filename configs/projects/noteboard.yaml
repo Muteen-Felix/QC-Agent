@@ -9,10 +9,11 @@ environments:
     description: toyapp chạy cục bộ (SUT tham chiếu)
     env:
       APP_BASE_URL: http://127.0.0.1:8000
-  # staging:                                  # ví dụ môi trường dùng chung, 1 job / lần
-  #   env: {APP_BASE_URL: "${env.NOTEBOARD_STAGING_URL}"}
-  #   concurrency_key: env:noteboard-staging
-  #   timeout_s: 1800
+  staging:                                    # môi trường dùng chung: perf-full chạy ở đây, đúng 1 job / lần
+    description: "staging dùng chung (địa chỉ là bí mật của server, biến NOTEBOARD_STAGING_URL)"
+    env: {APP_BASE_URL: "${env.NOTEBOARD_STAGING_URL}"}
+    concurrency_key: env:noteboard-staging
+    timeout_s: 1800
 sut:
   files: ["toyapp"]
   attrs: {model: "stub-rule-v1"}
@@ -20,7 +21,7 @@ sut:
 modes:
   pr:                                    # tự động, mỗi PR
     blocking_suites: [api-contract, ai-eval]   # mọi task lane=gate: chặn merge
-    advisory_suites: [ui-explore]              # mọi task lane=discovery: không chặn
+    advisory_suites: [ui-explore, perf-smoke]  # mọi task lane=discovery: không chặn (perf-smoke: SUT trong runner, số đo chỉ tham khảo)
     on_skipped_gate_task: fail                 # task gate bị skip không được cho qua
   manual:                                # QA/Dev chạy trên web; lane giữ như suite khai báo
     suites: "*"

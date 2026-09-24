@@ -1,7 +1,7 @@
 # Suite của repo SUT (noteboard). Đường dẫn tương đối = tương đối repo SUT (worker chạy với cwd = SUT root).
 # Lane chặn/không chặn do POLICY của qc-agent quyết định (configs/projects/noteboard.yaml), không do file này.
-suite: perf
-description: Load test k6 trên môi trường chạy thủ công (KHÔNG chạy trên PR)
+suite: perf-full
+description: Load test k6 đầy đủ trên staging dùng chung (thủ công, chặn theo ngưỡng; 1 job/lần nhờ concurrency_key của environment)
 tasks:
 - task_id: t-002
   capability: http.load

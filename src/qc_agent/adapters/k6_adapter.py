@@ -11,13 +11,28 @@ from urllib.parse import urlsplit
 from qc_agent.adapters._base import Adapter, AdapterParseError, ParsedOutput
 
 
-PARSER_VERSION = "1"
+PARSER_VERSION = "2"
 SUMMARY_NAME = "k6-summary.json"
 STDOUT_NAME = "stdout.log"
 
 
 def _is_measurement(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def extract_metrics(k6_metrics: dict) -> dict[str, float]:
+    """Mọi số đo của summary-export thành `<metric>.<stat>` ('p(95)' -> 'p95'); Rate ({value, passes, fails}) thêm `<metric>.rate`.
+    Chỉ giữ số hữu hạn: thống kê thiếu/hỏng bị bỏ (mất thông tin), không bịa giá trị; oracle báo lỗi nếu assertion cần metric vắng."""
+    out: dict[str, float] = {}
+    for name, stats in k6_metrics.items():
+        if not isinstance(stats, dict):
+            continue
+        for stat, value in stats.items():
+            if _is_measurement(value):
+                out[f"{name}.{stat.replace('(', '').replace(')', '')}"] = value
+        if set(stats) - {"thresholds"} == {"value", "passes", "fails"} and _is_measurement(stats["value"]):
+            out[f"{name}.rate"] = stats["value"]
+    return out
 
 
 class K6Adapter(Adapter):
@@ -84,10 +99,7 @@ class K6Adapter(Adapter):
 
         args = proc.args if isinstance(proc.args, (list, tuple)) else [str(proc.args)]
         return ParsedOutput(
-            metrics={
-                "http_req_duration.p95": p95,
-                "http_req_failed.rate": failed_rate,
-            },
+            metrics=extract_metrics(metrics),
             evidence_paths=[("raw_output", summary_path), ("stdout", stdout_path)],
             tokens=0,
             usd=0.0,

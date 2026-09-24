@@ -134,7 +134,7 @@ def _deterministic_section(ctx: RunContext, gating: list) -> list[str]:
         "|---|---|---|---|---|",
     ]
     for result in gating:
-        detail = _gate_detail(result)
+        detail = _gate_detail(result, ctx.specs[result["task_id"]])
         task_id = result["task_id"]
         lines.append(
             f"| {task_id} | {result['worker']['name']} | {ctx.specs[task_id]['capability']} "
@@ -147,12 +147,15 @@ def _deterministic_section(ctx: RunContext, gating: list) -> list[str]:
     return lines
 
 
-def _gate_detail(result: dict) -> str:
+def _gate_detail(result: dict, spec: dict | None = None) -> str:
     findings = result.get("findings", [])
     if result["status"] == "fail" and findings:
         return str(findings[0].get("title", "—")).replace("|", "\\|")
-    pairs = list(sorted(result.get("metrics", {}).items()))[:2]
-    return ", ".join(f"{key}={_number(value)}" for key, value in pairs) or "—"
+    metrics = result.get("metrics", {})
+    # ưu tiên metric mà oracle thực sự kiểm (worker có thể trả hàng chục số đo, vd k6); còn lại theo thứ tự chữ cái
+    asserted = [a["metric"] for a in (spec or {}).get("oracle", {}).get("assertions", []) if isinstance(a, dict) and a.get("metric") in metrics]
+    pairs = [(name, metrics[name]) for name in asserted] or sorted(metrics.items())
+    return ", ".join(f"{key}={_number(value)}" for key, value in pairs[:2]) or "—"
 
 
 def _llm_section(ctx: RunContext) -> list[str]:

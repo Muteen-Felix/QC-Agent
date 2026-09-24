@@ -113,3 +113,11 @@ def test_write_round_trips_utf8_and_emoji(tmp_path):
     assert (tmp_path / "report.md").read_text(encoding="utf-8") == md
     assert json.loads((tmp_path / "report.json").read_text(encoding="utf-8")) == data
     assert "ĐỌC TRƯỚC" not in md and "✅" in md
+
+
+def test_gate_detail_prefers_metrics_the_oracle_asserts_on():
+    from qc_agent.core.report import _gate_detail
+    result = {"status": "pass", "findings": [], "metrics": {"checks.fails": 0, "checks.passes": 9, "http_req_duration.p95": 5.5, "http_req_failed.rate": 0}}
+    spec = {"oracle": {"kind": "threshold", "assertions": [{"metric": "http_req_duration.p95"}, {"metric": "http_req_failed.rate"}]}}
+    assert _gate_detail(result, spec) == "http_req_duration.p95=5.5, http_req_failed.rate=0"
+    assert _gate_detail(result, {"oracle": {"kind": "checks"}}) == "checks.fails=0, checks.passes=9"  # không có assertion: như trước
