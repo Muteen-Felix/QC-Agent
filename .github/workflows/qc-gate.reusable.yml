@@ -11,7 +11,7 @@
 #       secrets: inherit
 # Xem docs/usage-ci.md. Bật chặn merge: branch protection của SUT yêu cầu job này xanh.
 #
-# Luồng: build + chạy SUT của PR trong container tạm -> chạy image qc-agent (CLI) trên mạng docker riêng -> báo cáo (Check Run,
+# Luồng: build + chạy SUT của PR (và web UI nếu khai sut_ui_dockerfile) trong container tạm -> chạy image qc-agent (CLI) trên mạng docker riêng -> báo cáo (Check Run,
 # comment dính, lịch sử tập trung, webhook) -> upload artifact -> job xanh/đỏ THEO EXIT CODE của gate (báo cáo lỗi không đổi kết quả).
 #
 # AN TOÀN: đầu vào (inputs) và bí mật đều đi qua biến môi trường của step, KHÔNG nội suy ${{ }} vào script (chống chèn lệnh);
@@ -56,6 +56,23 @@ on:
         default: ""
       sut_env:
         description: "KEY=VALUE mỗi dòng cho container SUT (KHÔNG đặt bí mật ở đây)"
+        type: string
+        default: ""
+      sut_ui_dockerfile:
+        description: "Dockerfile của web UI (tuỳ chọn): có thì dựng thêm container `ui` để suite UI (Midscene) dùng qua APP_UI_URL"
+        type: string
+        default: ""
+      sut_ui_context:
+        type: string
+        default: "."
+      sut_ui_port:
+        type: string
+        default: "8080"
+      sut_ui_health_path:
+        type: string
+        default: "/"
+      sut_ui_build_args:
+        description: "KEY=VALUE mỗi dòng cho `docker build` của UI, vd. VITE_API_URL=http://sut:8000 (KHÔNG đặt bí mật: build-arg nằm trong lớp image)"
         type: string
         default: ""
       qc_api_url:
@@ -144,33 +161,50 @@ jobs:
           SUT_PORT: ${{ inputs.sut_port }}
           SUT_HEALTH_PATH: ${{ inputs.sut_health_path }}
           SUT_ENV: ${{ inputs.sut_env }}
+          SUT_UI_DOCKERFILE: ${{ inputs.sut_ui_dockerfile }}
+          SUT_UI_CONTEXT: ${{ inputs.sut_ui_context }}
+          SUT_UI_PORT: ${{ inputs.sut_ui_port }}
+          SUT_UI_HEALTH_PATH: ${{ inputs.sut_ui_health_path }}
+          SUT_UI_BUILD_ARGS: ${{ inputs.sut_ui_build_args }}
         run: |
           set -euo pipefail
           docker network create qc-net
-          if [ -n "$SUT_BASE_URL" ]; then
-            echo "base_url=$SUT_BASE_URL" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          docker build -f "$SUT_DOCKERFILE" -t qc-sut "$SUT_CONTEXT"
-          env_args=()
-          while IFS= read -r line; do [ -n "$line" ] && env_args+=(-e "$line"); done <<< "$SUT_ENV"
-          docker run -d --name sut --network qc-net "${env_args[@]}" qc-sut
           # sẵn sàng = server trả lời HTTP (mọi mã, kể cả 404); dùng chính image qc-agent (đã ghim) để thăm dò trong mạng docker
           PROBE='import sys, urllib.request as u, urllib.error as e
           try:
               u.urlopen(sys.argv[1], timeout=2)
           except e.HTTPError:
               pass'
-          ready=0
-          for _ in $(seq 1 60); do
-            if docker run --rm --network qc-net --entrypoint python "$IMAGE" -c "$PROBE" "http://sut:${SUT_PORT}${SUT_HEALTH_PATH}" 2>/dev/null; then ready=1; break; fi
-            sleep 2
-          done
-          if [ "$ready" != 1 ]; then
-            docker logs sut 2>&1 | tail -50
-            echo "::error::SUT không sẵn sàng sau 120s"; exit 1
+          wait_ready() {  # $1 = tên container, $2 = URL thăm dò
+            local ready=0
+            for _ in $(seq 1 60); do
+              if docker run --rm --network qc-net --entrypoint python "$IMAGE" -c "$PROBE" "$2" 2>/dev/null; then ready=1; break; fi
+              sleep 2
+            done
+            if [ "$ready" != 1 ]; then
+              docker logs "$1" 2>&1 | tail -50
+              echo "::error::$1 không sẵn sàng sau 120s"; exit 1
+            fi
+          }
+          if [ -n "$SUT_BASE_URL" ]; then
+            echo "base_url=$SUT_BASE_URL" >> "$GITHUB_OUTPUT"
+          else
+            docker build -f "$SUT_DOCKERFILE" -t qc-sut "$SUT_CONTEXT"
+            env_args=()
+            while IFS= read -r line; do [ -n "$line" ] && env_args+=(-e "$line"); done <<< "$SUT_ENV"
+            docker run -d --name sut --network qc-net "${env_args[@]}" qc-sut
+            wait_ready sut "http://sut:${SUT_PORT}${SUT_HEALTH_PATH}"
+            echo "base_url=http://sut:${SUT_PORT}" >> "$GITHUB_OUTPUT"
           fi
-          echo "base_url=http://sut:${SUT_PORT}" >> "$GITHUB_OUTPUT"
+          # web UI (tuỳ chọn): container `ui` cùng mạng; trình duyệt của Midscene chạy trong container gate nên phân giải được `sut` và `ui`
+          if [ -n "$SUT_UI_DOCKERFILE" ]; then
+            build_args=()
+            while IFS= read -r line; do [ -n "$line" ] && build_args+=(--build-arg "$line"); done <<< "$SUT_UI_BUILD_ARGS"
+            docker build -f "$SUT_UI_DOCKERFILE" "${build_args[@]}" -t qc-sut-ui "$SUT_UI_CONTEXT"
+            docker run -d --name ui --network qc-net qc-sut-ui
+            wait_ready ui "http://ui:${SUT_UI_PORT}${SUT_UI_HEALTH_PATH}"
+            echo "ui_url=http://ui:${SUT_UI_PORT}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run qc-agent gate
         id: gate
@@ -180,6 +214,7 @@ jobs:
           MODE: ${{ inputs.mode }}
           SUITES: ${{ inputs.suites }}
           BASE_URL: ${{ steps.sut.outputs.base_url }}
+          UI_URL: ${{ steps.sut.outputs.ui_url }}
           SUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -196,8 +231,9 @@ jobs:
           mkdir -p runs
           args=(run --project "$PROJECT" --mode "$MODE" --sut-root /work --runs-dir /work/runs --sut-ref "$SUT_REF")
           if [ -n "$SUITES" ]; then args+=(--suites "$SUITES"); fi
+          ui_args=(); if [ -n "${UI_URL:-}" ]; then ui_args=(-e APP_UI_URL="$UI_URL"); fi
           docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -w /work \
-            -e APP_BASE_URL="$BASE_URL" \
+            -e APP_BASE_URL="$BASE_URL" "${ui_args[@]}" \
             -e OPENAI_API_KEY -e GEMINI_API_KEY \
             -e MIDSCENE_MODEL_BASE_URL -e MIDSCENE_MODEL_API_KEY -e MIDSCENE_MODEL_NAME -e MIDSCENE_MODEL_FAMILY \
             -e QC_JUDGE_PROVIDER -e QC_JUDGE_MODEL -e QC_JUDGE_FALLBACK_PROVIDER -e QC_JUDGE_FALLBACK_MODEL \
@@ -238,7 +274,7 @@ jobs:
       - name: Clean up SUT
         if: always()
         run: |
-          docker rm -f sut >/dev/null 2>&1 || true
+          docker rm -f sut ui >/dev/null 2>&1 || true
           docker network rm qc-net >/dev/null 2>&1 || true
 
       - name: Enforce gate result

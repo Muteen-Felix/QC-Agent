@@ -111,3 +111,77 @@ def test_unpinned_image_is_refused_by_default(stack):
                                    skip=(), echo=logs.append)
     assert results["Pull qc-agent image"]["returncode"] != 0 and "ghim theo digest" in "\n".join(logs)
     assert "Enforce gate result" in results and results["Enforce gate result"]["returncode"] == 1  # lỗi cấu hình => job đỏ, không xanh nhầm
+
+
+# ---- web UI tuỳ chọn (bước 24): container `ui` cạnh `sut`, APP_UI_URL cho gate ----
+
+def _ui_inputs(**over):
+    return {"project": "noteboard", "image": IMAGE, "allow_unpinned_image": "true", "sut_env": "QC_BUGS=none",
+            "sut_ui_dockerfile": "ui/Dockerfile", "sut_ui_context": "ui", "sut_ui_build_args": "MARKER=from-build-arg\nOTHER=x", **over}
+
+
+def _fetch_from_gate_network(path: str) -> str:
+    """Đọc URL bằng chính image qc-agent trong mạng qc-net (giống trình duyệt của gate, tức KHÔNG qua cổng của máy chủ)."""
+    import subprocess
+    code = "import sys,urllib.request as u;print(u.urlopen(sys.argv[1],timeout=5).read().decode())"
+    return subprocess.run(["docker", "run", "--rm", "--network", "qc-net", "--entrypoint", "python", IMAGE, "-c", code, path],
+                          capture_output=True, text=True, timeout=60).stdout
+
+
+def test_ui_container_is_built_with_build_args_started_and_reported_as_ui_url(stack):
+    import subprocess
+    github = {"token": GITHUB_TOKEN, "sha": "m", "actor": "t", "run_attempt": "1", "event": {}, "env": {}}
+    logs = []
+    try:
+        # chỉ chạy tới hết bước Start SUT: gate/báo cáo đã có test riêng ở trên
+        results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, _ui_inputs(), {}, github,
+                                       skip=("Pull qc-agent image", "Run qc-agent gate", "Report (Check Run, PR comment, history, webhook)",
+                                             "Upload run artifacts", "Clean up SUT", "Enforce gate result"), echo=logs.append)
+        out = results["Start SUT"]
+        assert out["returncode"] == 0, "\n".join(logs)
+        assert out["outputs"] == {"base_url": "http://sut:8000", "ui_url": "http://ui:8080"}
+        assert 'id="marker">from-build-arg<' in _fetch_from_gate_network("http://ui:8080/")  # build-arg đã vào image UI
+        assert '"bugs"' in _fetch_from_gate_network("http://sut:8000/__qc/config")  # SUT vẫn chạy song song
+    finally:
+        subprocess.run(["docker", "rm", "-f", "sut", "ui"], capture_output=True)
+        subprocess.run(["docker", "network", "rm", "qc-net"], capture_output=True)
+
+
+def test_without_ui_inputs_no_ui_container_and_no_ui_url(stack):
+    import subprocess
+    github = {"token": GITHUB_TOKEN, "sha": "m", "actor": "t", "run_attempt": "1", "event": {}, "env": {}}
+    try:
+        results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, {"project": "noteboard", "image": IMAGE, "allow_unpinned_image": "true",
+                                                                       "sut_env": "QC_BUGS=none"}, {}, github,
+                                       skip=("Pull qc-agent image", "Run qc-agent gate", "Report (Check Run, PR comment, history, webhook)",
+                                             "Upload run artifacts", "Clean up SUT", "Enforce gate result"))
+        assert results["Start SUT"]["outputs"] == {"base_url": "http://sut:8000"}
+        assert "ui" not in subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}}"], capture_output=True, text=True).stdout.split()
+    finally:
+        subprocess.run(["docker", "rm", "-f", "sut", "ui"], capture_output=True)
+        subprocess.run(["docker", "network", "rm", "qc-net"], capture_output=True)
+
+
+def test_ui_that_never_becomes_ready_fails_the_start_step_with_its_own_name(stack):
+    import subprocess
+    github = {"token": GITHUB_TOKEN, "sha": "m", "actor": "t", "run_attempt": "1", "event": {}, "env": {}}
+    logs = []
+    try:
+        results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, _ui_inputs(sut_ui_port="9999"), {}, github,
+                                       skip=("Pull qc-agent image", "Report (Check Run, PR comment, history, webhook)", "Upload run artifacts",
+                                             "Clean up SUT"), echo=logs.append)
+        assert results["Start SUT"]["returncode"] != 0 and "Run qc-agent gate" not in results  # UI hỏng => không chạy gate
+        assert results["Enforce gate result"]["returncode"] == 1, "\n".join(logs)  # job đỏ, không xanh giả
+    finally:
+        subprocess.run(["docker", "rm", "-f", "sut", "ui"], capture_output=True)
+        subprocess.run(["docker", "network", "rm", "qc-net"], capture_output=True)
+
+
+def test_gate_step_passes_app_ui_url_only_when_a_ui_exists():
+    import yaml
+    steps = yaml.safe_load(harness.DEFAULT_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["gate"]["steps"]
+    gate = next(s for s in steps if s.get("id") == "gate")
+    assert gate["env"]["UI_URL"] == "${{ steps.sut.outputs.ui_url }}"
+    assert 'APP_UI_URL="$UI_URL"' in gate["run"] and '[ -n "${UI_URL:-}" ]' in gate["run"]  # chỉ đặt khi có UI
+    cleanup = next(s for s in steps if s.get("name") == "Clean up SUT")
+    assert "docker rm -f sut ui" in cleanup["run"]

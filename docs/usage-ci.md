@@ -35,6 +35,25 @@ jobs:
 
 Ghim `@<COMMIT-SHA>` (không dùng `@main`) để một thay đổi ở qc-agent không tự động đổi gate của bạn.
 
+### Web UI (tuỳ chọn, cho suite UI/Midscene)
+SUT có giao diện web dựng riêng khỏi API thì khai thêm; không khai thì workflow chạy như trước.
+
+```yaml
+    with:
+      project: myapp
+      image: ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>
+      sut_ui_dockerfile: apps/web-ui/Dockerfile
+      sut_ui_context: apps/web-ui
+      sut_ui_port: "8080"                       # mặc định 8080
+      sut_ui_health_path: "/"                   # mặc định /
+      sut_ui_build_args: |                      # KHÔNG đặt bí mật: build-arg nằm trong lớp image
+        VITE_API_URL=http://sut:8000
+      sut_env: |
+        MYAPP_CORS_ORIGINS=http://ui:8080       # cho phép origin của UI gọi API (tên biến do SUT quy định)
+```
+
+Workflow dựng container `ui` cùng mạng docker với `sut`, rồi gate nhận `APP_UI_URL=http://ui:<port>` (suite UI dùng `${env.APP_UI_URL}`). Trình duyệt của Midscene chạy trong container gate nên phân giải được cả `sut` và `ui`; UI nhúng địa chỉ API lúc build thì dùng `http://sut:<cổng>`.
+
 ## 3. Secret (khai ở repo SUT)
 | Secret | Dùng cho |
 |---|---|
