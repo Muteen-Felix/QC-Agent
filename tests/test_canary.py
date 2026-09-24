@@ -1,5 +1,5 @@
-from core.report import RunContext, render
-from core.verdict import canary_alerts, gate_verdict
+from qc_agent.core.report import RunContext, render
+from qc_agent.core.verdict import canary_alerts, gate_verdict
 
 
 def result(status, *, gating=False):

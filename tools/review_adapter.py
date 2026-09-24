@@ -13,9 +13,9 @@ for _s in (sys.stdout, sys.stderr):  # nhãn tiếng Việt: không được ch�
         _s.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-from core import schema  # noqa: E402
-from core.evidence import sha256_file  # noqa: E402
+sys.path.insert(0, str(ROOT / "src"))
+from qc_agent.core import schema  # noqa: E402
+from qc_agent.core.evidence import sha256_file  # noqa: E402
 
 
 def load(path):
@@ -72,7 +72,7 @@ def c5_no_worker_names_in_core():
     names = worker_names()
     if not names:  # không có tên để dò thì không được PASS "rỗng"
         return False, "không đọc được tên worker nào từ workers/*.yaml — không kiểm được"
-    hits = [f"{p.name}:{n}" for p in sorted((ROOT / "core").glob("*.py")) for n in names
+    hits = [f"{p.name}:{n}" for p in sorted((ROOT / "src" / "qc_agent" / "core").glob("*.py")) for n in names
             if re.search(rf"\b{re.escape(n)}\b", p.read_text(encoding="utf-8-sig"), re.I)]
     return not hits, f"thấy: {hits[:3]}"
 

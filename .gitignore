@@ -14,5 +14,3 @@ __pycache__/
 role-a/
 docs/research/qcagent-run*.md
 
-# Dashboard runtime state (job logs, mock tickets)
-dashboard/_state/

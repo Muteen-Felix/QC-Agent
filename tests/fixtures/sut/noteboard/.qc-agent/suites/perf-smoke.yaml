@@ -1,0 +1,43 @@
+# Suite của repo SUT (noteboard). Đường dẫn tương đối = tương đối repo SUT (worker chạy với cwd = SUT root).
+# Smoke perf trên PR: SUT dựng tạm trong runner (số đo KHÔNG đại diện cho staging) => chỉ tham khảo, không bao giờ chặn merge.
+# Lane discovery + ngưỡng lỏng: fail ở đây là tín hiệu để xem, không phải verdict của gate.
+suite: perf-smoke
+description: Smoke k6 ngắn trên SUT trong runner (mode pr, không chặn)
+tasks:
+- task_id: t-102
+  capability: http.load
+  lane: discovery
+  intent: 'Smoke: GET /notes 2 VU trong 5s; chỉ để phát hiện suy giảm rõ rệt (ngưỡng rộng)'
+  target:
+    kind: http_service
+    base_url: ${env.APP_BASE_URL}
+  inputs:
+    script: tests/perf/notes_list.js
+    vus: 2
+    duration: 5s
+  oracle:
+    kind: threshold
+    assertions:
+    - metric: http_req_duration.p95
+      op: <
+      value: 1000
+      unit: ms
+    - metric: http_req_failed.rate
+      op: <
+      value: 0.05
+  expected_result_kind: candidate_finding
+  budget:
+    wallclock_s: 60
+    tokens: 0
+    usd: 0
+  determinism:
+    seed: null
+    replayable: true
+  evidence_required:
+  - raw_output
+  - stdout
+  retry:
+    max: 0
+    'on': []
+  prefer:
+  - k6

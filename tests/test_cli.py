@@ -9,8 +9,8 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-DEMO = ROOT / "plans" / "demo.yaml"
-DEMO_FAIL = ROOT / "plans" / "demo_fail.yaml"
+DEMO = ROOT / "tests" / "fixtures" / "plans" / "demo.yaml"
+DEMO_FAIL = ROOT / "tests" / "fixtures" / "plans" / "demo_fail.yaml"
 
 
 def run_cli(tmp_path, *args):
@@ -103,6 +103,18 @@ def test_07_yellow_exit_flag(tmp_path):
     blocking = run_cli(tmp_path, "--plan", plan, "--yellow-exit", "2")
     assert blocking.returncode == 2
     assert report_json(tmp_path, "r-0002")["exit_code"] == 2  # report.json khớp exit của tiến trình
+
+
+def test_07b_on_skipped_gate_task_fail_blocks(tmp_path):
+    def skipped_gate_task(tasks):
+        tasks.append({**tasks[0], "task_id": "t-e99", "capability": "http.load"})
+
+    plan = str(write_plan(tmp_path, skipped_gate_task))
+    proc = run_cli(tmp_path, "--plan", plan, "--on-skipped-gate-task", "fail")
+    assert proc.returncode == 1, proc.stderr
+    data = report_json(tmp_path)
+    assert data["gate_verdict"] == "FAIL" and data["exit_code"] == 1
+    assert run_cli(tmp_path, "--plan", plan, "--on-skipped-gate-task", "xanh").returncode == 3  # giá trị lạ là lỗi cấu hình
 
 
 def test_08_usage_error_exits_3_not_argparse_2(tmp_path):

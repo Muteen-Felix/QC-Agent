@@ -5,11 +5,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core import plan, schema
+from qc_agent.core import plan, schema
 
 
 ROOT = Path(__file__).resolve().parent.parent
-BASE_TASK = json.loads((ROOT / "examples" / "task.k6.json").read_text(encoding="utf-8-sig"))
+BASE_TASK = json.loads((ROOT / "tests" / "fixtures" / "contract" / "task.k6.json").read_text(encoding="utf-8-sig"))
 for _field in ("plan_id", "run_id", "sut_identity_ref"):
     BASE_TASK.pop(_field)
 
@@ -131,3 +131,15 @@ def test_toposort_reports_cycles_and_missing_dependencies():
                        {"task_id": "t-002", "depends_on": ["t-001"]}])
     with pytest.raises(plan.PlanError, match="không tồn tại"):
         plan.toposort([{"task_id": "t-001", "depends_on": ["missing"]}])
+
+
+def test_runs_dir_placeholder_resolves_to_absolute_runs_dir(monkeypatch):
+    task = {**BASE_TASK, "task_id": "t-x", "inputs": {"outputs_path": "${runs_dir}/${run_id}/t-000/outputs.json"}}
+    spec, _ = plan.resolve(task, {"plan_id": "plan-1", "run_id": "r-0007", "runs_dir": "/abs/runs", "sut_identity_ref": "sut-1"})
+    assert spec["inputs"]["outputs_path"] == "/abs/runs/r-0007/t-000/outputs.json"
+
+
+def test_runs_dir_placeholder_without_context_is_a_plan_error():
+    task = {**BASE_TASK, "task_id": "t-x", "inputs": {"p": "${runs_dir}/x"}}
+    with pytest.raises(plan.PlanError, match="runs_dir"):
+        plan.resolve(task, {"plan_id": "plan-1", "run_id": "r-0007", "sut_identity_ref": "sut-1"})

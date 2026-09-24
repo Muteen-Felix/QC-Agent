@@ -1,0 +1,14 @@
+web:
+  url: http://placeholder.invalid/  # bị adapter thay bằng target.base_url + entry_path
+  chromeArgs:
+    - --no-sandbox
+    - --disable-gpu
+tasks:
+  - name: them-va-xoa-note
+    flow:
+      - aiInput: Họp
+        locate: ô Tiêu đề
+      - aiInput: Chốt scope
+        locate: ô Nội dung
+      - aiTap: nút Thêm
+      - aiTap: nút Xoá của note đầu tiên

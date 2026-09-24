@@ -1,0 +1,27 @@
+# Project `noteboard` = SUT tham chiếu của qc-agent (tests/fixtures/sut/noteboard). TẬP TRUNG: đổi file này phải qua PR vào qc-agent.
+# Suite (nội dung task) nằm trong repo SUT tại suites_dir.
+slug: noteboard
+name: "Noteboard (SUT tham chiếu)"
+suites_dir: .qc-agent/suites
+sut_checkout: tests/fixtures/sut/noteboard   # trên máy service; project root tương đối. Dự án thật: đường dẫn tuyệt đối tới bản checkout luôn được cập nhật
+environments:
+  local:
+    description: toyapp chạy cục bộ (SUT tham chiếu)
+    env:
+      APP_BASE_URL: http://127.0.0.1:8000
+  staging:                                    # môi trường dùng chung: perf-full chạy ở đây, đúng 1 job / lần
+    description: "staging dùng chung (địa chỉ là bí mật của server, biến NOTEBOARD_STAGING_URL)"
+    env: {APP_BASE_URL: "${env.NOTEBOARD_STAGING_URL}"}
+    concurrency_key: env:noteboard-staging
+    timeout_s: 1800
+sut:
+  files: ["toyapp"]
+  attrs: {model: "stub-rule-v1"}
+  probe_url: "${env.APP_BASE_URL}/__qc/config"
+modes:
+  pr:                                    # tự động, mỗi PR
+    blocking_suites: [api-contract, ai-eval]   # mọi task lane=gate: chặn merge
+    advisory_suites: [ui-explore, perf-smoke]  # mọi task lane=discovery: không chặn (perf-smoke: SUT trong runner, số đo chỉ tham khảo)
+    on_skipped_gate_task: fail                 # task gate bị skip không được cho qua
+  manual:                                # QA/Dev chạy trên web; lane giữ như suite khai báo
+    suites: "*"

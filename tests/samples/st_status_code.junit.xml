@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites errors="0" failures="1" skipped="0" tests="6" time="3.692223">
+  <testsuite name="schemathesis" hostname="NGUYEN-CHINH-NGHIA" errors="0" failures="1" skipped="0" tests="6" time="3.692223">
+    <testcase name="POST /notes" time="0.538698">
+      <failure type="failure">1. Test Case ID: ym88vU
+
+- Undocumented HTTP status code
+
+    Received: 400
+    Documented: 201, 422
+
+[400] Bad Request:
+
+    `{"detail":"There was an error parsing the body"}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -d '���' http://127.0.0.1:8021/notes</failure>
+    </testcase>
+    <testcase name="GET /notes" time="0.016389" />
+    <testcase name="GET /notes/{note_id}" time="0.198521" />
+    <testcase name="POST /notes/{note_id}/summarize" time="0.118594" />
+    <testcase name="DELETE /notes/{note_id}" time="0.127128" />
+    <testcase name="Stateful tests" time="2.692892" />
+  </testsuite>
+</testsuites>

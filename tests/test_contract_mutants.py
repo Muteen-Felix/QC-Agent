@@ -1,23 +1,23 @@
 """Mutation testing CỦA HỢP ĐỒNG: cố tình làm hỏng một result/task hợp lệ, schema PHẢI từ chối.
 Mutant nào không bị từ chối = lỗ hổng của contract (đây là N2/N4 ở dạng test).
-Tên test = ID mutant (C1.., T1..) — tools/run_mutants.py đọc kết quả theo tên này."""
+Tên test = ID mutant (C1.., T1..)."""
 import copy
 import json
 import pathlib
 
 import pytest
 
-from core import schema
+from qc_agent.core import schema
 
 
 def L(p):
     return json.loads(pathlib.Path(p).read_text(encoding="utf-8-sig"))
 
 
-GATE = L("examples/result.ai_eval.json")
-DISC = L("examples/result.e2e_pass.json")
-TASK = L("examples/task.k6.json")
-TASK_DISC = L("examples/task.midscene.json")
+GATE = L("tests/fixtures/contract/result.ai_eval.json")
+DISC = L("tests/fixtures/contract/result.e2e_pass.json")
+TASK = L("tests/fixtures/contract/task.k6.json")
+TASK_DISC = L("tests/fixtures/contract/task.midscene.json")
 
 
 def mutate(base, fn):

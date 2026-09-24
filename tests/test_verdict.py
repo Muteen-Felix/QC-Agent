@@ -1,6 +1,6 @@
 import pytest
 
-from core.verdict import gate_verdict
+from qc_agent.core.verdict import gate_verdict
 
 
 def R(status="pass", value="pass", gating=True, src="deterministic_assert", rat=None):
@@ -30,6 +30,18 @@ CASES = [
 def test_gate_verdict(name, specs, results, value, code):
     g = gate_verdict(results, specs)
     assert (g.value, g.exit_code) == (value, code)
+
+
+def test_skipped_gate_is_fail_policy():
+    specs, results = {"a": G, "b": G}, {"a": R(), "b": SKIP}
+    assert gate_verdict(results, specs).value == "YELLOW"  # mặc định giữ hành vi cũ
+    g = gate_verdict(results, specs, skipped_gate_is_fail=True)
+    assert (g.value, g.exit_code) == ("FAIL", 1) and [t for t, _ in g.reasons] == ["b"]
+
+
+def test_skipped_gate_is_fail_ignores_discovery_and_clean_runs():
+    assert gate_verdict({"a": R(), "m": SKIP}, {"a": G, "m": D}, skipped_gate_is_fail=True).value == "PASS"
+    assert gate_verdict({"a": R(), "b": R()}, {"a": G, "b": G}, skipped_gate_is_fail=True).value == "PASS"
 
 
 def test_banner_lists_skipped_and_error():

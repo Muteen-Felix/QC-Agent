@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from core import schema
+from qc_agent.core import schema
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def L(name):
-    return json.loads((ROOT / "examples" / name).read_text(encoding="utf-8-sig"))
+    return json.loads((ROOT / "tests" / "fixtures" / "contract" / name).read_text(encoding="utf-8-sig"))
 
 
 K6S, K6R = L("task.k6.json"), L("result.k6_pass.json")

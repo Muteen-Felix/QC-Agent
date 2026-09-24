@@ -1,6 +1,6 @@
 name: schemathesis
 version_probe: "st --version"
-adapter: "adapters/schemathesis_adapter.py"
+adapter: "qc_agent/adapters/schemathesis_adapter.py"
 lanes: [gate]
 capabilities:
   - id: api.property

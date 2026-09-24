@@ -1,7 +1,7 @@
 import json, pathlib
 from toyapp.summarizer import summarize
 
-G = json.loads(pathlib.Path("tests/eval/golden.json").read_text(encoding="utf-8-sig"))
+G = json.loads((pathlib.Path(__file__).parent / "fixtures/sut/noteboard/tests/eval/golden.json").read_text(encoding="utf-8-sig"))
 
 def test_bug_off_all_shorter():
     assert all(0 < len(summarize(g["body"], False)) < len(g["body"]) for g in G)

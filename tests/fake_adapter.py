@@ -4,7 +4,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from adapters._base import Adapter, AdapterParseError, ParsedOutput
+from qc_agent.adapters._base import Adapter, AdapterParseError, ParsedOutput
 
 _CHILD = "import time\nwhile True:\n    open(r'{beat}', 'a').write('x'); time.sleep(0.1)\n"
 _SPAWN = textwrap.dedent("""

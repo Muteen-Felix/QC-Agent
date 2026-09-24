@@ -1,0 +1,9 @@
+web:
+  url: http://placeholder.invalid/  # bị adapter thay bằng target.base_url + entry_path
+  chromeArgs:
+    - --no-sandbox
+    - --disable-gpu
+tasks:
+  - name: canary-checkout-khong-ton-tai
+    flow:
+      - aiAct: bấm nút "Thanh toán"

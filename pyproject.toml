@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qc-agent"
+version = "0.1.0"
+description = "QC gate orchestrator: plan -> worker -> deterministic verdict -> report"
+requires-python = ">=3.11"
+# Ghim đúng các phiên bản đã kiểm chứng ở requirements.lock; uv.lock ghim thêm phần transitive (đa nền tảng).
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn==0.53.0",
+    "httpx==0.28.1",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "jsonschema==4.26.0",
+    "PyYAML==6.0.3",
+    "schemathesis==4.27.5",
+    "deepeval==4.2.3",
+    "google-genai==2.24.0",
+    "sqlalchemy==2.0.54",
+    "alembic==1.20.0",
+    "psycopg[binary]==3.3.6",
+    "argon2-cffi==25.1.0",
+    "psutil==7.2.2",
+]
+
+[project.scripts]
+qc-agent = "qc_agent.core.cli:console"
+
+[dependency-groups]
+dev = ["pytest==9.1.1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qc_agent"]
+
+# Contract + manifest ở gốc repo (khoá bởi CONTRACT.lock) được đóng gói vào wheel mà không phải di chuyển.
+[tool.hatch.build.targets.wheel.force-include]
+"schemas" = "qc_agent/schemas"
+"workers" = "qc_agent/workers"
+"configs" = "qc_agent/configs"
+"web" = "qc_agent/web"

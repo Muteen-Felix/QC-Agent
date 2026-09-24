@@ -1,6 +1,6 @@
 name: midscene-cli
 version_probe: "npx @midscene/cli --version"
-adapter: "adapters/midscene_adapter.py"
+adapter: "qc_agent/adapters/midscene_adapter.py"
 lanes: [discovery]
 capabilities:
   - id: ui.explore

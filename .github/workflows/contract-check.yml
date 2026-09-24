@@ -1,0 +1,40 @@
+# Cổng duyệt contract: PATCH/MINOR cần 1 approval; MAJOR cần 3 (có Lead/Core). Xem tools/contract_check.py.
+# Chạy checker từ nhánh BASE (không tin code của PR); bootstrap PR đầu tiên chưa có ở base thì dùng bản của PR.
+# Đặt job này làm required status check ở branch protection của main.
+name: contract-check
+
+on:
+  pull_request:
+    branches: [main]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  contract-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - name: Fetch reviews
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" > reviews.json
+      - name: Check contract
+        run: |
+          TOOL=base/tools/contract_check.py
+          if [ ! -f "$TOOL" ]; then TOOL=tools/contract_check.py; echo "::notice::bootstrap: dùng checker của PR"; fi
+          python "$TOOL" --root . --base-ref "origin/${{ github.event.pull_request.base.ref }}" \
+            --reviews-file reviews.json --author "${{ github.event.pull_request.user.login }}"

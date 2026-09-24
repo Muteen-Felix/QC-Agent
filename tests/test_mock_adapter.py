@@ -2,8 +2,8 @@ import copy
 import json
 from pathlib import Path
 
-from adapters.mock_adapter import MockAdapter
-from core import schema
+from tests.fixtures.workers.mock_adapter import MockAdapter
+from qc_agent.core import schema
 
 
 ROOT = Path(__file__).resolve().parent.parent

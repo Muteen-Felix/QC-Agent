@@ -9,13 +9,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from core import runner, schema
+from qc_agent.core import runner, schema
 
 TESTS = Path(__file__).resolve().parent
 ROOT = TESTS.parent
-_K6 = json.loads((ROOT / "examples" / "task.k6.json").read_text(encoding="utf-8-sig"))
+_K6 = json.loads((ROOT / "tests" / "fixtures" / "contract" / "task.k6.json").read_text(encoding="utf-8-sig"))
 
-WORKER = SimpleNamespace(name="fake", module="fake_worker", probe_ok=True, probe_reason=None)
+WORKER = SimpleNamespace(name="fake", module="fake_worker", probe_ok=True, probe_reason=None, version=None)
 
 
 class Registry:

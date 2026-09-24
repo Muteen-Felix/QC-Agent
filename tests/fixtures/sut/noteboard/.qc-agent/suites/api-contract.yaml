@@ -1,0 +1,43 @@
+# Suite của repo SUT (noteboard). Đường dẫn tương đối = tương đối repo SUT (worker chạy với cwd = SUT root).
+# Lane chặn/không chặn do POLICY của qc-agent quyết định (configs/projects/noteboard.yaml), không do file này.
+suite: api-contract
+description: Contract API bằng Schemathesis (chặn merge ở mode pr)
+tasks:
+- task_id: t-001
+  capability: api.property
+  lane: gate
+  intent: 'GET /notes/{id} và POST /notes: schema conformance + không 5xx (property-based)'
+  target:
+    kind: http_service
+    base_url: ${env.APP_BASE_URL}
+    spec_ref: ${env.APP_BASE_URL}/openapi.json
+  inputs:
+    schema_url: ${env.APP_BASE_URL}/openapi.json
+    checks:
+    - not_a_server_error
+    - response_schema_conformance
+    max_examples: 25
+    seed: 1337
+    exclude_path: /notes/{note_id}/summarize
+  oracle:
+    kind: checks
+    required:
+    - not_a_server_error
+    - response_schema_conformance
+  expected_result_kind: verdict
+  budget:
+    wallclock_s: 120
+    tokens: 0
+    usd: 0
+  determinism:
+    seed: 1337
+    replayable: true
+  evidence_required:
+  - raw_output
+  - stdout
+  retry:
+    max: 1
+    'on':
+    - error
+  prefer:
+  - schemathesis

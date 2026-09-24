@@ -1,7 +1,0 @@
-web:
-  url: http://127.0.0.1:8000
-tasks:
-  - name: them-va-xoa-note
-    flow:
-      - aiAct: nhập "Họp" vào ô Tiêu đề, nhập "Chốt scope" vào ô Nội dung, bấm nút Thêm
-      - aiAct: bấm nút Xoá của note đầu tiên

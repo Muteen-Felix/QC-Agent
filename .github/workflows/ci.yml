@@ -1,0 +1,86 @@
+# CI của CHÍNH qc-agent (thay qc-gate.yml cũ của PoC):
+#   unit       : toàn bộ test trên Linux, PostgreSQL thật (service container), giao diện bằng Chromium thật
+#   image-e2e  : build image rồi chạy gate `noteboard` TRONG image (sạch => PASS, có lỗi cài sẵn => FAIL)
+# Gate cho repo SUT dùng workflow tái sử dụng qc-gate.reusable.yml; kiểm tra contract ở contract-check.yml; publish image ở image.yml.
+# Các action ghim theo commit SHA.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      QC_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version-file: .python-version
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+      - name: Install Python deps (uv.lock, đa nền tảng)
+        run: |
+          pip install uv
+          uv sync --frozen
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install Node deps + Chromium (test giao diện)
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run tests
+        run: python -m pytest tests -q
+
+  image-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          load: true
+          tags: qc-agent:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Gate noteboard in the image (clean SUT must PASS, seeded bugs must FAIL)
+        run: |
+          run_noteboard() {
+            docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/tests:/work/tests" \
+              -e QC_BUGS="$1" -e APP_BASE_URL=http://127.0.0.1:8000 --entrypoint sh qc-agent:ci -c '
+              cd /work
+              python -m uvicorn --app-dir tests/fixtures/sut/noteboard toyapp.app:app --host 127.0.0.1 --port 8000 >/tmp/toy.log 2>&1 &
+              for i in $(seq 1 30); do python -c "import urllib.request as u;u.urlopen(\"http://127.0.0.1:8000/__qc/config\",timeout=1)" 2>/dev/null && break; sleep 1; done
+              qc-agent run --project noteboard --mode pr --sut-root tests/fixtures/sut/noteboard --runs-dir /tmp/runs'
+          }
+          set +e
+          run_noteboard none;  clean=$?
+          run_noteboard 1,3;   bugs=$?
+          echo "clean exit=$clean (mong đợi 0), seeded-bugs exit=$bugs (mong đợi 1)"
+          [ "$clean" = 0 ] && [ "$bugs" = 1 ]

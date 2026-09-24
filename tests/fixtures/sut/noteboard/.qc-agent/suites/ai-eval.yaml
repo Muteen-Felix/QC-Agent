@@ -1,0 +1,84 @@
+# Suite của repo SUT (noteboard). Đường dẫn tương đối = tương đối repo SUT (worker chạy với cwd = SUT root).
+# Lane chặn/không chặn do POLICY của qc-agent quyết định (configs/projects/noteboard.yaml), không do file này.
+# DeepEval tự thu output qua HTTP (inputs.collect), chạy metric tất định (inputs.metrics) rồi G-Eval advisory (inputs.geval).
+# Mẫu dùng {{...}}; {{nonce}} = chuỗi riêng của mỗi lần chạy để đặt tên dữ liệu test (tránh đụng khi nhiều job chạy song song).
+suite: ai-eval
+description: 'Eval AI: thu output + metric tất định (chặn merge ở mode pr) + G-Eval tham khảo'
+tasks:
+- task_id: t-003
+  capability: llmapp.eval
+  lane: gate
+  intent: Thu output tóm tắt qua golden set, đánh giá bằng metric tất định (gating) + G-Eval advisory (không chặn)
+  target:
+    kind: llm_app
+    base_url: ${env.APP_BASE_URL}
+  inputs:
+    collect:
+      golden: tests/eval/golden.json
+      steps:
+      - id: create
+        method: POST
+        path: /notes
+        json: {title: '{{nonce}}-{{case.title}}', body: '{{case.body}}'}
+        capture: {note_id: id}
+      - id: summarize
+        method: POST
+        path: /notes/{{note_id}}/summarize
+        capture: {actual_output: summary, model: model, prompt_hash: prompt_hash}
+      cleanup:
+      - {method: DELETE, path: '/notes/{{note_id}}'}
+      record:
+        input: '{{case.body}}'
+        actual_output: '{{actual_output}}'
+        model: '{{model}}'
+        prompt_hash: '{{prompt_hash}}'
+    metrics:
+    - {name: summary_not_empty, kind: not_empty, field: actual_output}
+    - {name: summary_shorter_than_body, kind: shorter_than, field: actual_output, than: input}
+    - name: summary_json_valid
+      kind: json_schema
+      schema:
+        type: object
+        required: [id, input, actual_output, model, prompt_hash, http_status]
+        properties:
+          id: {type: string, pattern: '^[a-z0-9]+$'}
+          input: {type: string, minLength: 1}
+          actual_output: {type: string}
+          model: {type: string}
+          prompt_hash: {type: string}
+          http_status: {type: [integer, 'null'], minimum: 100, maximum: 599}
+    geval:
+      name: giu_y_chinh
+      criteria: Bản tóm tắt giữ lại các ý chính trong đầu vào.
+      baseline: 0.78
+    judge_config:
+      provider: openai
+      model: gemini-3.5-flash-lite
+      fallback_provider: gemini
+      fallback_model: gemini-3.5-flash-lite
+    sut_model: stub-rule-v1
+  oracle:
+    kind: checks
+    required:
+    - all_http_2xx
+    - count_matches_golden
+    - summary_not_empty
+    - summary_shorter_than_body
+    - summary_json_valid
+  expected_result_kind: verdict
+  budget:
+    wallclock_s: 240
+    tokens: 50000
+    usd: 0.5
+  determinism:
+    seed: null
+    replayable: true
+  evidence_required:
+  - raw_output
+  - stdout
+  retry:
+    max: 1
+    'on':
+    - error
+  prefer:
+  - deepeval

@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from core import schema
+from qc_agent.core import schema
 from fake_adapter import FakeAdapter
 
 ROOT = Path(__file__).resolve().parent.parent
 FAKE = Path(__file__).resolve().parent / "fake_adapter.py"
 
-_K6 = json.loads((ROOT / "examples" / "task.k6.json").read_text(encoding="utf-8-sig"))
+_K6 = json.loads((ROOT / "tests" / "fixtures" / "contract" / "task.k6.json").read_text(encoding="utf-8-sig"))
 
 
 def make_spec(mode="ok", **over):

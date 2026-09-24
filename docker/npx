@@ -1,0 +1,10 @@
+#!/bin/sh
+# Shim `npx` của image qc-agent.
+# `npx @midscene/cli ...` (cách adapter gọi Midscene) chạy bản ĐÃ KHOÁ trong /opt/qc-node (package-lock.json), không tải bản mới
+# nhất từ npm lúc chạy: npx chỉ thấy node_modules của thư mục hiện tại (cwd = repo SUT) nên nếu không có shim này nó tải từ mạng
+# (không tái lập, cần Internet, mã tải về không qua lockfile). Mọi lời gọi npx khác giữ nguyên hành vi thật.
+if [ "$1" = "@midscene/cli" ]; then
+  shift
+  exec /opt/qc-node/node_modules/.bin/midscene "$@"
+fi
+exec /usr/local/bin/node /usr/local/lib/node_modules/npm/bin/npx-cli.js "$@"
