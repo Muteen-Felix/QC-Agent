@@ -8,7 +8,7 @@ import threading
 import time
 from pathlib import Path
 
-from qc_agent.core import schema
+from qc_agent.core import egress, schema
 from qc_agent.core.proctree import kill_tree
 
 _ACTIVE: set = set()  # worker đang chạy; terminate_active() giết cây của chúng khi tiến trình bị SIGTERM (huỷ job)
@@ -17,7 +17,7 @@ SLACK_S = 30  # buffer cho adapter đóng gói kết quả; timeout của chính
 
 
 def run_all(specs: dict[str, dict], plan_only: dict[str, dict], registry, run_dir: Path,
-            parallel: bool = False, cwd: Path | None = None) -> dict[str, dict]:
+            parallel: bool = False, cwd: Path | None = None, egress_policy: egress.EgressPolicy | None = None) -> dict[str, dict]:
     """Chạy tuần tự theo thứ tự của `specs` (caller đã toposort: phụ thuộc đứng trước). Ghi run_dir/{specs,results}/<task_id>.json.
     Lỗi của một task thành result error/skipped, không dừng cả run. `registry.pick(spec, prefer=()) -> (Worker | None, reason)`."""
     if parallel:
@@ -26,15 +26,17 @@ def run_all(specs: dict[str, dict], plan_only: dict[str, dict], registry, run_di
     if bad:  # task_id là chuỗi tự do: không cho thoát khỏi run_dir
         raise ValueError(f"task_id không được chứa dấu phân cách đường dẫn: {bad}")
     run_dir, results = Path(run_dir), {}
+    policy = egress_policy or egress.LogOnlyPolicy()
     runs_root = run_dir.resolve().parent  # adapter dựng workdir từ QC_RUNS_DIR: phải khớp run_dir, truyền qua env của từng tiến trình
     for tid, spec in specs.items():
         _write(run_dir / "specs" / f"{tid}.json", spec)
-        results[tid] = _run_task(spec, plan_only.get(tid, {}), registry, results, runs_root, cwd)
+        results[tid] = _run_task(spec, plan_only.get(tid, {}), registry, results, runs_root, cwd, policy, run_dir)
         _write(run_dir / "results" / f"{tid}.json", results[tid])
     return results
 
 
-def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path, cwd: Path | None) -> dict:
+def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path, cwd: Path | None,
+              policy: egress.EgressPolicy, run_dir: Path) -> dict:
     worker, reason = registry.pick(spec, prefer=tuple(extra.get("prefer", ())))
     if worker is None:
         return schema.make_result(spec, "skipped", reason)
@@ -45,10 +47,10 @@ def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path, cw
         if st != "pass":
             return schema.make_result(spec, "skipped", f"phụ thuộc {dep} không đạt (status={st or 'chưa chạy'})", worker.name)
 
-    result = _attempt(spec, worker, runs_root, cwd)
+    result = _attempt(spec, worker, runs_root, cwd, policy, run_dir, 1)
     if result["status"] == "error" and spec["retry"]["max"] > 0:
         first = result["verdict"].get("rationale")
-        result = _attempt(spec, worker, runs_root, cwd)  # ĐÚNG 1 lần, kể cả khi lần 2 lại error. Không nhánh nào retry `fail`
+        result = _attempt(spec, worker, runs_root, cwd, policy, run_dir, 2)  # ĐÚNG 1 lần, kể cả khi lần 2 lại error. Không nhánh nào retry `fail`
         result.setdefault("adapter_notes", []).append(f"retry 1/1 sau error lần đầu: {first}")  # đừng che flakiness
     over = _over_budget(spec, result)
     if over:  # sau retry: vượt budget không được chạy lại (sẽ tiêu thêm)
@@ -59,8 +61,13 @@ def _run_task(spec: dict, extra: dict, registry, done: dict, runs_root: Path, cw
     return result
 
 
-def _attempt(spec: dict, worker, runs_root: Path, cwd: Path | None) -> dict:
+def _attempt(spec: dict, worker, runs_root: Path, cwd: Path | None, policy: egress.EgressPolicy, run_dir: Path, attempt: int) -> dict:
     """Một lần chạy adapter. Mọi thất bại (timeout/exit≠0/không phải JSON/sai contract) là `error`, không bao giờ `fail`."""
+    decision = egress.record(policy, run_dir, spec, worker, attempt)  # mỗi lần gọi (kể cả retry) là một lần dữ liệu có thể rời máy
+    if decision.action == "deny":
+        return schema.make_result(spec, "skipped", f"egress: bị chính sách từ chối ({decision.reason or 'không nêu lý do'})", worker.name)
+    if decision.action != "allow":  # mask: chưa có cách thực thi => không được cho dữ liệu đi qua như thể đã che
+        return _error(spec, worker, f"egress: quyết định '{decision.action}' chưa được hỗ trợ thực thi")
     t0 = time.perf_counter()
     try:
         code, out, err = _spawn(worker.module, spec, runs_root, cwd)
