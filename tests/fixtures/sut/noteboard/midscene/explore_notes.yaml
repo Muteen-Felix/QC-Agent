@@ -1,5 +1,5 @@
 web:
-  url: http://127.0.0.1:8000
+  url: http://placeholder.invalid/  # bị adapter thay bằng target.base_url + entry_path
   chromeArgs:
     - --no-sandbox
     - --disable-gpu

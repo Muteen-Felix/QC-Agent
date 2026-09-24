@@ -14,6 +14,11 @@ tasks:
   inputs:
     flow: midscene/explore_notes.yaml
     max_steps: 8
+    telemetry:   # plugin tuỳ chọn: SUT tự phát sự kiện tại endpoint này; bỏ khối này nếu SUT không có
+      endpoint: /__qc/events
+      console_error: console_error
+      http_5xx: http_5xx
+      dom_unchanged: {after: delete_clicked, expect: render_done}
     promote_hints:
       dom_unchanged:
         repro_steps:
