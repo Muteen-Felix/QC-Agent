@@ -2,7 +2,7 @@
 import http from 'k6/http';
 import { check } from 'k6';
 
-const PATHS = {{paths}};
+{{paths_block}}
 
 export default function () {
   for (const path of PATHS) {

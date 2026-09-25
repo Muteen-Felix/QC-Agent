@@ -14,6 +14,9 @@ import re
 from importlib import resources
 
 TODO = "qc-agent:todo"
+TODO_KINDS = ("VERIFY", "REFINE", "SUGGESTED")   # bốn dạng dấu: `todo` trơn + ba dạng này (validate hướng dẫn riêng cho từng dạng)
+REFINE_BEGIN = "qc-agent:begin refine"           # vùng do `init --refine` (Pha 2) được viết lại; người xoá marker = vùng thuộc về người
+REFINE_END = "qc-agent:end"
 DEFAULT_QC_REPO = "Muteen-Felix/QC-Agent"
 MIDSCENE_COMMANDS = ("aiAct", "aiTap", "aiAssert", "aiWaitFor")
 
@@ -83,6 +86,14 @@ def _need(pattern: re.Pattern, value, what: str) -> str:
     return value
 
 
+def _rel_path(value, what: str) -> str:
+    """Đường dẫn tương đối trong repo SUT: ký tự an toàn và KHÔNG có đoạn `..` (không thoát ra ngoài context/repo)."""
+    _need(_FILE, value, what)
+    if ".." in value.split("/"):
+        raise TemplateError(f"{what} không được chứa '..': {value!r}")
+    return value
+
+
 def _comment(text: str) -> str:
     return " ".join(str(text).split())[:120].replace("#", "")
 
@@ -91,16 +102,35 @@ def _todo(text: str) -> str:
     return f"# {TODO} {text}"
 
 
+def todo_mark(kind: str | None, text: str) -> str:
+    """`qc-agent:todo[ KIND]: text` (không có ký tự comment; nơi gọi tự chọn `#` hay `//`)."""
+    if kind is None:
+        return f"{TODO} {text}"
+    if kind not in TODO_KINDS:
+        raise TemplateError(f"dạng TODO không hợp lệ: {kind!r}")
+    return f"{TODO} {kind}: {' '.join(str(text).split())[:400]}"
+
+
 # ---------- suite ----------
 
-def api_contract_suite(*, openapi_path: str = "/openapi.json", exclude: tuple = ()) -> str:
-    """`exclude` = [(đường dẫn OpenAPI, lý do)]: endpoint không nên bị fuzz (upload, xoá dữ liệu thật...). Lý do ghi thành comment."""
+def api_contract_suite(*, openapi_path: str = "/openapi.json", exclude: tuple = (), refine: bool = False, verify_openapi: str | None = None) -> str:
+    """`exclude` = [(đường dẫn OpenAPI, lý do)]: endpoint không nên bị fuzz (upload, xoá dữ liệu thật...). Lý do ghi thành comment.
+    `refine=True` (Pha 1, chưa có OpenAPI sống): khối exclude_path nằm giữa marker begin/end kèm TODO REFINE để Pha 2 điền.
+    `verify_openapi` (lý do) => TODO VERIFY về đường dẫn OpenAPI."""
     lines = []
     for path, reason in exclude:
         _need(_URL_PATH, path, "exclude_path")
         lines.append(f"    - {_q(path)}  # {_comment(reason)}".rstrip())
-    block = "    exclude_path:\n" + "\n".join(lines) if lines else ""
-    return render("api-contract.yaml.tmpl", {"openapi_path": _need(_ROUTE_PATH, openapi_path, "openapi_path"), "exclude_block": block})
+    if refine:
+        if lines:
+            raise TemplateError("refine=True nghĩa là chưa có OpenAPI: không kèm exclude")
+        hint = "chưa biết endpoint nào không nên fuzz (upload, xoá dữ liệu thật): CI đề xuất từ OpenAPI sống, hoặc chạy lại init --openapi"
+        block = "\n".join([f"    # {REFINE_BEGIN} exclude_path", f"    # {todo_mark('REFINE', hint)}", f"    # {REFINE_END}"])
+    else:
+        block = "    exclude_path:\n" + "\n".join(lines) if lines else ""
+    note = f"    # {todo_mark('VERIFY', verify_openapi)}" if verify_openapi else ""
+    return render("api-contract.yaml.tmpl", {"openapi_path": _need(_ROUTE_PATH, openapi_path, "openapi_path"), "exclude_block": block,
+                                             "schema_note": note})
 
 
 def perf_smoke_suite(*, script: str = ".qc-agent/perf/smoke.js", vus: int = 2, duration: str = "10s") -> str:
@@ -110,12 +140,36 @@ def perf_smoke_suite(*, script: str = ".qc-agent/perf/smoke.js", vus: int = 2, d
                                            "duration": _need(_DURATION, duration, "duration")})
 
 
-def k6_smoke_script(*, paths: list[str]) -> str:
+def k6_smoke_script(*, paths: list[str], refine: bool = False) -> str:
+    """`refine=True`: danh sách path tạm (thường chỉ health path) nằm trong vùng REFINE để Pha 2 thay bằng GET không tham số từ OpenAPI sống."""
     if not paths:
         raise TemplateError("k6 smoke cần ít nhất một đường dẫn GET")
     for path in paths:
         _need(_ROUTE_PATH, path, "đường dẫn k6")
-    return render("k6-smoke.js.tmpl", {"paths": _q(list(paths))})
+    line = f"const PATHS = {_q(list(paths))};"
+    if refine:
+        hint = "danh sách tạm (health path): CI đề xuất các GET không tham số từ OpenAPI sống"
+        line = "\n".join([f"// {REFINE_BEGIN} k6_paths", f"// {todo_mark('REFINE', hint)}", line, f"// {REFINE_END}"])
+    return render("k6-smoke.js.tmpl", {"paths_block": line})
+
+
+_NODE_MAJOR = re.compile(r"[1-9][0-9]")
+_ARG_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_LOCKFILES = {"package-lock.json": ("npm", "npm ci"), "pnpm-lock.yaml": ("pnpm", "corepack enable && pnpm install --frozen-lockfile"),
+              "yarn.lock": ("yarn", "corepack enable && yarn install --frozen-lockfile")}
+
+
+def ui_dockerfile(*, node_major: int, lockfile: str, output_dir: str, arg_names: list[str] = ()) -> str:
+    """`.qc-agent/Dockerfile.ui` cho SPA TĨNH: build bằng đúng lockfile (`npm ci`/pnpm/yarn frozen) rồi phục vụ output bằng nginx:8080 (SPA fallback).
+    Chỉ nhận lockfile đã biết: không lockfile = build không tất định = không sinh (scanner đã từ chối trước đó)."""
+    if lockfile not in _LOCKFILES:
+        raise TemplateError(f"lockfile không hỗ trợ: {lockfile!r} (có: {', '.join(_LOCKFILES)})")
+    if isinstance(node_major, bool) or not isinstance(node_major, int) or not _NODE_MAJOR.fullmatch(str(node_major)):
+        raise TemplateError(f"node_major không hợp lệ: {node_major!r}")
+    pm, install = _LOCKFILES[lockfile]
+    args = "\n".join(f"ARG {_need(_ARG_NAME, name, 'tên build-arg')}" for name in arg_names)
+    return render("Dockerfile.ui.tmpl", {"node_major": str(node_major), "lockfile": lockfile, "install_cmd": install, "arg_lines": args, "pm": pm,
+                                         "output_dir": _rel_path(output_dir, "output_dir")})
 
 
 def ui_explore_suite(*, entry_path: str = "/", explore_flow: str = ".qc-agent/midscene/explore.yaml",
@@ -169,39 +223,43 @@ def midscene_canary_flow() -> str:
     return render("midscene-canary.yaml.tmpl", {})
 
 
-# ---------- workflow / project ----------
+# ---------- workflow ----------
+
+_WORKFLOW_INPUTS = ("sut_dockerfile", "sut_context", "sut_port", "sut_health_path", "sut_env", "sut_ui_dockerfile", "sut_ui_context",
+                    "sut_ui_port", "sut_ui_health_path", "sut_ui_build_args")
+
 
 def qc_workflow(*, project: str, qc_ref: str | None = None, image: str | None = None, qc_repo: str = DEFAULT_QC_REPO,
+                sut_dockerfile: str | None = None, sut_context: str | None = None,
                 sut_port: str | None = None, sut_health_path: str | None = None, sut_env: list[str] = (),
                 ui_dockerfile: str | None = None, ui_context: str | None = None, ui_port: str | None = None,
-                ui_health_path: str | None = None, ui_build_args: list[str] = ()) -> str:
-    """qc.yml của repo SUT. `qc_ref`/`image` thiếu => điền chỗ giữ + TODO (ghim SHA/digest là việc người làm). Không khai `suites:`."""
+                ui_health_path: str | None = None, ui_build_args: list[str] = (), marks: dict[str, str] | None = None) -> str:
+    """qc.yml của repo SUT. `qc_ref`/`image` thiếu => điền chỗ giữ + TODO (ghim SHA/digest là việc người làm). Không khai `suites:`.
+    `marks` = {tên input: nội dung dấu (dùng `todo_mark`)}: ghi thành comment cuối dòng của input đó (block `|` thì ở dòng khai báo)."""
     _need(_SLUG, project, "project")
     _need(_REPO, qc_repo, "qc_repo")
+    marks = marks or {}
+    unknown = set(marks) - set(_WORKFLOW_INPUTS)
+    if unknown:
+        raise TemplateError(f"marks có input lạ: {sorted(unknown)}")
+
+    def tail(key: str) -> str:
+        return f"  # {' '.join(marks[key].split())}" if key in marks else ""
+
     ref_text = _need(_SHA, qc_ref, "qc_ref") if qc_ref else f"qc-agent-todo-pin-commit-sha  # {TODO} ghim commit SHA 40 ký tự của qc-agent (không dùng @main)"
     image_text = _q(_need(_IMAGE, image, "image")) if image else f"ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>  # {TODO} điền digest từ Job Summary của workflow image"
     with_lines = []
-    for key, value in (("sut_port", sut_port), ("sut_health_path", sut_health_path), ("sut_ui_dockerfile", ui_dockerfile),
-                       ("sut_ui_context", ui_context), ("sut_ui_port", ui_port), ("sut_ui_health_path", ui_health_path)):
+    for key, value in (("sut_dockerfile", sut_dockerfile), ("sut_context", sut_context), ("sut_port", sut_port), ("sut_health_path", sut_health_path),
+                       ("sut_ui_dockerfile", ui_dockerfile), ("sut_ui_context", ui_context), ("sut_ui_port", ui_port),
+                       ("sut_ui_health_path", ui_health_path)):
         if value is not None:
-            with_lines.append(f"      {key}: {_q(str(value))}")
+            if key in ("sut_dockerfile", "sut_context", "sut_ui_dockerfile", "sut_ui_context"):
+                _rel_path(value, key)
+            with_lines.append(f"      {key}: {_q(str(value))}{tail(key)}")
     for key, items, pattern in (("sut_env", sut_env, _ENV_LINE), ("sut_ui_build_args", ui_build_args, _BUILD_ARG)):
         if items:
-            with_lines.append(f"      {key}: |")
+            with_lines.append(f"      {key}: |{tail(key)}")
             for item in items:
                 with_lines.append("        " + _need(pattern, item, key))
     return render("qc.yml.tmpl", {"project": project, "qc_repo": qc_repo, "qc_ref": ref_text, "image": image_text,
                                   "with_block": "\n".join(with_lines)})
-
-
-def project_config(*, slug: str, name: str, repo: str, advisory: tuple = (), blocking: tuple = ("api-contract",)) -> str:
-    _need(_SLUG, slug, "slug")
-    _need(_REPO, repo, "repo")
-    for suite in advisory:
-        _need(_SLUG, suite, "advisory suite")
-    for suite in blocking:
-        _need(_SLUG, suite, "blocking suite")
-    blocking_line = (f"    blocking_suites: [{', '.join(blocking)}]    # mọi task lane=gate: chặn merge" if blocking else
-                     f"    blocking_suites: []    # {TODO} chưa có suite chặn merge nào: gate luôn PASS cho tới khi thêm suite")
-    line = f"    advisory_suites: [{', '.join(advisory)}]  # mọi task lane=discovery: chỉ tham khảo, không chặn" if advisory else ""
-    return render("project.yaml.tmpl", {"slug": slug, "name": _q(name), "repo": _q(repo), "blocking_line": blocking_line, "advisory_line": line})

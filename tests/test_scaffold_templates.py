@@ -30,15 +30,13 @@ def write_all(tmp_path, *, ui=True):
     (suites / "api-contract.yaml").write_text(t.api_contract_suite(exclude=[("/api/jobs/{job_id}/upload-excel", "multipart upload")]), encoding="utf-8")
     (suites / "perf-smoke.yaml").write_text(t.perf_smoke_suite(), encoding="utf-8")
     (sut / ".qc-agent" / "perf" / "smoke.js").write_text(t.k6_smoke_script(paths=["/api/health", "/api/runners"]), encoding="utf-8")
-    advisory = ["perf-smoke"]
     if ui:
         (suites / "ui-explore.yaml").write_text(t.ui_explore_suite(entry_path="/"), encoding="utf-8")
         (sut / ".qc-agent" / "midscene" / "explore.yaml").write_text(t.midscene_explore_flow(steps=[("aiTap", "tab Settings")]), encoding="utf-8")
         (sut / ".qc-agent" / "midscene" / "canary.yaml").write_text(t.midscene_canary_flow(), encoding="utf-8")
-        advisory.append("ui-explore")
-    projects = tmp_path / "projects"
+    projects = tmp_path / "projects"    # `myapp` chưa đăng ký => policy `_default` (advisory: perf-smoke, ui-explore)
     projects.mkdir()
-    (projects / "myapp.yaml").write_text(t.project_config(slug="myapp", name="My App", repo="o/myapp", advisory=tuple(advisory)), encoding="utf-8")
+    shutil.copy(ROOT / "configs" / "projects" / "_default.yaml", projects / "_default.yaml")
     return sut, projects
 
 
@@ -73,14 +71,9 @@ def test_every_generated_task_resolves_to_a_contract_valid_spec(tmp_path, monkey
 def test_ui_is_optional_project_without_ui_has_no_ui_suite(tmp_path):
     sut, projects = write_all(tmp_path, ui=False)
     cfg = pj.load_project("myapp", projects)
-    assert cfg["modes"]["pr"]["advisory_suites"] == ["perf-smoke"]
-    plan, _ = pj.build_plan(cfg, "pr", pj.load_suites(sut / ".qc-agent" / "suites"))
-    assert [task["task_id"] for task in plan["tasks"]] == ["t-001", "t-102"]
-
-
-def test_project_without_advisory_suites_omits_the_line_entirely():
-    text = t.project_config(slug="a", name="A", repo="o/a")
-    assert "advisory_suites" not in text and yaml.safe_load(text)["modes"]["pr"] == {"blocking_suites": ["api-contract"], "on_skipped_gate_task": "fail"}
+    assert cfg["modes"]["pr"]["advisory_suites"] == ["perf-smoke", "ui-explore"]   # _default; suite ui-explore vắng mặt nên bị bỏ qua
+    plan, meta = pj.build_plan(cfg, "pr", pj.load_suites(sut / ".qc-agent" / "suites"))
+    assert [task["task_id"] for task in plan["tasks"]] == ["t-001", "t-102"] and meta["absent_advisory_suites"] == ["ui-explore"]
 
 
 # ---------- adapter thật chấp nhận cái sinh ra ----------
@@ -168,12 +161,6 @@ def test_qc_yml_workflow_dispatch_and_pr_triggers_present():
 
 # ---------- an toàn: dữ liệu từ OpenAPI không chèn được cấu trúc ----------
 
-def test_project_name_and_repo_are_quoted_so_they_round_trip():
-    tricky = 'My "App": {x} # y\nline2'
-    cfg = yaml.safe_load(t.project_config(slug="a", name=tricky, repo="o/r"))
-    assert cfg["name"] == tricky and cfg["repo"] == "o/r"
-
-
 @pytest.mark.parametrize("bad", ['/a"b', "/a b", "/a\nb", "/a#b", "//x?y", "a/b", "/a'b", "/x;rm"])
 def test_unsafe_paths_are_refused_everywhere(bad):
     for build in (lambda: t.k6_smoke_script(paths=[bad]), lambda: t.ui_explore_suite(entry_path=bad),
@@ -241,7 +228,8 @@ def test_every_template_is_used_by_a_builder_and_every_builder_fills_all_placeho
     try:
         t.render = lambda name, values: (used.add(name), original(name, values))[1]
         t.api_contract_suite(); t.perf_smoke_suite(); t.k6_smoke_script(paths=["/x"]); t.ui_explore_suite()
-        t.midscene_explore_flow(); t.midscene_canary_flow(); t.qc_workflow(project="a"); t.project_config(slug="a", name="A", repo="o/a")
+        t.midscene_explore_flow(); t.midscene_canary_flow(); t.qc_workflow(project="a")
+        t.ui_dockerfile(node_major=22, lockfile="package-lock.json", output_dir="dist")
     finally:
         t.render = original
     assert used == set(t.template_names())
@@ -250,3 +238,63 @@ def test_every_template_is_used_by_a_builder_and_every_builder_fills_all_placeho
 def test_templates_ship_inside_the_package_directory():
     names = t.template_names()
     assert len(names) == 8 and all((ROOT / "src" / "qc_agent" / "scaffold" / "tmpl" / n).is_file() for n in names)
+
+
+# ---------- bước 32-33: Dockerfile.ui, khối REFINE, dấu TODO 4 dạng ----------
+
+@pytest.mark.parametrize("lock, install, pm", [("package-lock.json", "RUN npm ci", "npm"),
+                                               ("pnpm-lock.yaml", "RUN corepack enable && pnpm install --frozen-lockfile", "pnpm"),
+                                               ("yarn.lock", "RUN corepack enable && yarn install --frozen-lockfile", "yarn")])
+def test_ui_dockerfile_uses_the_lockfile_it_was_given(lock, install, pm):
+    text = t.ui_dockerfile(node_major=20, lockfile=lock, output_dir="build", arg_names=["REACT_APP_API_URL", "REACT_APP_X"])
+    assert f"COPY package.json {lock} ./" in text and install in text and f"RUN {pm} run build" in text and text.startswith("# qc-agent:generated")
+    assert "FROM node:20-alpine AS build" in text and "ARG REACT_APP_API_URL\nARG REACT_APP_X" in text and "COPY --from=build /app/build /usr/share/nginx/html" in text
+    assert 'COPY <<"NGINX"' in text and "listen 8080;" in text and "try_files $uri $uri/ /index.html;" in text    # nginx.conf nhúng, một file duy nhất
+
+
+def test_ui_dockerfile_without_build_args_has_no_arg_line_and_no_secrets():
+    text = t.ui_dockerfile(node_major=22, lockfile="package-lock.json", output_dir="dist")
+    assert "ARG" not in text.replace("ARG_", "") and t.TODO not in text
+
+
+@pytest.mark.parametrize("kwargs", [dict(lockfile="none.lock"), dict(node_major=2), dict(node_major=True), dict(output_dir="../x"),
+                                    dict(output_dir="a b"), dict(arg_names=["A B"]), dict(arg_names=["A\nRUN evil"])])
+def test_ui_dockerfile_refuses_unsafe_or_unknown_values(kwargs):
+    base = dict(node_major=22, lockfile="package-lock.json", output_dir="dist")
+    with pytest.raises(t.TemplateError):
+        t.ui_dockerfile(**{**base, **kwargs})
+
+
+def test_refine_blocks_are_delimited_and_the_suites_stay_valid():
+    contract = t.api_contract_suite(refine=True)
+    assert contract.count("qc-agent:begin refine exclude_path") == 1 and contract.count("qc-agent:end") == 1 and "todo REFINE:" in contract
+    task = yaml.safe_load(contract)["tasks"][0]
+    assert "exclude_path" not in task["inputs"]
+    k6 = t.k6_smoke_script(paths=["/api/health"], refine=True)
+    assert k6.index("qc-agent:begin refine k6_paths") < k6.index("const PATHS") < k6.index("qc-agent:end")
+    with pytest.raises(t.TemplateError):
+        t.api_contract_suite(refine=True, exclude=[("/x", "r")])
+    assert "refine" not in t.api_contract_suite(exclude=[("/x", "r")]) and "refine" not in t.k6_smoke_script(paths=["/a"])
+
+
+def test_todo_mark_has_four_forms_and_rejects_unknown_kinds():
+    assert t.todo_mark(None, "x") == "qc-agent:todo x"
+    assert [t.todo_mark(k, "a\nb") for k in t.TODO_KINDS] == [f"qc-agent:todo {k}: a b" for k in ("VERIFY", "REFINE", "SUGGESTED")]
+    with pytest.raises(t.TemplateError):
+        t.todo_mark("MAYBE", "x")
+
+
+def test_workflow_marks_annotate_the_right_line_and_keep_the_yaml_valid():
+    text = t.qc_workflow(project="a", qc_ref=SHA, image=DIGEST, sut_dockerfile="api/Dockerfile", sut_context="api", sut_port="5000",
+                         sut_env=["A=1"], ui_dockerfile=".qc-agent/Dockerfile.ui", ui_context="web", ui_build_args=["VITE_API_URL=http://sut:5000"],
+                         marks={"sut_port": t.todo_mark("VERIFY", "cổng: mặc định"), "sut_env": t.todo_mark("VERIFY", "chọn X"),
+                                "sut_ui_context": t.todo_mark("VERIFY", "chọn web")})
+    with_ = yaml.safe_load(text)["jobs"]["qc"]["with"]
+    assert with_["sut_dockerfile"] == "api/Dockerfile" and with_["sut_context"] == "api" and with_["sut_port"] == "5000"
+    assert with_["sut_env"].strip() == "A=1" and with_["sut_ui_build_args"].strip() == "VITE_API_URL=http://sut:5000"   # comment không lọt vào giá trị
+    lines = {line.split(":")[0].strip(): line for line in text.splitlines() if "qc-agent:todo VERIFY" in line}
+    assert set(lines) == {"sut_port", "sut_env", "sut_ui_context"}
+    with pytest.raises(t.TemplateError):
+        t.qc_workflow(project="a", marks={"nope": "x"})
+    with pytest.raises(t.TemplateError):
+        t.qc_workflow(project="a", sut_dockerfile="../evil")

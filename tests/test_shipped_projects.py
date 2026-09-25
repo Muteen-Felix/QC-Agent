@@ -28,18 +28,6 @@ def test_all_shipped_projects_load_together_like_service_startup_does():
     assert set(pj.list_projects(PROJECTS)) == set(SLUGS)
 
 
-def test_vahan_rpa_policy_is_exactly_what_init_generates_from_its_openapi(tmp_path):
-    """Chống lệch: config đóng gói của vahan-rpa = kết quả `qc-agent init` từ OpenAPI của nó (chỉ khác lời chú thích)."""
-    sut = tmp_path / "sut"
-    sut.mkdir()
-    plan = init_mod.build(init_mod.Options(sut_root=sut, slug="vahan-rpa", repo="Muteen-Felix/vahan-rpa", name="VAHAN Report Automation",
-                                           openapi_source=str(ROOT / "tests" / "fixtures" / "openapi" / "vahan-rpa.json"),
-                                           projects_dir=tmp_path / "p", ui_dockerfile="apps/web-ui/Dockerfile"))
-    generated = yaml.safe_load(next(f.content for f in plan.files if f.label.startswith("<projects>")))
-    resolved = pj.load_project("vahan-rpa", PROJECTS)   # đăng ký mỏng + _default
-    assert {k: resolved[k] for k in generated} == generated
-
-
 def test_default_policy_ships_and_is_valid_on_its_own():
     default = PROJECTS / "_default.yaml"
     assert default.is_file() and t.TODO not in default.read_text(encoding="utf-8")

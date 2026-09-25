@@ -79,17 +79,30 @@ Workflow dựng container `ui` cùng mạng docker với `sut`, rồi gate nhậ
 
 ## 2b. Sinh sẵn cấu hình (khuyến nghị) và kiểm trước khi đẩy lên CI
 
-Thay vì viết tay suite/`qc.yml`/config project:
+Thay vì viết tay suite/`qc.yml`/Dockerfile UI, chạy **một lệnh** ở gốc repo SUT (Pha 1 của onboarding, offline, không cần Python, không cần SUT đang chạy):
 
 ```
-qc-agent init --sut-root <repo SUT> --slug myapp --repo owner/myapp   --openapi http://127.0.0.1:8000/openapi.json \      # file hoặc URL của SUT đang chạy
-  --projects-dir <repo qc-agent>/configs/projects   [--ui-dockerfile apps/web-ui/Dockerfile --ui-port 8080 --ui-build-arg VITE_API_URL=http://sut:8000]   [--qc-ref <SHA 40 ký tự> --image ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>] [--dry-run] [--force]
+docker run --rm -v "$PWD:/sut" ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> init
 ```
 
-`init` ghi `.qc-agent/suites/*.yaml`, script k6, flow Midscene, `.github/workflows/qc.yml` và `configs/projects/<slug>.yaml`; **không ghi đè** file đã có (trừ `--force`).
-Phần cần hiểu sản phẩm (các bước UI của flow explore, ghim SHA/digest) được đánh dấu `qc-agent:todo`. Trên Git Bash (Windows) đặt `MSYS_NO_PATHCONV=1` để `/api/health` không bị đổi thành đường dẫn Windows.
+Trên Linux, image chạy bằng user không phải root nên thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` để file mới thuộc về bạn (chạy bằng root thì `init` tự `chown` các file vừa tạo theo chủ của `/sut`). Trên Git Bash (Windows) đặt `MSYS_NO_PATHCONV=1`.
 
-**Gợi ý flow UI bằng LLM (tuỳ chọn, chỉ cho `ui-explore`, không chặn merge):** thêm `--suggest-ui --ui-url http://127.0.0.1:5173/` (lặp được, tối đa 5 trang).
+`init` **chỉ đọc** cây thư mục (scanner tất định, không mạng, không chạy code SUT, không LLM) và **chỉ ghi trong repo SUT**: `.github/workflows/qc.yml`, `.qc-agent/suites/*.yaml`, `.qc-agent/perf/smoke.js`, `.qc-agent/midscene/{explore,canary}.yaml` và
+`.qc-agent/Dockerfile.ui` (chỉ cho **SPA tĩnh**: Vite → `dist/`, CRA → `build/`, Next.js `output: 'export'` → `out/`; build bằng đúng lockfile, phục vụ bằng nginx cổng 8080). Không sinh config bên qc-agent: repo chưa đăng ký dùng `_default` (xem 1b).
+Không ghi đè file đã có (trừ `--force`); `--dry-run` chỉ in kế hoạch. `--slug` mặc định lấy từ `origin` rồi tên thư mục. `qc.yml` được ghim sẵn `uses:` theo commit build của image; **digest** thì image không tự biết nên vẫn là TODO.
+
+Scanner đọc: Dockerfile API (gốc > `*/Dockerfile` > `docker/*Dockerfile*`), cổng (`EXPOSE`/`--port`), route health (`/api/health` > `/health` > `/healthz`), có FastAPI hay không, biến CORS (`*CORS*`), thư mục UI, package manager (theo lockfile), Node (`engines.node`/`.nvmrc`, mặc định 22), biến URL API của UI (`VITE_*`/`REACT_APP_*`/`NEXT_PUBLIC_*`). Bỏ qua `.git`, `node_modules`, `.venv`, `venv`, `dist`, `build`, `tests`... sâu tối đa 4.
+Không thấy Dockerfile API thì **lỗi** kèm hướng dẫn `--sut-dockerfile`. Next.js SSR, workspace monorepo (lockfile ở gốc) hoặc UI không có lockfile: không tự sinh `Dockerfile.ui`, dùng `--ui-dockerfile PATH` với Dockerfile của bạn.
+
+Dấu chưa hoàn tất có bốn dạng (`validate` chặn tất cả, mỗi dạng kèm hướng dẫn):
+- `# qc-agent:todo …` — việc cho người (ghim digest, viết bước UI thật).
+- `# qc-agent:todo VERIFY: chọn X trong [X, Y] vì …` — scanner gặp ≥ 2 ứng viên và chọn theo luật ưu tiên; xác nhận rồi xoá dòng. (Một ứng viên duy nhất thì không có VERIFY, kể cả khi sai: ví dụ `/health` của router có prefix `/api`; Pha 2 đối chiếu OpenAPI sống.)
+- `# qc-agent:todo REFINE: …` — chỗ cần SUT sống (`exclude_path` của Schemathesis, endpoint k6), nằm giữa `# qc-agent:begin refine <tên>` và `# qc-agent:end`. Không có `--openapi` thì `api-contract`/`perf-smoke` vẫn được sinh với vùng này; có `--openapi FILE|URL` thì không có REFINE.
+- `# qc-agent:todo SUGGESTED …` — bước do LLM gợi ý, phải duyệt.
+
+`--no-api` chỉ sinh phần UI, nhưng project như vậy **không đủ điều kiện mode `pr`** (cần ít nhất một suite chặn merge: Schemathesis hoặc DeepEval deterministic) và chỉ dùng được `manual`.
+
+**Gợi ý flow UI bằng LLM (tuỳ chọn, chỉ cho `ui-explore`, không chặn merge):** thêm `--suggest-ui --ui-url http://127.0.0.1:5173/` (UI phải đang chạy ở máy bạn) (lặp được, tối đa 5 trang).
 `init` mở UI đang chạy bằng Chromium, đọc **nhãn hiển thị** (tiêu đề, nút, liên kết, ô nhập; không mã nguồn, không giá trị ô nhập, không query URL), gửi tới endpoint
 `MIDSCENE_MODEL_*` (cùng khoá Midscene) và ghi `.qc-agent/midscene/explore.yaml`. Đầu ra bị ép vào lược đồ chặt (chỉ `aiAct/aiTap/aiAssert/aiWaitFor`, ≤3 flow, ≤8 bước),
 luôn mang dấu `qc-agent:todo` "GỢI Ý" nên `validate` từ chối cho tới khi người duyệt và xoá dấu. Mỗi lần gửi được ghi vào `.qc-agent/egress.jsonl`; `--dry-run` không bao giờ gọi LLM;

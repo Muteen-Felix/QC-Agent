@@ -1,5 +1,6 @@
 """Bước 27: `qc-agent validate` — bắt lỗi cấu hình OFFLINE, và không báo oan cấu hình đúng."""
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -17,17 +18,33 @@ IMAGE = "ghcr.io/muteen-felix/qc-agent@sha256:" + "d" * 64
 REUSABLE = ROOT / ".github" / "workflows" / "qc-gate.reusable.yml"
 
 
+SCAN = ROOT / "tests" / "fixtures" / "scan" / "vahan-rpa"
+
+
+def policy_dir(tmp_path):
+    """Policy như trên main: `_default` + đăng ký mỏng của vahan-rpa."""
+    projects = tmp_path / "projects"
+    projects.mkdir(exist_ok=True)
+    shutil.copy(ROOT / "configs" / "projects" / "_default.yaml", projects / "_default.yaml")
+    (projects / "vahan-rpa.yaml").write_text("slug: vahan-rpa\nrepo: o/v\n", encoding="utf-8")
+    return projects
+
+
 def generate(tmp_path, *, ui=True, pins=True, finish_flow=True, **over):
-    """init như người dùng thật rồi (tuỳ chọn) hoàn tất phần TODO. Trả (sut, projects)."""
-    sut, projects = tmp_path / "sut", tmp_path / "projects"
-    sut.mkdir(exist_ok=True)
-    opts = dict(sut_root=sut, slug="vahan-rpa", repo="o/v", openapi_source=str(VAHAN), projects_dir=projects,
-                qc_ref=SHA if pins else None, image=IMAGE if pins else None, ui_dockerfile="apps/web-ui/Dockerfile" if ui else None)
+    """init như người dùng thật (scanner đọc bản cắt cấu trúc vahan-rpa) rồi (tuỳ chọn) hoàn tất phần TODO. Trả (sut, projects)."""
+    sut = tmp_path / "sut"
+    if ui:
+        shutil.copytree(SCAN, sut)
+    else:
+        sut.mkdir(exist_ok=True)
+        (sut / "Dockerfile").write_text("FROM python:3.11-slim\nEXPOSE 8000\n", encoding="utf-8")
+    opts = dict(sut_root=sut, slug="vahan-rpa", openapi_source=str(VAHAN), qc_ref=SHA if pins else None, image=IMAGE if pins else None,
+                sut_env=["VAHAN_API_CORS_ORIGINS=http://ui:8080"] if ui else [])   # người đã xác nhận lựa chọn CORS (VERIFY)
     opts.update(over)
     init_mod.apply(init_mod.build(init_mod.Options(**opts)))
     if ui and finish_flow:
         (sut / ".qc-agent" / "midscene" / "explore.yaml").write_text(t.midscene_explore_flow(steps=[("aiTap", "tab Settings")]), encoding="utf-8")
-    return sut, projects
+    return sut, policy_dir(tmp_path)
 
 
 def check(tmp_path, sut, projects, **kwargs):
@@ -88,7 +105,7 @@ def test_a_todo_in_the_project_file_or_a_suite_is_an_error(tmp_path):
 def test_no_api_project_is_flagged_as_having_no_blocking_suite(tmp_path):
     sut, projects = generate(tmp_path, openapi_source=None, no_api=True)
     report = check(tmp_path, sut, projects)
-    assert "blocking_suites" in messages(report) and "chỉ dùng mode manual" in messages(report)   # Q6/Q7: ERROR, không còn là WARN
+    assert "cần suite không có trong thư mục suite: api-contract" in messages(report)   # Q7: không API = không có suite chặn = không đủ điều kiện mode pr
 
 
 # ---------- suite/policy/worker ----------
@@ -114,10 +131,13 @@ def test_missing_suite_missing_dir_and_invalid_yaml(tmp_path):
     assert ".qc-agent/suites" in messages(check(tmp_path, empty, projects))
 
 
-def test_unknown_project_is_an_error(tmp_path):
+def test_unknown_project_uses_the_default_policy_and_only_fails_without_one(tmp_path):
     sut, projects = generate(tmp_path)
+    assert "cần suite không có" not in messages(v.validate("nope", sut, projects_dir=projects, workers_dirs=[ROOT / "workers"]))   # chưa đăng ký => _default
+    (projects / "_default.yaml").unlink()
     report = v.validate("nope", sut, projects_dir=projects, workers_dirs=[ROOT / "workers"])
     assert "không có project" in messages(report) and len(report.findings) == 1
+    assert "slug không hợp lệ" in messages(v.validate("Bad Slug", sut, projects_dir=projects, workers_dirs=[ROOT / "workers"]))
 
 
 def test_task_without_any_capable_worker_is_reported(tmp_path):
@@ -240,9 +260,11 @@ def test_cli_validate_exit_codes_and_strict(tmp_path, capsys):
     (sut / ".github" / "workflows" / "qc.yml").unlink()
     assert cli_main(argv) == 0 and "1 cảnh báo" in capsys.readouterr().out
     assert cli_main(argv + ["--strict"]) == 3 and "FAIL" in capsys.readouterr().out  # --strict: cảnh báo thành lỗi
-    fresh, fprojects = tmp_path / "f" / "sut", tmp_path / "f" / "projects"
+    fresh = tmp_path / "f" / "sut"
     fresh.mkdir(parents=True)
-    init_mod.apply(init_mod.build(init_mod.Options(sut_root=fresh, slug="vahan-rpa", repo="o/v", openapi_source=str(VAHAN), projects_dir=fprojects)))
+    (fresh / "Dockerfile").write_text("FROM x\n", encoding="utf-8")
+    fprojects = policy_dir(tmp_path / "f")
+    init_mod.apply(init_mod.build(init_mod.Options(sut_root=fresh, slug="vahan-rpa", openapi_source=str(VAHAN))))
     assert cli_main(["validate", "--project", "vahan-rpa", "--sut-root", str(fresh), "--projects-dir", str(fprojects)]) == 3
     assert "qc-agent:todo" in capsys.readouterr().out
     assert cli_main(["validate", "--project", "x"]) == 3  # thiếu --sut-root

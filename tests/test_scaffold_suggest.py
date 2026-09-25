@@ -198,7 +198,8 @@ def test_a_deny_policy_stops_the_call(llm_env, monkeypatch, tmp_path):
 def opts(tmp_path, **over):
     sut = tmp_path / "sut"
     sut.mkdir(exist_ok=True)
-    base = dict(sut_root=sut, slug="vahan-rpa", repo="o/v", openapi_source=str(VAHAN), projects_dir=tmp_path / "projects",
+    (sut / "Dockerfile").write_text("FROM python:3.11-slim\nEXPOSE 8000\n", encoding="utf-8")
+    base = dict(sut_root=sut, slug="vahan-rpa", openapi_source=str(VAHAN),
                 ui_dockerfile="apps/web-ui/Dockerfile", suggest_ui=True, ui_urls=["http://127.0.0.1:5173/"])
     base.update(over)
     return init_mod.Options(**base)
@@ -222,11 +223,11 @@ def test_validate_rejects_a_suggestion_until_a_human_removes_the_marker(monkeypa
     monkeypatch.setattr(suggest, "suggest_flows", lambda urls, root, **k: (suggest.parse_flows(json.dumps(GOOD)), "test-model"))
     plan = init_mod.build(opts(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "d" * 64))
     init_mod.apply(plan)
-    report = v.validate("vahan-rpa", tmp_path / "sut", projects_dir=tmp_path / "projects", workers_dirs=[ROOT / "workers"])
+    report = v.validate("vahan-rpa", tmp_path / "sut", projects_dir=ROOT / "configs" / "projects", workers_dirs=[ROOT / "workers"])
     assert any("GỢI Ý bởi LLM" in f.message and f.level == v.ERROR for f in report.findings)
     path = tmp_path / "sut" / ".qc-agent" / "midscene" / "explore.yaml"
     path.write_text("\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if t.TODO not in line) + "\n", encoding="utf-8")
-    assert not [f for f in v.validate("vahan-rpa", tmp_path / "sut", projects_dir=tmp_path / "projects", workers_dirs=[ROOT / "workers"]).findings
+    assert not [f for f in v.validate("vahan-rpa", tmp_path / "sut", projects_dir=ROOT / "configs" / "projects", workers_dirs=[ROOT / "workers"]).findings
                 if f.level == v.ERROR]
 
 
@@ -276,7 +277,8 @@ def test_cli_flags_reach_the_options(monkeypatch, tmp_path, capsys):
     seen = {}
     monkeypatch.setattr(suggest, "suggest_flows", lambda urls, root, **k: (seen.update(urls=urls), (suggest.parse_flows(json.dumps(GOOD)), "m"))[1])
     (tmp_path / "sut").mkdir()
-    code = cli_main(["init", "--sut-root", str(tmp_path / "sut"), "--slug", "demo", "--repo", "o/d", "--openapi", str(VAHAN), "--no-project",
+    (tmp_path / "sut" / "Dockerfile").write_text("FROM x\n", encoding="utf-8")
+    code = cli_main(["init", "--sut-root", str(tmp_path / "sut"), "--slug", "demo", "--openapi", str(VAHAN),
                      "--ui-dockerfile", "ui/Dockerfile", "--suggest-ui", "--ui-url", "http://a/", "--ui-url", "http://a/#b"])
     assert code == 0 and seen["urls"] == ["http://a/", "http://a/#b"]
     assert "GỢI Ý bởi LLM" in capsys.readouterr().out

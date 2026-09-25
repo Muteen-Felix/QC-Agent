@@ -1,5 +1,5 @@
 # qc-agent:generated — suite của repo SUT (contract API). Đường dẫn tương đối = tương đối gốc repo SUT (worker chạy với cwd = SUT root).
-# Chặn merge hay không do POLICY trong configs/projects/<slug>.yaml của qc-agent quyết định, không do file này.
+# Chặn merge hay không do POLICY của qc-agent (configs/projects/_default.yaml hoặc <slug>.yaml, lấy từ nhánh main) quyết định, không do file này.
 suite: api-contract
 description: Contract API bằng Schemathesis (chặn merge ở mode pr)
 tasks:
@@ -11,6 +11,7 @@ tasks:
     kind: http_service
     base_url: ${env.APP_BASE_URL}
     spec_ref: ${env.APP_BASE_URL}{{openapi_path}}
+{{schema_note}}
   inputs:
     schema_url: ${env.APP_BASE_URL}{{openapi_path}}
     checks:

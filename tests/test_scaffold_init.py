@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 
 import pytest
-from qc_agent.core.plan import PlanError
 import uvicorn
 import yaml
 
@@ -144,14 +143,22 @@ def test_url_errors_do_not_leak_the_query_string(monkeypatch):
     assert "token=abc" not in str(info.value) and "pw" not in str(info.value) and "secret-detail" not in str(info.value)
 
 
-# ---------- init: ghi file ----------
+# ---------- init: một repo, một lệnh, chỉ ghi trong repo SUT ----------
 
-def options(tmp_path, **over):
-    base = dict(sut_root=tmp_path / "sut", slug="vahan-rpa", repo="Muteen-Felix/vahan-rpa", openapi_source=str(VAHAN),
-                projects_dir=tmp_path / "projects")
-    base.update(over)
-    (tmp_path / "sut").mkdir(exist_ok=True)
-    return init_mod.Options(**base)
+SCAN_FIXTURE = ROOT / "tests" / "fixtures" / "scan" / "vahan-rpa"
+
+
+def options(tmp_path, *, fixture=SCAN_FIXTURE, files=None, **over):
+    """SUT tạm = bản cắt cấu trúc vahan-rpa (mặc định) hoặc cây tự dựng `files`."""
+    sut = tmp_path / "sut"
+    if files is not None:
+        for rel, text in files.items():
+            (sut / rel).parent.mkdir(parents=True, exist_ok=True)
+            (sut / rel).write_text(text, encoding="utf-8")
+    elif not sut.exists():
+        shutil.copytree(fixture, sut)
+    sut.mkdir(exist_ok=True)
+    return init_mod.Options(**{"sut_root": sut, "slug": "vahan-rpa", **over})
 
 
 def run_init(tmp_path, **over):
@@ -160,36 +167,134 @@ def run_init(tmp_path, **over):
     return plan, init_mod.apply(plan, force=force, dry_run=dry)
 
 
-def test_init_writes_the_expected_files_for_api_only(tmp_path):
+def read(tmp_path, rel):
+    return (tmp_path / "sut" / rel).read_text(encoding="utf-8")
+
+
+def workflow_with(tmp_path):
+    return yaml.safe_load(read(tmp_path, ".github/workflows/qc.yml"))["jobs"]["qc"]["with"]
+
+
+def test_vahan_fixture_generates_the_phase1_file_set_with_a_real_ui_dockerfile(tmp_path):
+    plan, outcomes = run_init(tmp_path)
+    assert [o.label for o in outcomes] == [
+        ".qc-agent/suites/api-contract.yaml", ".qc-agent/suites/perf-smoke.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/Dockerfile.ui",
+        ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml", ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml"]
+    assert all(o.status == "created" for o in outcomes) and plan.slug == "vahan-rpa"
+    dockerfile = read(tmp_path, ".qc-agent/Dockerfile.ui")
+    assert "FROM node:22-alpine AS build" in dockerfile and "RUN npm ci" in dockerfile and "ARG VITE_API_URL" in dockerfile
+    assert "COPY --from=build /app/dist /usr/share/nginx/html" in dockerfile and "listen 8080;" in dockerfile and "try_files $uri $uri/ /index.html;" in dockerfile
+    with_ = workflow_with(tmp_path)
+    assert with_["sut_ui_dockerfile"] == ".qc-agent/Dockerfile.ui" and with_["sut_ui_context"] == "apps/web-ui" and with_["sut_ui_port"] == "8080"
+    assert with_["sut_ui_build_args"].strip() == "VITE_API_URL=http://sut:8000"
+    assert with_["sut_health_path"] == "/health"
+    assert with_["sut_env"].strip() == "VAHAN_API_CORS_ORIGINS=http://ui:8080"
+    assert "sut_port" not in with_ and "sut_dockerfile" not in with_       # bằng mặc định của workflow thì không khai
+
+
+def test_ambiguous_choices_carry_verify_and_nothing_else_does(tmp_path):
+    run_init(tmp_path)
+    workflow = read(tmp_path, ".github/workflows/qc.yml")
+    verify = [line for line in workflow.splitlines() if "qc-agent:todo VERIFY" in line]
+    assert len(verify) == 1 and "sut_env" in verify[0]
+    assert "chọn VAHAN_API_CORS_ORIGINS trong [VAHAN_API_CORS_ORIGINS, VAHAN_API_SOCKETIO_CORS_ORIGINS]" in verify[0]   # có 2 tên CORS
+
+
+def test_without_openapi_the_suites_have_refine_regions_and_todos(tmp_path):
     _, outcomes = run_init(tmp_path)
-    assert [o.label for o in outcomes] == [".qc-agent/suites/api-contract.yaml", ".qc-agent/suites/perf-smoke.yaml", ".qc-agent/perf/smoke.js",
-                                           ".github/workflows/qc.yml", "<projects>/vahan-rpa.yaml"]
-    assert all(o.status == "created" for o in outcomes)
-    assert (tmp_path / "sut" / ".qc-agent" / "perf" / "smoke.js").is_file() and (tmp_path / "projects" / "vahan-rpa.yaml").is_file()
-    assert not list((tmp_path / "sut").rglob(".qc-init-*")), "không để lại file tạm"
+    contract = read(tmp_path, ".qc-agent/suites/api-contract.yaml")
+    assert "# qc-agent:begin refine exclude_path" in contract and "# qc-agent:todo REFINE:" in contract and "# qc-agent:end" in contract
+    assert "exclude_path:" not in contract and "schema_url: ${env.APP_BASE_URL}/openapi.json" in contract
+    k6 = read(tmp_path, ".qc-agent/perf/smoke.js")
+    assert 'const PATHS = ["/health"];' in k6 and "// qc-agent:begin refine k6_paths" in k6 and "// qc-agent:end" in k6
+    assert "// qc-agent:todo REFINE:" in k6
+    assert any(o.label == ".qc-agent/suites/api-contract.yaml" and o.todos for o in outcomes)
+    yaml.safe_load(contract)     # vẫn là YAML hợp lệ
 
 
-def test_init_with_ui_adds_suite_flows_and_workflow_inputs(tmp_path):
-    plan, outcomes = run_init(tmp_path, ui_dockerfile="apps/web-ui/Dockerfile", ui_context="apps/web-ui", ui_port="8080",
-                              ui_build_args=["VITE_API_URL=http://sut:8000"], sut_health_path="/api/health", sut_env=["X=y"])
-    labels = {o.label for o in outcomes}
-    assert {".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml", ".qc-agent/midscene/canary.yaml"} <= labels
-    workflow = yaml.safe_load((tmp_path / "sut" / ".github" / "workflows" / "qc.yml").read_text(encoding="utf-8"))["jobs"]["qc"]["with"]
-    assert workflow["sut_ui_dockerfile"] == "apps/web-ui/Dockerfile" and workflow["sut_health_path"] == "/api/health"
-    cfg = yaml.safe_load((tmp_path / "projects" / "vahan-rpa.yaml").read_text(encoding="utf-8"))
-    assert cfg["modes"]["pr"]["advisory_suites"] == ["perf-smoke", "ui-explore"] and cfg["name"] == "VAHAN RPA API"
+def test_with_openapi_the_old_behaviour_holds_and_there_is_no_refine_marker(tmp_path):
+    run_init(tmp_path, openapi_source=str(VAHAN))
+    contract = read(tmp_path, ".qc-agent/suites/api-contract.yaml")
+    assert "refine" not in contract and "/api/jobs/{job_id}/upload-excel" in contract
+    assert '["/", "/api/health", "/api/runners"]' in read(tmp_path, ".qc-agent/perf/smoke.js") and "refine" not in read(tmp_path, ".qc-agent/perf/smoke.js")
+
+
+def test_no_fastapi_asks_to_verify_the_openapi_path(tmp_path):
+    run_init(tmp_path, files={"Dockerfile": "FROM x\nEXPOSE 3000\n", "app.js": "x"})
+    assert "qc-agent:todo VERIFY: không thấy FastAPI" in read(tmp_path, ".qc-agent/suites/api-contract.yaml")
+    assert workflow_with(tmp_path)["sut_port"] == "3000"
+
+
+def test_next_ssr_gets_no_ui_dockerfile_and_a_note(tmp_path):
+    plan, outcomes = run_init(tmp_path, files={"Dockerfile": "x", "web/package.json": '{"dependencies": {"next": "15"}}', "web/package-lock.json": "{}"})
+    assert ".qc-agent/Dockerfile.ui" not in [o.label for o in outcomes] and not (tmp_path / "sut" / ".qc-agent" / "suites" / "ui-explore.yaml").exists()
+    assert any("Next.js SSR" in n and "--ui-dockerfile" in n for n in plan.notes) and "sut_ui_dockerfile" not in workflow_with(tmp_path)
+
+
+def test_own_ui_dockerfile_flag_skips_generation(tmp_path):
+    _, outcomes = run_init(tmp_path, ui_dockerfile="apps/web-ui/Dockerfile", ui_context="apps/web-ui", ui_build_args=["VITE_API_URL=http://sut:9"])
+    assert ".qc-agent/Dockerfile.ui" not in [o.label for o in outcomes]
+    with_ = workflow_with(tmp_path)
+    assert with_["sut_ui_dockerfile"] == "apps/web-ui/Dockerfile" and with_["sut_ui_build_args"].strip() == "VITE_API_URL=http://sut:9"
+
+
+def test_missing_api_dockerfile_is_an_error_with_guidance_and_writes_nothing(tmp_path):
+    with pytest.raises(init_mod.InitError, match="--sut-dockerfile"):
+        init_mod.build(options(tmp_path, files={"README.md": "x"}))
+    assert not (tmp_path / "sut" / ".qc-agent").exists()
+
+
+def test_flags_override_the_scanner_and_leave_no_verify(tmp_path):
+    run_init(tmp_path, sut_port="9000", sut_health_path="/api/health", sut_env=["X=y"])
+    with_ = workflow_with(tmp_path)
+    assert with_["sut_port"] == "9000" and with_["sut_health_path"] == "/api/health" and with_["sut_env"].strip() == "X=y"
+    assert "qc-agent:todo VERIFY" not in read(tmp_path, ".github/workflows/qc.yml")
+
+
+def test_non_default_dockerfile_and_context_are_declared(tmp_path):
+    run_init(tmp_path, files={"api/Dockerfile": "EXPOSE 5000\n"})
+    with_ = workflow_with(tmp_path)
+    assert with_["sut_dockerfile"] == "api/Dockerfile" and with_["sut_context"] == "api" and with_["sut_port"] == "5000"
+
+
+def test_workflow_pin_comes_from_the_image_build_sha_but_the_digest_stays_a_todo(tmp_path, monkeypatch):
+    monkeypatch.setenv("QC_AGENT_GIT_SHA", "c" * 40)
+    run_init(tmp_path)
+    text = read(tmp_path, ".github/workflows/qc.yml")
+    assert "qc-gate.reusable.yml@" + "c" * 40 in text and "qc-agent-todo-pin" not in text
+    assert "<DIGEST>" in text and "qc-agent:todo" in text
+    monkeypatch.setenv("QC_AGENT_GIT_SHA", "unknown")
+    (tmp_path / "sut" / ".github" / "workflows" / "qc.yml").unlink()
+    run_init(tmp_path)
+    assert "qc-agent-todo-pin-commit-sha" in read(tmp_path, ".github/workflows/qc.yml")
+
+
+def test_default_slug_comes_from_origin_then_directory_name(tmp_path):
+    (tmp_path / "sut").mkdir()
+    (tmp_path / "sut" / ".git").mkdir()
+    (tmp_path / "sut" / ".git" / "config").write_text('[remote "origin"]\n\turl = https://github.com/Muteen-Felix/Vahan-RPA.git\n', encoding="utf-8")
+    plan = init_mod.build(options(tmp_path, files={"Dockerfile": "x"}, slug=None))
+    assert plan.slug == "vahan-rpa" and "project: vahan-rpa" in next(f.content for f in plan.files if f.label.endswith("qc.yml"))
+
+
+def test_init_writes_only_inside_sut_root_and_leaves_no_temp_files(tmp_path):
+    (tmp_path / "elsewhere").mkdir()
+    run_init(tmp_path, dry_run=False)
+    assert not list((tmp_path / "sut").rglob(".qc-init-*"))
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["elsewhere", "sut"] and not list((tmp_path / "elsewhere").iterdir())
 
 
 def test_todos_are_reported_with_their_location(tmp_path):
-    _, outcomes = run_init(tmp_path, ui_dockerfile="apps/web-ui/Dockerfile")
+    _, outcomes = run_init(tmp_path)
     todos = {o.label: o.todos for o in outcomes if o.todos}
-    assert set(todos) == {".qc-agent/midscene/explore.yaml", ".github/workflows/qc.yml"} and len(todos[".github/workflows/qc.yml"]) == 2
+    assert set(todos) == {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/midscene/explore.yaml", ".github/workflows/qc.yml"}
     assert all(entry.startswith("dòng ") for entries in todos.values() for entry in entries)
 
 
-def test_pins_given_leave_no_todo_in_the_workflow(tmp_path):
-    _, outcomes = run_init(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64)
-    assert not [o for o in outcomes if o.todos]
+def test_pins_given_leave_only_the_scanner_and_refine_todos(tmp_path):
+    _, outcomes = run_init(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, openapi_source=str(VAHAN),
+                           sut_env=["X=y"])
+    assert {o.label for o in outcomes if o.todos} == {".qc-agent/midscene/explore.yaml"}
 
 
 def test_existing_files_are_never_overwritten_without_force(tmp_path):
@@ -202,17 +307,16 @@ def test_existing_files_are_never_overwritten_without_force(tmp_path):
     assert all(o.status == "overwritten" for o in forced) and target.read_text(encoding="utf-8") != "# tay sửa\n"
 
 
-def test_kept_files_report_no_todos_and_a_partial_rerun_only_creates_missing_files(tmp_path):
+def test_a_partial_rerun_only_creates_missing_files(tmp_path):
     run_init(tmp_path)
     (tmp_path / "sut" / ".qc-agent" / "perf" / "smoke.js").unlink()
     _, outcomes = run_init(tmp_path)
-    assert {o.label: o.status for o in outcomes}[".qc-agent/perf/smoke.js"] == "created"
-    assert [o.status for o in outcomes].count("kept") == 4
+    assert {o.label: o.status for o in outcomes}[".qc-agent/perf/smoke.js"] == "created" and [o.status for o in outcomes].count("kept") == 7
 
 
 def test_dry_run_writes_nothing_and_shows_a_diff_when_forcing(tmp_path):
     _, outcomes = run_init(tmp_path, dry_run=True)
-    assert all(o.status == "would-create" for o in outcomes) and not (tmp_path / "sut" / ".qc-agent").exists() and not (tmp_path / "projects").exists()
+    assert all(o.status == "would-create" for o in outcomes) and not (tmp_path / "sut" / ".qc-agent").exists()
     run_init(tmp_path)
     workflow = tmp_path / "sut" / ".github" / "workflows" / "qc.yml"
     workflow.write_text(workflow.read_text(encoding="utf-8").replace("name: qc", "name: mine"), encoding="utf-8")
@@ -222,45 +326,29 @@ def test_dry_run_writes_nothing_and_shows_a_diff_when_forcing(tmp_path):
     assert "-name: mine" in diff and "+name: qc" in diff and workflow.read_text(encoding="utf-8") == before
 
 
-def test_generated_files_load_through_the_real_project_and_suite_loaders(tmp_path):
-    run_init(tmp_path, ui_dockerfile="apps/web-ui/Dockerfile", qc_ref="a" * 40)
-    cfg = pj.load_project("vahan-rpa", tmp_path / "projects")
+def test_generated_files_load_through_the_real_loaders_and_the_default_policy(tmp_path):
+    run_init(tmp_path, qc_ref="a" * 40)
+    cfg, info = pj.resolve_project("vahan-rpa-unregistered", ROOT / "configs" / "projects")   # repo chưa đăng ký => _default
     suites = pj.load_suites(tmp_path / "sut" / ".qc-agent" / "suites")
     plan, meta = pj.build_plan(cfg, "pr", suites)
     assert {t_["task_id"]: t_["lane"] for t_ in plan["tasks"]} == {"t-001": "gate", "t-102": "discovery", "t-101": "discovery", "t-canary-01": "discovery"}
-    assert meta["on_skipped_gate_task"] == "fail"
+    assert meta["on_skipped_gate_task"] == "fail" and info["source"] == "default"
 
 
-def test_no_api_generates_only_ui_and_marks_the_project_as_having_no_blocking_suite(tmp_path):
-    plan, outcomes = run_init(tmp_path, openapi_source=None, no_api=True, ui_dockerfile="ui/Dockerfile")
-    assert {o.label for o in outcomes} == {".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml", ".qc-agent/midscene/canary.yaml",
-                                           ".github/workflows/qc.yml", "<projects>/vahan-rpa.yaml"}
-    text = (tmp_path / "projects" / "vahan-rpa.yaml").read_text(encoding="utf-8")
-    assert "blocking_suites: []" in text and t.TODO in text  # gate luôn PASS: phải để người quyết định, không im lặng
-    assert any("projects" in o.label and o.todos for o in outcomes)
-    with pytest.raises(PlanError, match="blocking_suites"):   # Q6: mode pr không được rỗng blocking_suites; project này chỉ dùng được mode manual
-        pj.load_project("vahan-rpa", tmp_path / "projects")
-
-
-def test_no_project_skips_the_central_config(tmp_path):
-    _, outcomes = run_init(tmp_path, no_project=True)
-    assert not any("projects" in o.label for o in outcomes) and not (tmp_path / "projects").exists()
-
-
-def test_default_project_name_is_the_slug_when_openapi_has_no_title(tmp_path):
-    spec = json.loads(VAHAN.read_text(encoding="utf-8"))
-    spec["info"] = {}
-    path = tmp_path / "noinfo.json"
-    path.write_text(json.dumps(spec), encoding="utf-8")
-    run_init(tmp_path, openapi_source=str(path))
-    assert yaml.safe_load((tmp_path / "projects" / "vahan-rpa.yaml").read_text(encoding="utf-8"))["name"] == "vahan-rpa"
+def test_no_api_generates_only_ui_and_warns_it_is_not_eligible_for_pr_mode(tmp_path):
+    plan, outcomes = run_init(tmp_path, no_api=True)
+    assert {o.label for o in outcomes} == {".qc-agent/Dockerfile.ui", ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml",
+                                           ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml"}
+    assert any("không đủ điều kiện mode pr" in w for w in plan.warnings)
+    assert "sut_health_path" not in workflow_with(tmp_path) and "sut_env" not in workflow_with(tmp_path)
 
 
 @pytest.mark.parametrize("over, message", [
-    ({"openapi_source": None}, "--openapi"), ({"no_api": True, "openapi_source": None}, "không có gì để sinh"),
-    ({"ui_port": "9"}, "--ui-dockerfile"), ({"sut_root": Path("/nonexistent-dir-xyz")}, "không phải thư mục"),
-    ({"slug": "Bad Slug"}, "slug|project"), ({"repo": "nope"}, "repo"), ({"qc_ref": "main"}, "qc_ref"),
-    ({"openapi_source": "/no/such/openapi.json"}, "không đọc được"), ({"sut_env": ["bad line"]}, "sut_env")])
+    ({"no_api": True, "files": {"README.md": "x"}}, "không có gì để sinh"),
+    ({"ui_port": "9", "files": {"Dockerfile": "x"}}, "không có UI"), ({"sut_root": Path("/nonexistent-dir-xyz")}, "không phải thư mục"),
+    ({"slug": "Bad Slug"}, "slug"), ({"qc_ref": "main"}, "qc_ref"), ({"openapi_source": "/no/such/openapi.json"}, "không đọc được"),
+    ({"sut_env": ["bad line"]}, "sut_env"), ({"sut_dockerfile": "nope/Dockerfile"}, "không tồn tại"),
+    ({"ui_urls": ["http://x"]}, "--ui-url chỉ dùng cùng --suggest-ui")])
 def test_bad_options_fail_before_anything_is_written(tmp_path, over, message):
     with pytest.raises(init_mod.InitError, match=message):
         init_mod.build(options(tmp_path, **over))
@@ -282,23 +370,47 @@ def test_openapi_path_comes_from_the_url_when_given_a_url(tmp_path, monkeypatch)
             pass
     monkeypatch.setattr(openapi.httpx, "get", lambda *a, **k: Response())
     run_init(tmp_path, openapi_source="http://sut.local:8000/api/docs/openapi.json")
-    text = (tmp_path / "sut" / ".qc-agent" / "suites" / "api-contract.yaml").read_text(encoding="utf-8")
-    assert "schema_url: ${env.APP_BASE_URL}/api/docs/openapi.json" in text
+    assert "schema_url: ${env.APP_BASE_URL}/api/docs/openapi.json" in read(tmp_path, ".qc-agent/suites/api-contract.yaml")
+
+
+def test_running_as_root_in_a_container_chowns_only_what_it_created(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(init_mod, "_owner", lambda root: (1000, 1001))
+    monkeypatch.setattr(os, "chown", lambda path, uid, gid: calls.append((Path(path), uid, gid)), raising=False)
+    (tmp_path / "sut").mkdir()
+    (tmp_path / "sut" / ".github").mkdir()          # đã có từ trước: không được đổi chủ
+    plan = init_mod.build(options(tmp_path, files={"Dockerfile": "x"}))
+    init_mod.apply(plan)
+    chowned = {p.relative_to(tmp_path / "sut").as_posix() for p, uid, gid in calls}
+    assert ".github/workflows/qc.yml" in chowned and ".github/workflows" in chowned and ".qc-agent/suites/api-contract.yaml" in chowned
+    assert ".github" not in chowned and "" not in chowned and all((uid, gid) == (1000, 1001) for _, uid, gid in calls)
+    init_mod.apply(plan, dry_run=True)
+    assert len(calls) == len(chowned)      # dry-run không chown gì thêm
+
+
+def test_owner_is_none_unless_root_with_a_non_root_mount(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 1000, raising=False)
+    assert init_mod._owner(tmp_path) is None
+    assert init_mod._owner(None) is None
+
+
+def test_sut_root_defaults_to_cwd_when_the_docker_mount_is_absent(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert init_mod.default_sut_root() == tmp_path or not Path(init_mod.DEFAULT_SUT_MOUNT).is_dir()
 
 
 # ---------- qua CLI ----------
 
 def test_cli_init_entry_point_and_exit_codes(tmp_path, capsys):
-    (tmp_path / "sut").mkdir()
-    argv = ["init", "--sut-root", str(tmp_path / "sut"), "--slug", "demo", "--repo", "o/demo", "--openapi", str(VAHAN),
-            "--projects-dir", str(tmp_path / "projects"), "--dry-run"]
+    shutil.copytree(SCAN_FIXTURE, tmp_path / "sut")
+    argv = ["init", "--sut-root", str(tmp_path / "sut"), "--slug", "demo", "--openapi", str(VAHAN), "--dry-run"]
     assert cli_main(argv) == 0
     out = capsys.readouterr().out
-    assert "would-create" in out and "(dry-run: chưa ghi gì)" in out and "qc-agent:todo" in out
+    assert "slug: demo" in out and "would-create" in out and "(dry-run: chưa ghi gì)" in out and "qc-agent:todo" in out
     assert not (tmp_path / "sut" / ".qc-agent").exists()
     assert cli_main(argv[:-1] + ["--openapi", "/nope.json", "--dry-run"]) == 3
     assert "LỖI:" in capsys.readouterr().err
-    assert cli_main(["init", "--slug", "x"]) == 3  # thiếu tham số bắt buộc: exit 3, không phải 2 của argparse
+    assert cli_main(["init", "--repo", "o/x"]) == 3 and cli_main(["init", "--projects-dir", "x"]) == 3   # cờ đã bị xoá: exit 3, không phải 2 của argparse
 
 
 # ---------- file sinh ra chạy được THẬT ----------
@@ -326,10 +438,11 @@ def _serve_noteboard(monkeypatch, bugs):
 def test_init_from_a_live_sut_produces_a_gate_that_passes_clean_and_fails_on_a_seeded_bug(tmp_path, monkeypatch):
     server, thread, url = _serve_noteboard(monkeypatch, "none")
     try:
-        sut, projects = tmp_path / "sut", tmp_path / "projects"
+        sut = tmp_path / "sut"
         sut.mkdir()
-        assert cli_main(["init", "--sut-root", str(sut), "--slug", "nb", "--repo", "o/nb", "--openapi", f"{url}/openapi.json",
-                         "--projects-dir", str(projects)]) == 0
+        (sut / "Dockerfile").write_text("FROM python:3.11-slim\nEXPOSE 8000\n", encoding="utf-8")
+        assert cli_main(["init", "--sut-root", str(sut), "--slug", "nb", "--openapi", f"{url}/openapi.json"]) == 0
+        projects = ROOT / "configs" / "projects"      # `nb` chưa đăng ký => policy _default
 
         def gate(run_name):
             env = {**os.environ, "APP_BASE_URL": url, "PYTHONUTF8": "1"}
