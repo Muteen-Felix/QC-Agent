@@ -66,6 +66,12 @@ qc-agent init --sut-root <repo SUT> --slug myapp --repo owner/myapp   --openapi 
 `init` ghi `.qc-agent/suites/*.yaml`, script k6, flow Midscene, `.github/workflows/qc.yml` và `configs/projects/<slug>.yaml`; **không ghi đè** file đã có (trừ `--force`).
 Phần cần hiểu sản phẩm (các bước UI của flow explore, ghim SHA/digest) được đánh dấu `qc-agent:todo`. Trên Git Bash (Windows) đặt `MSYS_NO_PATHCONV=1` để `/api/health` không bị đổi thành đường dẫn Windows.
 
+**Gợi ý flow UI bằng LLM (tuỳ chọn, chỉ cho `ui-explore`, không chặn merge):** thêm `--suggest-ui --ui-url http://127.0.0.1:5173/` (lặp được, tối đa 5 trang).
+`init` mở UI đang chạy bằng Chromium, đọc **nhãn hiển thị** (tiêu đề, nút, liên kết, ô nhập; không mã nguồn, không giá trị ô nhập, không query URL), gửi tới endpoint
+`MIDSCENE_MODEL_*` (cùng khoá Midscene) và ghi `.qc-agent/midscene/explore.yaml`. Đầu ra bị ép vào lược đồ chặt (chỉ `aiAct/aiTap/aiAssert/aiWaitFor`, ≤3 flow, ≤8 bước),
+luôn mang dấu `qc-agent:todo` "GỢI Ý" nên `validate` từ chối cho tới khi người duyệt và xoá dấu. Mỗi lần gửi được ghi vào `.qc-agent/egress.jsonl`; `--dry-run` không bao giờ gọi LLM;
+thiếu khoá hay LLM lỗi thì chỉ cảnh báo và giữ khung TODO. Nhãn của trang là dữ liệu không tin cậy (có thể chứa chỉ dẫn nhằm thao túng LLM): đừng bỏ bước duyệt.
+
 Kiểm offline (vài giây, không Docker/mạng/SUT) rồi mới mở PR:
 
 ```

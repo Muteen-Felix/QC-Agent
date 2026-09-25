@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from qc_agent import settings
-from qc_agent.scaffold import openapi
+from qc_agent.scaffold import openapi, suggest
 from qc_agent.scaffold import templates as t
 
 SYSTEM_ERROR = 3
@@ -54,6 +54,10 @@ class Options:
     ui_health_path: str | None = None
     ui_build_args: list[str] = field(default_factory=list)
     ui_entry_path: str = "/"
+    suggest_ui: bool = False          # LLM gợi ý flow explore từ nhãn của UI đang chạy (gửi nhãn ra nhà cung cấp LLM)
+    ui_urls: list[str] = field(default_factory=list)
+    force: bool = False               # build() cần biết để không gọi LLM khi file sẽ không được ghi
+    dry_run: bool = False             # dry-run không bao giờ gửi dữ liệu ra ngoài
 
 
 @dataclass
@@ -115,11 +119,13 @@ def build(opts: Options) -> Plan:
                               f"k6 smoke gọi {analysis.get_paths or 'không có'}")
         if opts.ui_dockerfile:
             add(f"{SUITES_DIR}/ui-explore.yaml", t.ui_explore_suite(entry_path=opts.ui_entry_path, explore_flow=EXPLORE_FLOW, canary_flow=CANARY_FLOW))
-            add(EXPLORE_FLOW, t.midscene_explore_flow())
+            add(EXPLORE_FLOW, _explore_flow(opts, root, plan))
             add(CANARY_FLOW, t.midscene_canary_flow())
             advisory.append("ui-explore")
-        elif any((opts.ui_context, opts.ui_port, opts.ui_health_path, opts.ui_build_args)):
-            raise InitError("có tham số --ui-* nhưng thiếu --ui-dockerfile")
+        elif any((opts.ui_context, opts.ui_port, opts.ui_health_path, opts.ui_build_args, opts.suggest_ui, opts.ui_urls)):
+            raise InitError("có tham số --ui-*/--suggest-ui nhưng thiếu --ui-dockerfile")
+        if opts.ui_urls and not opts.suggest_ui:
+            raise InitError("--ui-url chỉ dùng cùng --suggest-ui")
         if opts.no_api and not opts.ui_dockerfile:
             raise InitError("--no-api mà không có UI (--ui-dockerfile) thì không có gì để sinh")
         add(WORKFLOW, t.qc_workflow(
@@ -133,6 +139,27 @@ def build(opts: Options) -> Plan:
     except (t.TemplateError, openapi.OpenApiError) as error:
         raise InitError(str(error)) from None
     return plan
+
+
+def _explore_flow(opts: Options, root: Path, plan: Plan) -> str:
+    """Khung TODO, hoặc gợi ý của LLM (vẫn mang TODO "GỢI Ý"). Mọi lỗi của phần gợi ý chỉ là cảnh báo: init vẫn xong với khung TODO."""
+    if not opts.suggest_ui:
+        return t.midscene_explore_flow()
+    if not opts.ui_urls:
+        raise InitError("--suggest-ui cần ít nhất một --ui-url (URL của UI đang chạy)")
+    if opts.dry_run:
+        plan.notes.append("dry-run: KHÔNG gọi LLM (lần chạy thật sẽ gửi nhãn hiển thị của UI tới nhà cung cấp LLM)")
+        return t.midscene_explore_flow()
+    if (root / EXPLORE_FLOW).exists() and not opts.force:
+        plan.notes.append(f"{EXPLORE_FLOW} đã có và không bị ghi đè: bỏ qua gọi LLM")
+        return t.midscene_explore_flow()
+    try:
+        flows, model = suggest.suggest_flows(opts.ui_urls, root)
+    except suggest.SuggestError as error:
+        plan.warnings.append(f"--suggest-ui: {error}; giữ khung TODO")
+        return t.midscene_explore_flow()
+    plan.notes.append(f"LLM ({model}) gợi ý {len(flows)} flow từ {len(opts.ui_urls)} trang; đã ghi log egress vào .qc-agent/egress.jsonl")
+    return t.midscene_explore_flow(tasks=flows, suggested_by=model)
 
 
 def _todos(content: str) -> list[str]:
@@ -200,6 +227,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--ui-health-path", help="đường dẫn thăm dò sẵn sàng của UI")
     ap.add_argument("--ui-build-arg", action="append", default=[], metavar="KEY=VALUE", help="build-arg cho UI (KHÔNG đặt bí mật)")
     ap.add_argument("--ui-entry-path", default="/", help="trang Midscene mở đầu tiên (mặc định /)")
+    ap.add_argument("--suggest-ui", action="store_true", help="dùng LLM (khoá MIDSCENE_MODEL_*) gợi ý flow explore từ NHÃN hiển thị của UI; "
+                                                              "gửi nhãn ra nhà cung cấp LLM, ghi log egress; kết quả vẫn phải duyệt (dấu qc-agent:todo)")
+    ap.add_argument("--ui-url", action="append", default=[], metavar="URL", help="URL của UI đang chạy để đọc nhãn (lặp được, tối đa 5; cần --suggest-ui)")
     ap.add_argument("--force", action="store_true", help="ghi đè file đã có")
     ap.add_argument("--dry-run", action="store_true", help="chỉ in kế hoạch (kèm diff khi ghi đè), không ghi gì")
     return ap
@@ -216,7 +246,8 @@ def main(argv: list[str]) -> int:
             openapi_path=args.openapi_path, no_api=args.no_api, projects_dir=Path(args.projects_dir) if args.projects_dir else None,
             no_project=args.no_project, qc_repo=args.qc_repo, qc_ref=args.qc_ref, image=args.image, sut_port=args.sut_port,
             sut_health_path=args.health_path, sut_env=args.sut_env, ui_dockerfile=args.ui_dockerfile, ui_context=args.ui_context,
-            ui_port=args.ui_port, ui_health_path=args.ui_health_path, ui_build_args=args.ui_build_arg, ui_entry_path=args.ui_entry_path)
+            ui_port=args.ui_port, ui_health_path=args.ui_health_path, ui_build_args=args.ui_build_arg, ui_entry_path=args.ui_entry_path,
+            suggest_ui=args.suggest_ui, ui_urls=args.ui_url, force=args.force, dry_run=args.dry_run)
         plan = build(opts)
         outcomes = apply(plan, force=args.force, dry_run=args.dry_run)
     except SystemExit as exit_:

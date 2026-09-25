@@ -126,14 +126,7 @@ def ui_explore_suite(*, entry_path: str = "/", explore_flow: str = ".qc-agent/mi
         "explore_flow": _q(_need(_FILE, explore_flow, "explore_flow")), "canary_flow": _q(_need(_FILE, canary_flow, "canary_flow"))})
 
 
-def midscene_explore_flow(*, steps: list[tuple[str, str]] | None = None) -> str:
-    """steps=None => khung chờ người viết (đánh dấu TODO). Có steps => (lệnh, mô tả) theo tập lệnh cho phép; KHÔNG còn TODO."""
-    if steps is None:
-        return render("midscene-explore.yaml.tmpl", {
-            "todo_line": _todo("thay bằng các bước người dùng thật làm trên UI (aiTap / aiAssert...) rồi xoá dòng này"),
-            "steps_block": "      - aiWaitFor: trang đã tải xong và hiển thị nội dung chính"})
-    if not steps:
-        raise TemplateError("steps rỗng: dùng steps=None nếu muốn khung TODO")
+def _flow_lines(steps: list[tuple[str, str]]) -> list[str]:
     lines = []
     for command, text in steps:
         if command not in MIDSCENE_COMMANDS:
@@ -141,7 +134,35 @@ def midscene_explore_flow(*, steps: list[tuple[str, str]] | None = None) -> str:
         if not isinstance(text, str) or not text.strip() or len(text) > 200:
             raise TemplateError("mô tả bước phải là chuỗi không rỗng, tối đa 200 ký tự")
         lines.append(f"      - {command}: {_q(text.strip())}")
-    return render("midscene-explore.yaml.tmpl", {"todo_line": "", "steps_block": "\n".join(lines)})
+    return lines
+
+
+_TASK_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+_MODEL_NAME = re.compile(r"[A-Za-z0-9._:/-]{1,80}")
+
+
+def midscene_explore_flow(*, steps: list[tuple[str, str]] | None = None, tasks: list[tuple[str, list[tuple[str, str]]]] | None = None,
+                          suggested_by: str | None = None) -> str:
+    """Không có steps/tasks => khung chờ người viết (đánh dấu TODO). `steps` = một task `kham-pha`; `tasks` = nhiều task [(tên, steps)].
+    `suggested_by` (tên model) => đầu ra của LLM: VẪN mang TODO "GỢI Ý" để `validate` từ chối cho tới khi người duyệt."""
+    if steps is not None and tasks is not None:
+        raise TemplateError("chỉ dùng một trong steps/tasks")
+    if steps is None and tasks is None:
+        return render("midscene-explore.yaml.tmpl", {
+            "todo_line": _todo("thay bằng các bước người dùng thật làm trên UI (aiTap / aiAssert...) rồi xoá dòng này"),
+            "tasks_block": "  - name: kham-pha\n    flow:\n      - aiWaitFor: trang đã tải xong và hiển thị nội dung chính"})
+    if tasks is None:
+        tasks = [("kham-pha", steps)]
+    if not tasks or any(not steps_ for _, steps_ in tasks):
+        raise TemplateError("steps/tasks rỗng: bỏ tham số nếu muốn khung TODO")
+    blocks = []
+    for name, task_steps in tasks:
+        _need(_TASK_NAME, name, "tên task Midscene")
+        blocks.append(f"  - name: {name}\n    flow:\n" + "\n".join(_flow_lines(task_steps)))
+    todo = ""
+    if suggested_by is not None:
+        todo = _todo(f"GỢI Ý bởi LLM ({_need(_MODEL_NAME, suggested_by, 'tên model')}): duyệt từng bước, sửa/xoá cho đúng sản phẩm rồi xoá dòng này")
+    return render("midscene-explore.yaml.tmpl", {"todo_line": todo, "tasks_block": "\n".join(blocks)})
 
 
 def midscene_canary_flow() -> str:
