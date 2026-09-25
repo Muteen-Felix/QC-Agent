@@ -6,6 +6,9 @@ inputs/secrets/github/steps giả, ghi/đọc $GITHUB_OUTPUT, và bắt chước
     python tools/run_reusable_locally.py --workspace tests/fixtures/sut/noteboard --input project=noteboard \\
         --input image=qc-agent:dev --input allow_unpinned_image=true --secret QC_API_TOKEN=... --github-api http://host.docker.internal:9999
 
+`--policy-dir DIR` thay bước "Fetch policy": DIR được chép vào $RUNNER_TEMP/qc-policy y như bản fetch từ qc-agent@main. Không đặt thì bước đó chạy
+THẬT, gọi $GITHUB_API_URL (đổi bằng --github-api để trỏ vào server giả).
+
 Cần bash (Git Bash trên Windows) và docker. Exit code = kết quả bước cuối (Enforce gate result).
 """
 from __future__ import annotations
@@ -64,7 +67,20 @@ class Context:
         return _EXPR.sub(lambda m: self.evaluate(m.group(1)), str(text))
 
 
-def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: dict, *, skip=("Pull qc-agent image",), echo=print) -> dict:
+LOCAL_POLICY_REF = "0123456789abcdef0123456789abcdef01234567"   # commit giả cho `--policy-dir`
+FETCH_STEP = "Fetch policy"
+
+
+def _posix(path) -> str:
+    """Đường dẫn cho bash + `docker -v` (Git Bash trên Windows: C:/x -> /c/x)."""
+    text = str(path)
+    if os.name == "nt" and len(text) > 1 and text[1] == ":":
+        return "/" + text[0].lower() + text[2:].replace(chr(92), "/")
+    return text
+
+
+def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: dict, *, skip=("Pull qc-agent image",), echo=print,
+                 policy_dir=None, step_env=None) -> dict:
     data = yaml.safe_load(Path(workflow_path).read_text(encoding="utf-8"))
     declared = data[True if True in data else "on"]["workflow_call"]["inputs"]
     merged = {name: spec.get("default") for name, spec in declared.items()}
@@ -73,16 +89,22 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
     if missing:
         raise SystemExit(f"thiếu input bắt buộc: {', '.join(missing)}")
     ctx = Context(merged, secrets, github)
+    workflow_env = {k: str(v) for k, v in (data.get("env") or {}).items()}
     steps = data["jobs"]["gate"]["steps"]
     bash, failed, results = find_bash(), False, {}
     with tempfile.TemporaryDirectory() as tmp:
         output_file = Path(tmp) / "github_output"
+        runner_temp = Path(tmp) / "runner_temp"
+        runner_temp.mkdir()
+        if policy_dir is not None:   # thay bước fetch: cùng vị trí như bản fetch thật
+            shutil.copytree(policy_dir, runner_temp / "qc-policy")
+            ctx.steps["policy"] = {"outputs": {"ref": LOCAL_POLICY_REF}, "outcome": "success"}
         for step in steps:
             name = step.get("name") or step.get("uses", "?")
             if "run" not in step:
                 echo(f"[skip] {name} (uses:)")
                 continue
-            if name in skip:
+            if name in skip or (policy_dir is not None and name == FETCH_STEP):
                 echo(f"[skip] {name}")
                 continue
             condition = str(step.get("if", ""))
@@ -90,9 +112,14 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
                 echo(f"[skip] {name} (bước trước lỗi)")
                 continue
             output_file.write_text("", encoding="utf-8")
-            env = {**os.environ, "MSYS_NO_PATHCONV": "1", "GITHUB_OUTPUT": str(output_file)}
+            env = {**os.environ, "MSYS_NO_PATHCONV": "1", "GITHUB_OUTPUT": _posix(output_file), "RUNNER_TEMP": _posix(runner_temp), **workflow_env}
             env.update({k: str(v) for k, v in github.get("env", {}).items()})
             env.update({k: ctx.render(v) for k, v in (step.get("env") or {}).items()})
+            for key, value in (step_env or {}).get(name, {}).items():   # ghi đè theo tên bước; giá trị None = xoá biến
+                if value is None:
+                    env.pop(key, None)
+                else:
+                    env[key] = value
             echo(f"[run ] {name}")
             proc = subprocess.run([bash, "-e", "-c", step["run"]], cwd=workspace, env=env, text=True, encoding="utf-8",
                                   capture_output=True)
@@ -122,6 +149,7 @@ def main(argv=None) -> int:
     ap.add_argument("--sha", default="abc1234def5678")
     ap.add_argument("--pr", type=int, default=7)
     ap.add_argument("--token", default="ghs_local_test_token")
+    ap.add_argument("--policy-dir", metavar="DIR", help="dùng thư mục này làm policy thay vì fetch từ qc-agent@main (không cần mạng)")
     args = ap.parse_args(argv)
     kv = lambda items: dict(item.split("=", 1) for item in items)  # noqa: E731
     with tempfile.TemporaryDirectory() as tmp:
@@ -132,7 +160,7 @@ def main(argv=None) -> int:
                   "env": {"GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": args.repository, "GITHUB_SHA": "mergecommit0000",
                           "GITHUB_RUN_ID": "1001", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SERVER_URL": "https://github.com",
                           "GITHUB_API_URL": args.github_api, "GITHUB_REF_NAME": "feat/x"}}
-        results = run_workflow(args.workflow, args.workspace, kv(args.input), kv(args.secret), github)
+        results = run_workflow(args.workflow, args.workspace, kv(args.input), kv(args.secret), github, policy_dir=args.policy_dir)
     return results.get("Enforce gate result", {}).get("returncode", 1)
 
 

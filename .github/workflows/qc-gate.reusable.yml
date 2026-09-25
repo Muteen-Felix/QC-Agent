@@ -11,6 +11,9 @@
 #       secrets: inherit
 # Xem docs/usage-ci.md. Bật chặn merge: branch protection của SUT yêu cầu job này xanh.
 #
+# POLICY: gate đọc chính sách (configs/projects/) TỪ NHÁNH `main` CỦA qc-agent lúc chạy (bước "Fetch policy"), không đọc bản đóng gói trong image;
+# lấy không được thì job ĐỎ (không fallback). Repo chưa đăng ký dùng `_default.yaml`. Mô hình tin cậy: tin team SUT, chỉ chống sơ suất.
+#
 # Luồng: build + chạy SUT của PR (và web UI nếu khai sut_ui_dockerfile) trong container tạm -> chạy image qc-agent (CLI) trên mạng docker riêng -> báo cáo (Check Run,
 # comment dính, lịch sử tập trung, webhook) -> upload artifact -> job xanh/đỏ THEO EXIT CODE của gate (báo cáo lỗi không đổi kết quả).
 #
@@ -19,6 +22,10 @@
 # theo digest (trừ khi allow_unpinned_image). Code của PR là input KHÔNG TIN CẬY: chạy trong container không phải root, mạng docker riêng.
 # Rủi ro còn lại: worker eval của chính repo SUT (vd. pytest tests/eval) chạy mã của PR với các key LLM trong env — dùng key giới hạn ngân sách.
 name: qc-gate (reusable)
+
+env:
+  # Repo chứa policy. HARD-CODE vì trong workflow_call `github.repository` là repo GỌI, không phải qc-agent. Fork/đổi tên repo thì sửa đúng chỗ này.
+  QC_AGENT_REPO: Muteen-Felix/QC-Agent
 
 on:
   workflow_call:
@@ -87,6 +94,7 @@ on:
         type: number
         default: 30
     secrets:
+      qc_read_token: { required: false }   # đọc policy (contents:read) + kéo image (read:packages) khi repo qc-agent/image chuyển private
       QC_API_TOKEN: { required: false }
       GHCR_PULL_TOKEN: { required: false }
       OPENAI_API_KEY: { required: false }
@@ -134,7 +142,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.qc_read_token || secrets.GITHUB_TOKEN }}
 
       - name: Pull qc-agent image
         env:
@@ -150,6 +158,39 @@ jobs:
                echo "::warning::image không ghim theo digest: $IMAGE" ;;
           esac
           docker pull "$IMAGE"
+
+      - name: Fetch policy
+        id: policy
+        env:
+          PROJECT: ${{ inputs.project }}
+          POLICY_TOKEN: ${{ secrets.qc_read_token || github.token }}
+        run: |
+          set -euo pipefail
+          # policy = configs/projects/{_default,<slug>}.yaml của qc-agent@main, để NGOÀI workspace SUT (PR có thể commit sẵn thư mục trùng tên,
+          # và /work được mount vào container gate). Lấy không được => dừng job: KHÔNG dùng snapshot trong image.
+          if ! [[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then echo "::error::project không hợp lệ: $PROJECT"; exit 1; fi
+          dest="$RUNNER_TEMP/qc-policy"
+          rm -rf "$dest"; mkdir -p "$dest"
+          api="${GITHUB_API_URL:-https://api.github.com}/repos/${QC_AGENT_REPO}"
+          get() {  # $1 = URL, $2 = Accept, $3 = file ra; in mã HTTP. Token đi qua stdin của curl, không nằm trên dòng lệnh
+            printf 'header = "Authorization: Bearer %s"\n' "$POLICY_TOKEN" | curl -sS -K - --max-time 20 -o "$3" -w '%{http_code}' \
+              -H "Accept: $2" -H 'X-GitHub-Api-Version: 2022-11-28' "$1" || echo 000
+          }
+          code=$(get "$api/contents/configs/projects/_default.yaml?ref=main" 'application/vnd.github.raw+json' "$dest/_default.yaml")
+          if [ "$code" != 200 ]; then echo "::error::không lấy được policy _default.yaml từ ${QC_AGENT_REPO}@main (HTTP $code)"; exit 1; fi
+          code=$(get "$api/contents/configs/projects/${PROJECT}.yaml?ref=main" 'application/vnd.github.raw+json' "$dest/${PROJECT}.yaml")
+          case "$code" in
+            200) ;;
+            404) rm -f "$dest/${PROJECT}.yaml"; echo "project ${PROJECT} chưa đăng ký: dùng _default" ;;
+            *) echo "::error::không lấy được policy ${PROJECT}.yaml từ ${QC_AGENT_REPO}@main (HTTP $code)"; exit 1 ;;
+          esac
+          ref_file=$(mktemp)
+          code=$(get "$api/commits/main" 'application/vnd.github.sha' "$ref_file")
+          ref=$(cat "$ref_file")
+          if [ "$code" != 200 ] || ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then echo "::error::không xác định được commit của ${QC_AGENT_REPO}@main (HTTP $code)"; exit 1; fi
+          chmod -R a+rX "$dest"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "policy: ${QC_AGENT_REPO}@main = $ref"
 
       - name: Start SUT
         id: sut
@@ -216,6 +257,7 @@ jobs:
           BASE_URL: ${{ steps.sut.outputs.base_url }}
           UI_URL: ${{ steps.sut.outputs.ui_url }}
           SUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          QC_POLICY_REF: ${{ steps.policy.outputs.ref }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MIDSCENE_MODEL_BASE_URL: ${{ secrets.MIDSCENE_MODEL_BASE_URL }}
@@ -229,11 +271,12 @@ jobs:
         run: |
           set +e   # exit code của gate được ghi lại để bước báo cáo chạy xong rồi bước cuối mới quyết định xanh/đỏ
           mkdir -p runs
-          args=(run --project "$PROJECT" --mode "$MODE" --sut-root /work --runs-dir /work/runs --sut-ref "$SUT_REF")
+          args=(run --project "$PROJECT" --mode "$MODE" --sut-root /work --runs-dir /work/runs --sut-ref "$SUT_REF"
+                --projects-dir /policy --expect-repo "$GITHUB_REPOSITORY")
           if [ -n "$SUITES" ]; then args+=(--suites "$SUITES"); fi
           ui_args=(); if [ -n "${UI_URL:-}" ]; then ui_args=(-e APP_UI_URL="$UI_URL"); fi
-          docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -w /work \
-            -e APP_BASE_URL="$BASE_URL" "${ui_args[@]}" \
+          docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work \
+            -e APP_BASE_URL="$BASE_URL" -e QC_POLICY_REF "${ui_args[@]}" \
             -e OPENAI_API_KEY -e GEMINI_API_KEY \
             -e MIDSCENE_MODEL_BASE_URL -e MIDSCENE_MODEL_API_KEY -e MIDSCENE_MODEL_NAME -e MIDSCENE_MODEL_FAMILY \
             -e QC_JUDGE_PROVIDER -e QC_JUDGE_MODEL -e QC_JUDGE_FALLBACK_PROVIDER -e QC_JUDGE_FALLBACK_MODEL \
@@ -256,8 +299,8 @@ jobs:
         run: |
           RUN=$(ls -d runs/r-* 2>/dev/null | sort | tail -1 || true)
           if [ -z "$RUN" ]; then echo "::warning::không có run nào để báo cáo"; exit 0; fi
-          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -w /work \
-            -v "$GITHUB_EVENT_PATH:/tmp/event.json:ro" -e GITHUB_EVENT_PATH=/tmp/event.json \
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work \
+            -e QC_PROJECTS_DIR=/policy -v "$GITHUB_EVENT_PATH:/tmp/event.json:ro" -e GITHUB_EVENT_PATH=/tmp/event.json \
             -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_REF_NAME -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e GITHUB_SERVER_URL -e GITHUB_API_URL \
             -e GITHUB_TOKEN -e QC_API_URL -e QC_API_TOKEN -e ALERT_WEBHOOK_URL -e ALERT_TELEGRAM_CHAT_ID -e DASHBOARD_URL \
             --entrypoint python "$IMAGE" -m qc_agent.integrations.ci --run-dir "$RUN" --project "$PROJECT" --mode "$MODE" ${EXIT_CODE:+--exit-code "$EXIT_CODE"}

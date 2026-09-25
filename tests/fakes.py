@@ -10,6 +10,8 @@ class FakeGitHub:
         self.comments: list[dict] = []
         self.check_runs: list[dict] = []
         self.requests: list[dict] = []
+        self.policy_files: dict[str, str] = {}   # configs/projects/<tên> của "qc-agent@main" mà contents API giả trả về
+        self.main_sha = "a" * 40
         self.forced: dict[tuple[str, str], int] = {}  # (method, path-prefix) -> status lỗi buộc trả về
         self._next_id = 100
         outer = self
@@ -26,6 +28,14 @@ class FakeGitHub:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _send_raw(self, status, text):
+                data = text.encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
             def _handle(self):
                 length = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(length)) if length else None
@@ -35,6 +45,10 @@ class FakeGitHub:
                 for (method, prefix), status in outer.forced.items():
                     if method == self.command and path.startswith(prefix):
                         return self._send(status, {"message": "Resource not accessible by integration"})
+                if self.command == "GET" and (m := re.match(r"^/repos/[^/]+/[^/]+/contents/configs/projects/([^/?]+)\?ref=main$", path)):
+                    return self._send_raw(200, outer.policy_files[m.group(1)]) if m.group(1) in outer.policy_files else self._send(404, {"message": "Not Found"})
+                if self.command == "GET" and re.match(r"^/repos/[^/]+/[^/]+/commits/main$", path):
+                    return self._send_raw(200, outer.main_sha)
                 if self.command == "GET" and (m := re.match(r"^/repos/[^/]+/[^/]+/issues/(\d+)/comments\?per_page=(\d+)&page=(\d+)$", path)):
                     per, page = int(m.group(2)), int(m.group(3))
                     return self._send(200, outer.comments[(page - 1) * per: page * per])

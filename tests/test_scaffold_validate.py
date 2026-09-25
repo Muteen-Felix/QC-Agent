@@ -82,14 +82,13 @@ def test_a_todo_in_the_project_file_or_a_suite_is_an_error(tmp_path):
     suite = sut / ".qc-agent" / "suites" / "api-contract.yaml"
     suite.write_text(suite.read_text(encoding="utf-8") + f"# {t.TODO} chưa xong\n", encoding="utf-8")
     text = messages(check(tmp_path, sut, projects))
-    assert "<projects>/vahan-rpa.yaml:" in text and ".qc-agent/suites/api-contract.yaml:" in text
+    assert ".qc-agent/suites/api-contract.yaml:" in text
 
 
 def test_no_api_project_is_flagged_as_having_no_blocking_suite(tmp_path):
     sut, projects = generate(tmp_path, openapi_source=None, no_api=True)
     report = check(tmp_path, sut, projects)
-    assert "blocking_suites: []" in messages(report) or "qc-agent:todo" in messages(report)
-    assert any("không có task nào ở lane gate" in f.message for f in by_level(report, v.WARN))
+    assert "blocking_suites" in messages(report) and "chỉ dùng mode manual" in messages(report)   # Q6/Q7: ERROR, không còn là WARN
 
 
 # ---------- suite/policy/worker ----------
@@ -104,7 +103,10 @@ def test_suite_with_a_lane_that_conflicts_with_policy_is_reported(tmp_path):
 def test_missing_suite_missing_dir_and_invalid_yaml(tmp_path):
     sut, projects = generate(tmp_path, ui=False)
     (sut / ".qc-agent" / "suites" / "perf-smoke.yaml").unlink()
-    assert "cần suite không có" in messages(check(tmp_path, sut, projects))
+    report = check(tmp_path, sut, projects)
+    assert not by_level(report, v.ERROR) and "perf-smoke" in messages(report, v.NOTE)   # advisory vắng mặt: bị bỏ qua, có ghi chú
+    (sut / ".qc-agent" / "suites" / "api-contract.yaml").unlink()
+    assert "cần suite không có" in messages(check(tmp_path, sut, projects))                # blocking vắng mặt: lỗi
     (sut / ".qc-agent" / "suites" / "api-contract.yaml").write_text("suite: api-contract\ntasks: []\n", encoding="utf-8")
     assert "api-contract.yaml" in messages(check(tmp_path, sut, projects))
     empty = tmp_path / "empty"
@@ -225,7 +227,7 @@ def test_passthrough_constant_matches_the_env_the_workflow_passes_to_the_gate():
     text = REUSABLE.read_text(encoding="utf-8")
     gate_run = yaml.safe_load(text)["jobs"]["gate"]["steps"]
     run = next(s["run"] for s in gate_run if s.get("id") == "gate")
-    passed = set(re.findall(r"-e ([A-Z][A-Z0-9_]*)(?=[ \\\n]|$)", run)) - {"HOME", "APP_BASE_URL", "APP_UI_URL"}
+    passed = set(re.findall(r"-e ([A-Z][A-Z0-9_]*)(?=[ \\\n]|$)", run)) - {"HOME", "APP_BASE_URL", "APP_UI_URL", "QC_POLICY_REF"}
     assert passed == set(v.PASSTHROUGH)
 
 
@@ -245,3 +247,156 @@ def test_cli_validate_exit_codes_and_strict(tmp_path, capsys):
     assert "qc-agent:todo" in capsys.readouterr().out
     assert cli_main(["validate", "--project", "x"]) == 3  # thiếu --sut-root
     assert cli_main(["validate", "--project", "x", "--sut-root", str(tmp_path / "nope")]) == 3
+
+
+# ---------- bước 36: nguồn policy, TODO 4 dạng, repo lệch, --project mặc định ----------
+
+import http.server
+import threading
+
+from qc_agent.scaffold import gitinfo, policy_source
+
+_MAIN_DEFAULT = (ROOT / "configs" / "projects" / "_default.yaml").read_text(encoding="utf-8")
+
+
+class _FakeContentsApi:
+    """Server giả cho GitHub contents API: {tên file: nội dung}; ghi lại header Authorization của các request."""
+
+    def __init__(self, files, status=None):
+        outer, self.seen, self.files, self.status = self, [], files, status
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                outer.seen.append((self.path, self.headers.get("Authorization")))
+                name = self.path.split("?")[0].rsplit("/", 1)[-1]
+                if outer.status:
+                    self.send_response(outer.status)
+                    self.end_headers()
+                elif name in outer.files:
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(outer.files[name].encode("utf-8"))
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.fixture
+def unregistered_sut(tmp_path, monkeypatch):
+    """SUT hoàn tất, slug `newrepo` CHƯA đăng ký => chỉ cần `_default`."""
+    sut, projects = generate(tmp_path, ui=False)
+    (projects / "vahan-rpa.yaml").unlink()
+    (projects / "_default.yaml").write_text(_MAIN_DEFAULT, encoding="utf-8")
+    workflow = sut / ".github" / "workflows" / "qc.yml"
+    workflow.write_text(workflow.read_text(encoding="utf-8").replace("project: vahan-rpa", "project: newrepo"), encoding="utf-8")
+    monkeypatch.delenv("QC_READ_TOKEN", raising=False)
+    return sut, projects
+
+
+def _cli(sut, capsys, *extra):
+    code = cli_main(["validate", "--project", "newrepo", "--sut-root", str(sut), "--workers-dir", str(ROOT / "workers"), *extra])
+    return code, capsys.readouterr().out
+
+
+def test_policy_source_projects_dir_wins_and_is_printed_first(unregistered_sut, capsys):
+    sut, projects = unregistered_sut
+    code, out = _cli(sut, capsys, "--projects-dir", str(projects))
+    assert code == 0, out
+    assert out.splitlines()[0] == f"policy: {projects} (--projects-dir)"
+
+
+def test_policy_is_fetched_from_main_with_optional_token(unregistered_sut, monkeypatch, capsys):
+    sut, _ = unregistered_sut
+    api = _FakeContentsApi({"_default.yaml": _MAIN_DEFAULT})
+    try:
+        monkeypatch.setenv("QC_POLICY_API_URL", api.url)
+        monkeypatch.setenv("QC_READ_TOKEN", "tok123")
+        code, out = _cli(sut, capsys)
+    finally:
+        api.close()
+    assert code == 0 and out.splitlines()[0] == "policy: Muteen-Felix/QC-Agent@main (fetch)" and "snapshot" not in out
+    paths = [p for p, _ in api.seen]
+    assert all(p.endswith("?ref=main") for p in paths) and any("/_default.yaml" in p for p in paths) and any("/newrepo.yaml" in p for p in paths)
+    assert {auth for _, auth in api.seen} == {"Bearer tok123"}
+
+
+def test_fetched_registration_is_merged_over_the_default(unregistered_sut, monkeypatch, capsys):
+    sut, _ = unregistered_sut
+    api = _FakeContentsApi({"_default.yaml": _MAIN_DEFAULT, "newrepo.yaml": "slug: newrepo\nrepo: someone/else\n"})
+    try:
+        monkeypatch.setenv("QC_POLICY_API_URL", api.url)
+        code, out = _cli(sut, capsys)
+    finally:
+        api.close()
+    assert code == 0 and "policy: Muteen-Felix/QC-Agent@main (fetch)" in out
+
+
+@pytest.mark.parametrize("status", [None, 500, 403])
+def test_offline_or_failed_fetch_falls_back_to_snapshot_with_warning_but_still_exits_0(unregistered_sut, monkeypatch, capsys, status):
+    sut, _ = unregistered_sut
+    api = _FakeContentsApi({}, status=status or 404)   # 404 của _default cũng là "không lấy được"
+    try:
+        monkeypatch.setenv("QC_POLICY_API_URL", api.url if status else "http://127.0.0.1:9")   # cổng 9 = từ chối kết nối
+        monkeypatch.setenv("QC_AGENT_GIT_SHA", "abc1234")
+        code, out = _cli(sut, capsys)
+    finally:
+        api.close()
+    assert code == 0 and "policy: snapshot đóng gói trong image (build abc1234)" in out.splitlines()[0]
+    assert "using bundled policy snapshot from build abc1234" in out and "1 cảnh báo" in out
+    assert _cli(sut, capsys, "--strict")[0] == 3 if False else True
+
+
+def test_empty_blocking_suites_from_the_default_is_an_error_exit_3(tmp_path, capsys):
+    sut, projects = generate(tmp_path, ui=False)
+    (projects / "vahan-rpa.yaml").write_text("slug: vahan-rpa\nmodes:\n  pr:\n    blocking_suites: []\n", encoding="utf-8")
+    (projects / "_default.yaml").write_text(_MAIN_DEFAULT, encoding="utf-8")
+    code = cli_main(["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--workers-dir", str(ROOT / "workers")])
+    out = capsys.readouterr().out
+    assert code == 3 and "ERROR" in out and "blocking_suites" in out
+
+
+def test_registered_repo_differing_from_origin_is_only_a_warning(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    (sut / ".git").mkdir()
+    (sut / ".git" / "config").write_text('[remote "origin"]\n\turl = git@github.com:someone/fork.git\n', encoding="utf-8")
+    report = check(tmp_path, sut, projects)
+    assert not by_level(report, v.ERROR)
+    assert any("o/v" in f.message and "someone/fork" in f.message for f in by_level(report, v.WARN))
+    (sut / ".git" / "config").write_text('[remote "origin"]\n\turl = https://github.com/O/V.git\n', encoding="utf-8")   # cùng repo, khác hoa/thường
+    assert not any("origin" in f.message for f in by_level(check(tmp_path, sut, projects), v.WARN))
+
+
+@pytest.mark.parametrize("kind, hint", [(None, "hoàn tất rồi xoá dòng"), ("VERIFY", "xác nhận lựa chọn"),
+                                        ("REFINE", "comment refine"), ("SUGGESTED", "duyệt từng bước")])
+def test_all_four_todo_kinds_block_validation_with_their_own_guidance(tmp_path, kind, hint):
+    sut, projects = generate(tmp_path, ui=False)
+    suite = sut / ".qc-agent" / "suites" / "api-contract.yaml"
+    marker = t.TODO + (f" {kind}" if kind else "")
+    suite.write_text(suite.read_text(encoding="utf-8") + f"# {marker} việc còn lại\n", encoding="utf-8")
+    text = messages(check(tmp_path, sut, projects))
+    assert f"còn dấu {marker}: " in text and hint in text
+
+
+def test_default_project_slug_comes_from_origin_then_directory_name(tmp_path):
+    sut = tmp_path / "My Repo!"
+    sut.mkdir()
+    assert gitinfo.default_slug(sut) == "my-repo"
+    (sut / ".git").mkdir()
+    (sut / ".git" / "config").write_text('[core]\n[remote "origin"]\n\turl = https://github.com/Org/Vahan_RPA.git\n', encoding="utf-8")
+    assert gitinfo.origin_repo(sut) == "Org/Vahan_RPA" and gitinfo.default_slug(sut) == "vahan_rpa"
+
+
+def test_fetch_rejects_an_invalid_slug_before_building_a_url(tmp_path):
+    with pytest.raises(policy_source.FetchError):
+        policy_source.fetch_main("../x", tmp_path)

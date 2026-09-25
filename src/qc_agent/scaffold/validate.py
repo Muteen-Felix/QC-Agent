@@ -1,4 +1,4 @@
-"""`qc-agent validate`: kiểm OFFLINE cấu hình của một project trước khi đẩy lên CI (không Docker, không mạng, không gọi SUT, không probe worker).
+"""`qc-agent validate`: kiểm cấu hình của một project trước khi đẩy lên CI (không Docker, không gọi SUT, không probe worker; mạng chỉ để lấy policy từ qc-agent@main, offline thì dùng snapshot).
 
 Bắt được trong vài giây những lỗi mà CI chỉ báo sau 10 phút: suite/project sai schema, lane xung đột policy, task không có worker, file tham chiếu
 không tồn tại, biến môi trường mà workflow không cấp, `qc.yml` chưa ghim SHA/digest, và mọi dấu `qc-agent:todo` còn sót.
@@ -20,6 +20,7 @@ from qc_agent.core import plan as plan_lib
 from qc_agent.core import project as pj
 from qc_agent.core import registry
 from qc_agent.core.plan import PlanError
+from qc_agent.scaffold import gitinfo, policy_source
 from qc_agent.scaffold import templates as t
 
 SYSTEM_ERROR = 3
@@ -65,6 +66,21 @@ def _fill_env(node, names: set[str]):
     if isinstance(node, list):
         return [_fill_env(value, names) for value in node]
     return node
+
+
+TODO_KIND = re.compile(re.escape(t.TODO) + r"(?:\s+(VERIFY|REFINE|SUGGESTED)\b)?")
+TODO_HINT = {   # 4 dạng dấu chưa hoàn tất và việc cần làm với mỗi dạng
+    None: "hoàn tất rồi xoá dòng",
+    "VERIFY": "xác nhận lựa chọn của scanner rồi xoá dòng",
+    "REFINE": "đợi comment refine trên PR (hoặc chạy lại `init --openapi`), áp gợi ý rồi xoá dòng",
+    "SUGGESTED": "duyệt từng bước do LLM gợi ý, sửa cho đúng rồi xoá dòng",
+}
+
+
+def _todo_message(text: str) -> str:
+    kind = TODO_KIND.search(text)
+    label = t.TODO + (f" {kind[1]}" if kind and kind[1] else "")
+    return f"còn dấu {label}: {text} -> {TODO_HINT[kind[1] if kind else None]}"
 
 
 def _todo_lines(path: Path) -> list[tuple[int, str]]:
@@ -113,12 +129,14 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
     where_project = f"<projects>/{slug}.yaml"
 
     try:
-        project = pj.load_project(slug, projects_dir)
+        project, info = pj.resolve_project(slug, projects_dir)   # đăng ký (nếu có) + _default; blocking_suites rỗng => lỗi
     except PlanError as error:
         report.add(ERROR, where_project, str(error))
         return report
-    for line, text in _todo_lines(projects_dir / f"{slug}.yaml"):
-        report.add(ERROR, f"{where_project}:{line}", f"còn dấu {t.TODO}: {text}")
+    origin = gitinfo.origin_repo(sut_root)
+    if info["source"] == "registered" and project.get("repo") and origin and project["repo"].lower() != origin.lower():
+        report.add(WARN, where_project, f"project đăng ký cho repo {project['repo']} nhưng origin của --sut-root là {origin} "
+                                        f"(bỏ qua nếu đây là fork; gate CI sẽ exit 3 khi chạy từ repo khác)")
 
     suites_root = sut_root / project["suites_dir"]
     try:
@@ -128,7 +146,7 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
         return report
     for path in sorted(suites_root.glob("*.y*ml")):
         for line, text in _todo_lines(path):
-            report.add(ERROR, f"{project['suites_dir']}/{path.name}:{line}", f"còn dấu {t.TODO}: {text}")
+            report.add(ERROR, f"{project['suites_dir']}/{path.name}:{line}", _todo_message(text))
 
     try:
         workers = registry.load_many(workers_dirs or settings.get().workers_dirs)
@@ -149,8 +167,10 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
         except PlanError as error:
             report.add(ERROR, f"mode {mode}", str(error))
             continue
+        if meta["absent_advisory_suites"]:
+            report.add(NOTE, f"mode {mode}", f"suite advisory không có trong repo nên bị bỏ qua: {', '.join(meta['absent_advisory_suites'])}")
         if mode == "pr" and not any(task.get("lane") == "gate" for task in plan["tasks"]):
-            report.add(WARN, f"mode {mode}", "không có task nào ở lane gate: PR luôn PASS, gate không chặn được gì")
+            report.add(ERROR, f"mode {mode}", "không có task nào ở lane gate: PR luôn PASS, gate không chặn được gì")
         used: set[str] = set()
         secrets: dict[str, list[str]] = {}   # secret cần có -> các task cần nó (gộp thành MỘT ghi chú mỗi mode)
         for task in plan["tasks"]:
@@ -191,7 +211,7 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
             report.add(ERROR, origin, f"file tham chiếu không tồn tại: {rel}")
         else:
             for line, text in _todo_lines(target):
-                report.add(ERROR, f"{rel}:{line}", f"còn dấu {t.TODO}: {text}")
+                report.add(ERROR, f"{rel}:{line}", _todo_message(text))
 
     _check_workflow(report, slug, project, suites, sut_root, env_by_mode.get("pr", set()))
     return report
@@ -209,7 +229,7 @@ def _check_workflow(report: Report, slug: str, project: dict, suites: dict, sut_
     for path, name, job in jobs:
         where = f"{path.relative_to(sut_root).as_posix()} job {name}"
         for line, text in _todo_lines(path):
-            report.add(ERROR, f"{path.relative_to(sut_root).as_posix()}:{line}", f"còn dấu {t.TODO}: {text}")
+            report.add(ERROR, f"{path.relative_to(sut_root).as_posix()}:{line}", _todo_message(text))
         ref = str(job.get("uses", "")).rpartition("@")[2]
         if not SHA40.fullmatch(ref):
             report.add(ERROR, where, f"`uses` phải ghim commit SHA 40 ký tự của qc-agent, đang là @{ref or '(trống)'}")
@@ -252,9 +272,9 @@ def main(argv: list[str]) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     ap = _Parser(prog="qc-agent validate", description="Kiểm cấu hình project offline (không Docker/mạng/SUT).")
-    ap.add_argument("--project", required=True, help="slug project")
+    ap.add_argument("--project", help="slug project (mặc định suy từ origin của --sut-root như `init --slug`)")
     ap.add_argument("--sut-root", required=True, metavar="DIR", help="thư mục gốc repo SUT")
-    ap.add_argument("--projects-dir", metavar="DIR", help="thư mục configs/projects (mặc định $QC_PROJECTS_DIR hoặc của repo)")
+    ap.add_argument("--projects-dir", metavar="DIR", help="thư mục policy; mặc định lấy qc-agent@main, offline thì dùng snapshot trong image (kèm WARN)")
     ap.add_argument("--workers-dir", action="append", metavar="DIR", help="thư mục manifest worker (mặc định như `run`)")
     ap.add_argument("--mode", action="append", help="chỉ kiểm mode này (lặp được); mặc định mọi mode")
     ap.add_argument("--strict", action="store_true", help="coi WARN là lỗi")
@@ -268,8 +288,13 @@ def main(argv: list[str]) -> int:
     if not Path(args.sut_root).is_dir():
         print(f"LỖI: --sut-root không phải thư mục: {args.sut_root}", file=sys.stderr)
         return SYSTEM_ERROR
-    report = validate(args.project, Path(args.sut_root), projects_dir=Path(args.projects_dir) if args.projects_dir else None,
-                      workers_dirs=[Path(d) for d in args.workers_dir] if args.workers_dir else None, modes=args.mode)
+    slug = args.project or gitinfo.default_slug(Path(args.sut_root))
+    with policy_source.resolve_source(slug, args.projects_dir) as source:
+        print(source.label)
+        report = validate(slug, Path(args.sut_root), projects_dir=source.dir,
+                          workers_dirs=[Path(d) for d in args.workers_dir] if args.workers_dir else None, modes=args.mode)
+    if source.warning:
+        report.add(WARN, "policy", source.warning)
     for line in _format(report):
         print(line)
     errors, warnings = report.count(ERROR), report.count(WARN)

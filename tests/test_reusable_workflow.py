@@ -27,6 +27,7 @@ import run_reusable_locally as harness  # noqa: E402
 IMAGE = os.environ.get("QC_TEST_DOCKER_IMAGE", "")
 HOST = os.environ.get("QC_TEST_DOCKER_HOST", "host.docker.internal")  # địa chỉ của máy chủ nhìn từ container
 SUT = ROOT / "tests" / "fixtures" / "sut" / "noteboard"
+POLICY = ROOT / "configs" / "projects"   # thay bước Fetch policy trong các test không nhắm vào việc fetch
 pytestmark = [requires_pg, pytest.mark.skipif(not IMAGE or shutil.which("docker") is None, reason="needs docker + QC_TEST_DOCKER_IMAGE")]
 GITHUB_TOKEN = "ghs_local_test_token"
 
@@ -64,16 +65,17 @@ def stack(tmp_path, engine, monkeypatch):
     thread.join(15)
 
 
-def run(stack, *, bugs: str, run_id: str):
+def run(stack, *, bugs: str, run_id: str, project="noteboard", policy_dir=POLICY, repo="o/r", step_env=None):
     github = {"token": GITHUB_TOKEN, "sha": "mergecommit0000", "actor": "tester", "run_attempt": "1",
               "event": {"pull_request": {"number": 7, "head": {"sha": "abc1234def5678"}}}, "env": {}}
     event = Path(os.environ.get("TEMP", "/tmp")) / f"qc-event-{uuid.uuid4().hex}.json"
     event.write_text('{"pull_request": {"number": 7, "head": {"sha": "abc1234def5678", "ref": "feat/x"}}}', encoding="utf-8")
-    github["env"] = {"GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": "o/r", "GITHUB_SHA": "mergecommit0000", "GITHUB_RUN_ID": run_id,
+    github["env"] = {"GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": repo, "GITHUB_SHA": "mergecommit0000", "GITHUB_RUN_ID": run_id,
                      "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SERVER_URL": "https://github.com", "GITHUB_API_URL": stack.gh_url, "GITHUB_REF_NAME": "feat/x"}
     logs = []
-    inputs = {"project": "noteboard", "image": IMAGE, "allow_unpinned_image": "true", "sut_env": f"QC_BUGS={bugs}", "qc_api_url": stack.api_url}
-    results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, inputs, {"QC_API_TOKEN": stack.token}, github, echo=logs.append)
+    inputs = {"project": project, "image": IMAGE, "allow_unpinned_image": "true", "sut_env": f"QC_BUGS={bugs}", "qc_api_url": stack.api_url}
+    results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, inputs, {"QC_API_TOKEN": stack.token}, github, echo=logs.append, policy_dir=policy_dir,
+                                   step_env=step_env)
     shutil.rmtree(SUT / "runs", ignore_errors=True)
     return results, "\n".join(logs)
 
@@ -108,7 +110,7 @@ def test_unpinned_image_is_refused_by_default(stack):
     github = {"token": GITHUB_TOKEN, "sha": "m", "actor": "t", "run_attempt": "1", "event": {}, "env": {}}
     logs = []
     results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, {"project": "noteboard", "image": "qc-agent:dev"}, {}, github,
-                                   skip=(), echo=logs.append)
+                                   skip=(), echo=logs.append, policy_dir=POLICY)
     assert results["Pull qc-agent image"]["returncode"] != 0 and "ghim theo digest" in "\n".join(logs)
     assert "Enforce gate result" in results and results["Enforce gate result"]["returncode"] == 1  # lỗi cấu hình => job đỏ, không xanh nhầm
 
@@ -136,7 +138,7 @@ def test_ui_container_is_built_with_build_args_started_and_reported_as_ui_url(st
         # chỉ chạy tới hết bước Start SUT: gate/báo cáo đã có test riêng ở trên
         results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, _ui_inputs(), {}, github,
                                        skip=("Pull qc-agent image", "Run qc-agent gate", "Report (Check Run, PR comment, history, webhook)",
-                                             "Upload run artifacts", "Clean up SUT", "Enforce gate result"), echo=logs.append)
+                                             "Upload run artifacts", "Clean up SUT", "Enforce gate result"), echo=logs.append, policy_dir=POLICY)
         out = results["Start SUT"]
         assert out["returncode"] == 0, "\n".join(logs)
         assert out["outputs"] == {"base_url": "http://sut:8000", "ui_url": "http://ui:8080"}
@@ -154,7 +156,7 @@ def test_without_ui_inputs_no_ui_container_and_no_ui_url(stack):
         results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, {"project": "noteboard", "image": IMAGE, "allow_unpinned_image": "true",
                                                                        "sut_env": "QC_BUGS=none"}, {}, github,
                                        skip=("Pull qc-agent image", "Run qc-agent gate", "Report (Check Run, PR comment, history, webhook)",
-                                             "Upload run artifacts", "Clean up SUT", "Enforce gate result"))
+                                             "Upload run artifacts", "Clean up SUT", "Enforce gate result"), policy_dir=POLICY)
         assert results["Start SUT"]["outputs"] == {"base_url": "http://sut:8000"}
         assert "ui" not in subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}}"], capture_output=True, text=True).stdout.split()
     finally:
@@ -169,7 +171,7 @@ def test_ui_that_never_becomes_ready_fails_the_start_step_with_its_own_name(stac
     try:
         results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, _ui_inputs(sut_ui_port="9999"), {}, github,
                                        skip=("Pull qc-agent image", "Report (Check Run, PR comment, history, webhook)", "Upload run artifacts",
-                                             "Clean up SUT"), echo=logs.append)
+                                             "Clean up SUT"), echo=logs.append, policy_dir=POLICY)
         assert results["Start SUT"]["returncode"] != 0 and "Run qc-agent gate" not in results  # UI hỏng => không chạy gate
         assert results["Enforce gate result"]["returncode"] == 1, "\n".join(logs)  # job đỏ, không xanh giả
     finally:
@@ -185,3 +187,68 @@ def test_gate_step_passes_app_ui_url_only_when_a_ui_exists():
     assert 'APP_UI_URL="$UI_URL"' in gate["run"] and '[ -n "${UI_URL:-}" ]' in gate["run"]  # chỉ đặt khi có UI
     cleanup = next(s for s in steps if s.get("name") == "Clean up SUT")
     assert "docker rm -f sut ui" in cleanup["run"]
+
+
+# ---- bước 31: policy lấy từ qc-agent@main, không từ snapshot trong image ----
+
+def _policy_copy(tmp_path, *, edit=None, drop=()):
+    target = tmp_path / "policy"
+    shutil.copytree(POLICY, target)
+    for name in drop:
+        (target / name).unlink()
+    if edit:
+        for name, fn in edit.items():
+            (target / name).write_text(fn((target / name).read_text(encoding="utf-8")), encoding="utf-8")
+    return target
+
+
+def test_gate_uses_the_mounted_policy_not_the_snapshot_baked_into_the_image(stack, tmp_path):
+    """Image chứa noteboard với 2 suite chặn (gate 2/2). Policy mount vào chỉ chặn api-contract => kết quả phải là gate 1/1."""
+    only_contract = _policy_copy(tmp_path, edit={"noteboard.yaml": lambda t: t.replace("[api-contract, ai-eval]", "[api-contract]")})
+    ok, log = run(stack, bugs="none", run_id="3001", policy_dir=only_contract)
+    assert ok["Run qc-agent gate"]["outputs"] == {"exit_code": "0"}, log
+    assert "gate 1/1" in stack.gh.comments[0]["body"] and "gate 2/2" not in stack.gh.comments[0]["body"]
+    assert "policy: noteboard @ main 0123456" in stack.gh.comments[0]["body"]   # policy_ref do bước fetch truyền qua QC_POLICY_REF
+
+
+def test_unregistered_project_runs_with_the_default_policy(stack, tmp_path):
+    only_default = _policy_copy(tmp_path, drop=("noteboard.yaml", "vahan-rpa.yaml"))
+    ok, log = run(stack, bugs="none", run_id="3002", project="brand-new-team", policy_dir=only_default)
+    assert ok["Run qc-agent gate"]["outputs"] == {"exit_code": "0"}, log
+    assert "policy: _default @ main 0123456" in stack.gh.comments[0]["body"] and "gate 1/1" in stack.gh.comments[0]["body"]
+
+
+def test_registered_project_run_from_another_repo_is_a_config_error_exit_3(stack, tmp_path):
+    registered = _policy_copy(tmp_path, edit={"noteboard.yaml": lambda t: t.replace("slug: noteboard\n", "slug: noteboard\nrepo: other/repo\n")})
+    bad, log = run(stack, bugs="none", run_id="3003", policy_dir=registered, repo="o/r")
+    assert bad["Run qc-agent gate"]["outputs"] == {"exit_code": "3"}, log
+    assert bad["Enforce gate result"]["returncode"] == 1, log
+    ok, log = run(stack, bugs="none", run_id="3004", policy_dir=registered, repo="Other/Repo")   # đúng repo (không phân biệt hoa thường)
+    assert ok["Run qc-agent gate"]["outputs"] == {"exit_code": "0"}, log
+
+
+def _host_api(stack):
+    """Bước Fetch policy chạy trên MÁY CHỦ (không trong container): gọi API giả bằng 127.0.0.1; các bước trong container vẫn dùng host.docker.internal."""
+    return {"Fetch policy": {"GITHUB_API_URL": stack.gh.url, "MSYS_NO_PATHCONV": None}}   # curl gốc Windows cần đường dẫn đã được msys đổi
+
+
+def test_fetch_policy_reads_main_over_the_github_api_and_reports_its_commit(stack, tmp_path):
+    stack.gh.policy_files = {"_default.yaml": (POLICY / "_default.yaml").read_text(encoding="utf-8")}
+    stack.gh.main_sha = "b" * 40
+    ok, log = run(stack, bugs="none", run_id="3005", project="brand-new-team", policy_dir=None, step_env=_host_api(stack))
+    assert ok["Fetch policy"]["outputs"] == {"ref": "b" * 40}, log
+    assert ok["Run qc-agent gate"]["outputs"] == {"exit_code": "0"}, log
+    assert "policy: _default @ main bbbbbbb" in stack.gh.comments[0]["body"]
+    auth = [r["auth"] for r in stack.gh.requests if "/contents/" in r["path"] or r["path"].endswith("/commits/main")]
+    assert auth and all(a == f"Bearer {GITHUB_TOKEN}" for a in auth)   # không có qc_read_token thì dùng github.token
+
+
+def test_fetch_policy_failure_stops_the_job_red_without_falling_back_to_the_snapshot(stack, tmp_path):
+    bad, log = run(stack, bugs="none", run_id="3006", policy_dir=None, step_env=_host_api(stack))   # fake API không có policy nào => 404
+    assert bad["Fetch policy"]["returncode"] != 0 and "không lấy được policy" in log
+    assert "Start SUT" not in bad and "Run qc-agent gate" not in bad     # KHÔNG chạy gate bằng snapshot trong image
+    assert bad["Enforce gate result"]["returncode"] == 1
+    stack.gh.policy_files = {"_default.yaml": "x"}
+    stack.gh.forced[("GET", "/repos/Muteen-Felix/QC-Agent/contents/configs/projects/noteboard.yaml")] = 500   # 5xx của file dự án cũng là lỗi
+    bad, log = run(stack, bugs="none", run_id="3007", policy_dir=None, step_env=_host_api(stack))
+    assert bad["Fetch policy"]["returncode"] != 0 and "Run qc-agent gate" not in bad
