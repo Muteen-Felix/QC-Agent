@@ -90,6 +90,10 @@ on:
         description: "cho phép image không ghim digest (KHÔNG khuyến nghị)"
         type: boolean
         default: false
+      refine:
+        description: "auto = trên PR, nếu repo còn marker qc-agent (REFINE/SUGGESTED), đề xuất phần cần dữ liệu sống bằng review ```suggestion``` + artifact refine.patch; off = tắt"
+        type: string
+        default: auto
       timeout_minutes:
         type: number
         default: 30
@@ -246,6 +250,56 @@ jobs:
             wait_ready ui "http://ui:${SUT_UI_PORT}${SUT_UI_HEALTH_PATH}"
             echo "ui_url=http://ui:${SUT_UI_PORT}" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Refine (onboarding suggestions)
+        id: refine
+        if: github.event_name == 'pull_request' && inputs.refine != 'off'
+        continue-on-error: true   # refine lỗi không được làm hỏng gate
+        env:
+          IMAGE: ${{ inputs.image }}
+          BASE_URL: ${{ steps.sut.outputs.base_url }}
+          UI_URL: ${{ steps.sut.outputs.ui_url }}
+          MIDSCENE_MODEL_BASE_URL: ${{ secrets.MIDSCENE_MODEL_BASE_URL }}
+          MIDSCENE_MODEL_API_KEY: ${{ secrets.MIDSCENE_MODEL_API_KEY }}
+          MIDSCENE_MODEL_NAME: ${{ secrets.MIDSCENE_MODEL_NAME }}
+          MIDSCENE_MODEL_FAMILY: ${{ secrets.MIDSCENE_MODEL_FAMILY }}
+        run: |
+          set -uo pipefail
+          # Chỉ chạy khi repo còn marker của qc-agent (Pha 1 chưa được điền/duyệt xong). Workspace được mount CHỈ-ĐỌC; kết quả ghi vào $RUNNER_TEMP/refine.
+          if ! grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' .qc-agent .github/workflows/qc.yml >/dev/null 2>&1; then
+            echo "refine: không còn marker REFINE/SUGGESTED, bỏ qua"; exit 0
+          fi
+          out="$RUNNER_TEMP/refine"; rm -rf "$out"; mkdir -p "$out"; chmod 777 "$out"
+          schema_path=$(sed -n 's#^ *schema_url: [$]{env.APP_BASE_URL}\(/[^ ]*\).*#\1#p' .qc-agent/suites/api-contract.yaml 2>/dev/null | head -1)
+          ui_args=()
+          # gợi ý flow UI cần UI đang chạy + khoá LLM; PR từ fork không có secret nên tự bỏ qua
+          if [ -n "${UI_URL:-}" ] && [ -n "${MIDSCENE_MODEL_API_KEY:-}" ]; then ui_args=(--suggest-ui --ui-url "$UI_URL"); fi
+          docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work:ro" -v "$out:/out" -w /work \
+            -e MIDSCENE_MODEL_BASE_URL -e MIDSCENE_MODEL_API_KEY -e MIDSCENE_MODEL_NAME -e MIDSCENE_MODEL_FAMILY \
+            "$IMAGE" init --refine --sut-root /work --openapi "${BASE_URL}${schema_path:-/openapi.json}" --out /out "${ui_args[@]}"
+          if [ -s "$out/refine.patch" ]; then echo "has_patch=true" >> "$GITHUB_OUTPUT"; else echo "refine: không có gì để đề xuất"; fi
+
+      - name: Post refine review
+        if: always() && steps.refine.outputs.has_patch == 'true'
+        continue-on-error: true   # fork: GITHUB_TOKEN chỉ-đọc => không đăng được, chỉ còn artifact
+        env:
+          IMAGE: ${{ inputs.image }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$RUNNER_TEMP/refine:/out:ro" \
+            -v "$GITHUB_EVENT_PATH:/tmp/event.json:ro" -e GITHUB_EVENT_PATH=/tmp/event.json \
+            -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_API_URL -e GITHUB_TOKEN \
+            --entrypoint python "$IMAGE" -m qc_agent.integrations.ci --refine-dir /out
+
+      - name: Upload refine patch
+        if: always() && steps.refine.outputs.has_patch == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qc-refine-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/refine/refine.patch
+            ${{ runner.temp }}/refine/suggestions.json
+          retention-days: 14
 
       - name: Run qc-agent gate
         id: gate

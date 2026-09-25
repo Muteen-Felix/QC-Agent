@@ -119,6 +119,18 @@ Dòng đầu luôn in nguồn policy đang dùng (xem 1b). `--project` mặc đ�
 Exit `0` = ổn, `3` = có lỗi. Nó bắt: schema suite/project, lane xung đột policy, task không có worker, file tham chiếu thiếu, biến `${env.X}` mà workflow không cấp
 (vd. `APP_UI_URL` khi chưa khai `sut_ui_dockerfile`), `qc.yml` chưa ghim SHA/digest hoặc sai tên input, và mọi dấu `qc-agent:todo` còn sót.
 
+## 2c. Refine trên CI (Pha 2)
+
+Bước `Refine (onboarding suggestions)` nằm **sau `Start SUT`, trước `Run qc-agent gate`** trong workflow tái sử dụng. Input `refine: auto|off` (mặc định `auto`); chạy khi event là `pull_request` **và** repo còn marker
+(`grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' .qc-agent .github/workflows/qc.yml`). Không còn marker thì bị bỏ qua ngay.
+
+- Chạy image qc-agent (đã ghim) với `-v "$PWD:/work:ro"`: repo SUT chỉ-đọc, kết quả ghi ra `$RUNNER_TEMP/refine` (`refine.patch`, `suggestions.json`). Chỉ viết lại vùng giữa `qc-agent:begin refine <tên>` và `qc-agent:end`; xoá marker = vùng thuộc về bạn.
+- OpenAPI lấy từ SUT đang chạy ở `${APP_BASE_URL}<schema_url của api-contract>` (mặc định `/openapi.json`). `--suggest-ui` chỉ khi có UI **và** secret `MIDSCENE_MODEL_*` (PR từ fork không có secret nên bỏ qua) và chỉ khi `explore.yaml` còn là khung TODO.
+- `continue-on-error: true`: refine hỏng không làm hỏng gate. Không thêm quyền nào (`pull-requests: write` đã có), không push commit.
+- Đăng **một review** với các comment ```suggestion``` cho vùng nằm **trong diff của PR** (GitHub không cho suggestion ngoài diff và không tạo được file mới); phần còn lại chỉ ở artifact `qc-refine-<run>-<attempt>` (`refine.patch`, `git apply`).
+  Review mang `<!-- qc-agent:refine sha256=<patch> -->`: cùng hash thì không đăng lại. Fork: token chỉ-đọc nên chỉ còn artifact.
+- Cùng OpenAPI thì cùng patch (xếp ổn định). Chạy cục bộ: `qc-agent init --refine --sut-root <repo> --openapi http://127.0.0.1:8000/openapi.json --out refine-out`.
+
 ## 3. Secret (khai ở repo SUT)
 | Secret | Dùng cho |
 |---|---|

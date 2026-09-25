@@ -38,3 +38,25 @@ def test_there_is_no_fallback_to_the_bundled_snapshot():
     for match in re.findall(r"(?:--projects-dir|QC_PROJECTS_DIR=)[ =]?(\S+)", TEXT):
         assert match == "/policy", match      # mọi chỗ trỏ thư mục policy đều là bản fetch, không có đường về snapshot trong image
     assert "|| true" not in step("Fetch policy")["run"]
+
+
+def test_refine_step_is_advisory_read_only_and_runs_between_the_sut_and_the_gate():
+    assert NAMES.index("Start SUT") < NAMES.index("Refine (onboarding suggestions)") < NAMES.index("Post refine review") < NAMES.index("Run qc-agent gate")
+    refine = step("Refine (onboarding suggestions)")
+    assert refine["continue-on-error"] is True and "github.event_name == 'pull_request'" in refine["if"] and "inputs.refine != 'off'" in refine["if"]
+    assert '-v "$PWD:/work:ro"' in refine["run"] and "init --refine" in refine["run"] and "qc-agent:begin refine" in refine["run"]
+    assert "GITHUB_TOKEN" not in refine["run"] and "contents: write" not in TEXT       # không push, không cần quyền ghi
+    post = step("Post refine review")
+    assert post["continue-on-error"] is True and "steps.refine.outputs.has_patch == 'true'" in post["if"] and "--refine-dir /out" in post["run"]
+    assert DATA["permissions"] == {"contents": "read", "checks": "write", "pull-requests": "write", "packages": "read"}   # không thêm quyền nào
+    assert DATA[True]["workflow_call"]["inputs"]["refine"]["default"] == "auto"
+
+
+def test_suggest_ui_only_with_an_ui_and_a_model_key():
+    run = step("Refine (onboarding suggestions)")["run"]
+    assert '[ -n "${UI_URL:-}" ] && [ -n "${MIDSCENE_MODEL_API_KEY:-}" ]' in run and "--suggest-ui --ui-url" in run
+
+
+def test_the_refine_artifact_is_uploaded_only_when_there_is_a_patch():
+    upload = step("Upload refine patch")
+    assert "has_patch == 'true'" in upload["if"] and upload["with"]["name"].startswith("qc-refine-") and "refine.patch" in upload["with"]["path"]

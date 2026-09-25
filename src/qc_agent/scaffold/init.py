@@ -263,6 +263,13 @@ def apply(plan: Plan, *, force: bool = False, dry_run: bool = False) -> list[Out
     return outcomes
 
 
+def _default_mode() -> int:
+    """0666 & ~umask của tiến trình (như file tạo bằng open())."""
+    mask = os.umask(0)
+    os.umask(mask)
+    return 0o666 & ~mask
+
+
 def _write(path: Path, content: str, root: Path | None = None, owner: tuple[int, int] | None = None) -> None:
     missing = []
     for parent in path.parents:
@@ -274,6 +281,7 @@ def _write(path: Path, content: str, root: Path | None = None, owner: tuple[int,
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(content if content.endswith("\n") else content + "\n")
+        os.chmod(tmp, _default_mode())   # mkstemp tạo 0600: file sinh ra phải đọc được như file thường (gate chạy bằng uid khác trong container)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
@@ -312,6 +320,7 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--suggest-ui", action="store_true", help="dùng LLM (khoá MIDSCENE_MODEL_*) gợi ý flow explore từ NHÃN hiển thị của UI; "
                                                               "gửi nhãn ra nhà cung cấp LLM, ghi log egress; kết quả vẫn phải duyệt (dấu qc-agent:todo)")
     ap.add_argument("--ui-url", action="append", default=[], metavar="URL", help="URL của UI đang chạy để đọc nhãn (lặp được, tối đa 5; cần --suggest-ui)")
+    ap.add_argument("--refine", action="store_true", help="Pha 2 (chạy trên CI): điền vùng REFINE từ OpenAPI sống, ghi refine.patch + suggestions.json; dùng `init --refine --help`")
     ap.add_argument("--force", action="store_true", help="ghi đè file đã có")
     ap.add_argument("--dry-run", action="store_true", help="chỉ in kế hoạch (kèm diff khi ghi đè), không ghi gì")
     return ap
@@ -325,6 +334,9 @@ def main(argv: list[str]) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
+    if "--refine" in argv:   # Pha 2: điền vùng REFINE từ OpenAPI sống (refine.py có bộ tham số riêng)
+        from qc_agent.scaffold import refine
+        return refine.main([a for a in argv if a != "--refine"])
     try:
         args = _parser().parse_args(argv)
         opts = Options(

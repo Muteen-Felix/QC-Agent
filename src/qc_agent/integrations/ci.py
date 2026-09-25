@@ -1,6 +1,7 @@
 """Bước "báo cáo" sau khi gate chạy trong GitHub Actions: đẩy lịch sử lên service, Check Run, comment PR dính, webhook.
 
     python -m qc_agent.integrations.ci --run-dir runs/r-0001 --project noteboard --mode pr --exit-code 1
+    python -m qc_agent.integrations.ci --refine-dir /out        # bước 35: review ```suggestion``` từ `init --refine`
 
 Đọc ngữ cảnh từ môi trường của Actions: GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_EVENT_PATH (số PR, head sha, nhánh), GITHUB_RUN_ID/ATTEMPT,
 GITHUB_SERVER_URL, GITHUB_TOKEN. Tuỳ chọn: QC_API_URL + QC_API_TOKEN (lịch sử tập trung), ALERT_WEBHOOK_URL (+ DASHBOARD_URL).
@@ -109,13 +110,20 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--run-dir", required=True)
-    ap.add_argument("--project", required=True)
-    ap.add_argument("--mode", required=True)
+    ap.add_argument("--run-dir")
+    ap.add_argument("--project")
+    ap.add_argument("--mode")
     ap.add_argument("--exit-code", type=int)
+    ap.add_argument("--refine-dir", help="đăng kết quả `init --refine` (refine.patch + suggestions.json) thành review ```suggestion``` thay vì báo cáo run")
     args = ap.parse_args(argv)
+    if not args.refine_dir and not (args.run_dir and args.project and args.mode):
+        ap.error("cần --refine-dir, hoặc cả --run-dir, --project, --mode")
     try:
-        result = report_run(args.run_dir, project=args.project, mode=args.mode, exit_code=args.exit_code)
+        if args.refine_dir:
+            from qc_agent.integrations import refine_review
+            result = refine_review.post_refine(args.refine_dir, env=os.environ, ctx=context_from_env())
+        else:
+            result = report_run(args.run_dir, project=args.project, mode=args.mode, exit_code=args.exit_code)
     except Exception as error:  # noqa: BLE001 — báo cáo hỏng không được làm đỏ/xanh job
         result = {"error": f"{type(error).__name__}"}
     print(json.dumps(result, ensure_ascii=False))

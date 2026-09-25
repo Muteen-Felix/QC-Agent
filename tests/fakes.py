@@ -10,6 +10,8 @@ class FakeGitHub:
         self.comments: list[dict] = []
         self.check_runs: list[dict] = []
         self.requests: list[dict] = []
+        self.pr_files: list[dict] = []        # GET /pulls/N/files
+        self.reviews: list[dict] = []         # POST/GET /pulls/N/reviews
         self.policy_files: dict[str, str] = {}   # configs/projects/<tên> của "qc-agent@main" mà contents API giả trả về
         self.main_sha = "a" * 40
         self.forced: dict[tuple[str, str], int] = {}  # (method, path-prefix) -> status lỗi buộc trả về
@@ -49,6 +51,15 @@ class FakeGitHub:
                     return self._send_raw(200, outer.policy_files[m.group(1)]) if m.group(1) in outer.policy_files else self._send(404, {"message": "Not Found"})
                 if self.command == "GET" and re.match(r"^/repos/[^/]+/[^/]+/commits/main$", path):
                     return self._send_raw(200, outer.main_sha)
+                if self.command == "GET" and re.match(r"^/repos/[^/]+/[^/]+/pulls/\d+/files\?", path):
+                    return self._send(200, outer.pr_files if "page=1" in path else [])
+                if self.command == "GET" and re.match(r"^/repos/[^/]+/[^/]+/pulls/\d+/reviews\?", path):
+                    return self._send(200, outer.reviews if "page=1" in path else [])
+                if self.command == "POST" and re.match(r"^/repos/[^/]+/[^/]+/pulls/\d+/reviews$", path):
+                    outer._next_id += 1
+                    review = {"id": outer._next_id, "user": {"type": "Bot"}, **body}
+                    outer.reviews.append(review)
+                    return self._send(200, {"id": outer._next_id})
                 if self.command == "GET" and (m := re.match(r"^/repos/[^/]+/[^/]+/issues/(\d+)/comments\?per_page=(\d+)&page=(\d+)$", path)):
                     per, page = int(m.group(2)), int(m.group(3))
                     return self._send(200, outer.comments[(page - 1) * per: page * per])

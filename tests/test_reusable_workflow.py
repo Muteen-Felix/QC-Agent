@@ -65,18 +65,18 @@ def stack(tmp_path, engine, monkeypatch):
     thread.join(15)
 
 
-def run(stack, *, bugs: str, run_id: str, project="noteboard", policy_dir=POLICY, repo="o/r", step_env=None):
-    github = {"token": GITHUB_TOKEN, "sha": "mergecommit0000", "actor": "tester", "run_attempt": "1",
+def run(stack, *, bugs: str, run_id: str, project="noteboard", policy_dir=POLICY, repo="o/r", step_env=None, workspace=SUT, extra_inputs=None):
+    github = {"token": GITHUB_TOKEN, "sha": "mergecommit0000", "actor": "tester", "run_attempt": "1", "event_name": "pull_request",
               "event": {"pull_request": {"number": 7, "head": {"sha": "abc1234def5678"}}}, "env": {}}
     event = Path(os.environ.get("TEMP", "/tmp")) / f"qc-event-{uuid.uuid4().hex}.json"
     event.write_text('{"pull_request": {"number": 7, "head": {"sha": "abc1234def5678", "ref": "feat/x"}}}', encoding="utf-8")
     github["env"] = {"GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": repo, "GITHUB_SHA": "mergecommit0000", "GITHUB_RUN_ID": run_id,
                      "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SERVER_URL": "https://github.com", "GITHUB_API_URL": stack.gh_url, "GITHUB_REF_NAME": "feat/x"}
     logs = []
-    inputs = {"project": project, "image": IMAGE, "allow_unpinned_image": "true", "sut_env": f"QC_BUGS={bugs}", "qc_api_url": stack.api_url}
-    results = harness.run_workflow(harness.DEFAULT_WORKFLOW, SUT, inputs, {"QC_API_TOKEN": stack.token}, github, echo=logs.append, policy_dir=policy_dir,
+    inputs = {"project": project, "image": IMAGE, "allow_unpinned_image": "true", "sut_env": f"QC_BUGS={bugs}", "qc_api_url": stack.api_url, **(extra_inputs or {})}
+    results = harness.run_workflow(harness.DEFAULT_WORKFLOW, workspace, inputs, {"QC_API_TOKEN": stack.token}, github, echo=logs.append, policy_dir=policy_dir,
                                    step_env=step_env)
-    shutil.rmtree(SUT / "runs", ignore_errors=True)
+    shutil.rmtree(Path(workspace) / "runs", ignore_errors=True)
     return results, "\n".join(logs)
 
 
@@ -252,3 +252,77 @@ def test_fetch_policy_failure_stops_the_job_red_without_falling_back_to_the_snap
     stack.gh.forced[("GET", "/repos/Muteen-Felix/QC-Agent/contents/configs/projects/noteboard.yaml")] = 500   # 5xx của file dự án cũng là lỗi
     bad, log = run(stack, bugs="none", run_id="3007", policy_dir=None, step_env=_host_api(stack))
     assert bad["Fetch policy"]["returncode"] != 0 and "Run qc-agent gate" not in bad
+
+
+# ---- bước 35: Refine (Pha 2) ----
+
+REFINE = "Refine (onboarding suggestions)"
+WIDE_DIFF = "@@ -1,0 +1,300 @@\n" + "+x\n" * 300      # coi như mọi dòng 1..300 của file nằm trong diff của PR
+
+
+@pytest.fixture
+def ws_root():
+    """Workspace của SUT phải nằm trên ổ mà Docker Desktop chia sẻ được (thư mục tạm của pytest trên C: thì `-v` ra thư mục RỖNG): đặt trong repo, xoá sau test."""
+    base = ROOT / "tests" / ".docker-workspaces" / uuid.uuid4().hex
+    base.mkdir(parents=True)
+    yield base
+    shutil.rmtree(base, ignore_errors=True)
+
+
+def _phase1_workspace(tmp_path):
+    from qc_agent.scaffold import init as init_mod
+    sut = tmp_path / "onboarding"
+    shutil.copytree(SUT, sut, ignore=shutil.ignore_patterns(".qc-agent", "runs", "__pycache__"))
+    init_mod.apply(init_mod.build(init_mod.Options(sut_root=sut, slug="brand-new-team", qc_ref="a" * 40,
+                                                   image="ghcr.io/muteen-felix/qc-agent@sha256:" + "d" * 64)))
+    return sut
+
+
+def _config_tree_hash(sut):
+    import hashlib
+    digest = hashlib.sha256()
+    for folder in (".qc-agent", ".github"):
+        for path in sorted(p for p in (sut / folder).rglob("*") if p.is_file()):
+            digest.update(path.relative_to(sut).as_posix().encode() + path.read_bytes())
+    return digest.hexdigest()
+
+
+def _default_only(tmp_path):
+    return _policy_copy(tmp_path, drop=("noteboard.yaml", "vahan-rpa.yaml"))
+
+
+def test_refine_after_phase1_posts_a_suggestion_review_reads_the_workspace_read_only_and_the_gate_still_runs(stack, tmp_path, ws_root):
+    sut = _phase1_workspace(ws_root)
+    before = _config_tree_hash(sut)
+    stack.gh.pr_files = [{"filename": name, "patch": WIDE_DIFF} for name in (".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".github/workflows/qc.yml")]
+    ok, log = run(stack, bugs="none", run_id="4001", project="brand-new-team", policy_dir=_default_only(tmp_path), workspace=sut)
+    assert ok[REFINE]["returncode"] == 0 and ok[REFINE]["outputs"] == {"has_patch": "true"}, log
+    assert ok["Post refine review"]["returncode"] == 0, log
+    assert len(stack.gh.reviews) == 1
+    review = stack.gh.reviews[0]
+    assert review["commit_id"] == "abc1234def5678" and review["comments"] and all(c["body"].startswith("```suggestion") for c in review["comments"])
+    assert "<!-- qc-agent:refine sha256=" in review["body"]
+    assert {c["path"] for c in review["comments"]} >= {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js"}
+    assert _config_tree_hash(sut) == before, "refine không được sửa repo SUT"
+    assert ok["Run qc-agent gate"]["outputs"]["exit_code"] in ("0", "1"), log         # gate vẫn chạy sau refine
+    again, log = run(stack, bugs="none", run_id="4002", project="brand-new-team", policy_dir=_default_only(tmp_path / "b"), workspace=sut)
+    assert len(stack.gh.reviews) == 1 and again["Post refine review"]["returncode"] == 0     # cùng patch: không đăng lại
+
+
+def test_refine_is_skipped_when_no_marker_is_left_or_when_turned_off(stack, tmp_path, ws_root):
+    ok, log = run(stack, bugs="none", run_id="4003")           # noteboard: suite đã hoàn chỉnh, không marker
+    assert ok[REFINE]["outputs"] == {} and "không còn marker" in log and "Post refine review" not in ok
+    sut = _phase1_workspace(ws_root)
+    off, log = run(stack, bugs="none", run_id="4004", project="brand-new-team", workspace=sut, extra_inputs={"refine": "off"},
+                   policy_dir=_default_only(tmp_path / "b"))
+    assert REFINE not in off and not stack.gh.reviews
+
+
+def test_a_failing_refine_never_blocks_the_gate(stack, tmp_path, ws_root):
+    sut = _phase1_workspace(ws_root)
+    contract = sut / ".qc-agent" / "suites" / "api-contract.yaml"
+    contract.write_text(contract.read_text(encoding="utf-8").replace("/openapi.json", "/does-not-exist.json"), encoding="utf-8")
+    bad, log = run(stack, bugs="none", run_id="4005", project="brand-new-team", workspace=sut, policy_dir=_default_only(tmp_path / "b"))
+    assert bad[REFINE]["returncode"] != 0 and "Post refine review" not in bad
+    assert "Run qc-agent gate" in bad, log                       # continue-on-error: gate vẫn chạy
+    assert not stack.gh.reviews

@@ -465,3 +465,21 @@ def test_init_from_a_live_sut_produces_a_gate_that_passes_clean_and_fails_on_a_s
     finally:
         server.should_exit = True
         thread.join(15)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="quyền POSIX")
+def test_generated_files_are_world_readable_like_ordinary_files_not_0600(tmp_path):
+    """mkstemp tạo 0600; gate chạy bằng uid khác trong container nên phải đọc được (bug thật gặp khi chạy `docker run … init` rồi gate)."""
+    run_init(tmp_path)
+    modes = {p.relative_to(tmp_path / "sut").as_posix(): p.stat().st_mode & 0o777 for p in (tmp_path / "sut" / ".qc-agent").rglob("*") if p.is_file()}
+    workflow = (tmp_path / "sut" / ".github" / "workflows" / "qc.yml").stat().st_mode & 0o777
+    assert modes and all(mode & 0o044 == 0o044 for mode in modes.values()) and workflow & 0o044 == 0o044
+
+
+@pytest.mark.skipif(os.name == "nt", reason="umask POSIX")
+def test_default_mode_honours_the_umask(monkeypatch):
+    mask = os.umask(0o027)
+    try:
+        assert init_mod._default_mode() == 0o640
+    finally:
+        os.umask(mask)

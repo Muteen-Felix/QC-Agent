@@ -63,6 +63,20 @@ class Context:
                 return str(value).lower() if isinstance(value, bool) else str(value)
         return ""
 
+    def check(self, condition: str) -> bool:
+        """Điều kiện `if:` của bước: chỉ hỗ trợ các vế `always()`, `A == 'x'`, `A != 'x'` nối bằng `&&` (thứ khác => báo lỗi để không chạy sai âm thầm)."""
+        for part in (p.strip() for p in condition.split("&&")):
+            if part == "always()":
+                continue
+            match = re.fullmatch(r"(\S+)\s*(==|!=)\s*'([^']*)'", part)
+            if not match:
+                raise SystemExit(f"harness chưa hỗ trợ điều kiện if: {part!r}")
+            value = self.lookup(match.group(1))
+            equal = ("" if value is None else str(value).lower() if isinstance(value, bool) else str(value)) == match.group(3)
+            if equal != (match.group(2) == "=="):
+                return False
+        return True
+
     def render(self, text) -> str:
         return _EXPR.sub(lambda m: self.evaluate(m.group(1)), str(text))
 
@@ -80,7 +94,7 @@ def _posix(path) -> str:
 
 
 def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: dict, *, skip=("Pull qc-agent image",), echo=print,
-                 policy_dir=None, step_env=None) -> dict:
+                 policy_dir=None, step_env=None, runner_temp=None) -> dict:
     data = yaml.safe_load(Path(workflow_path).read_text(encoding="utf-8"))
     declared = data[True if True in data else "on"]["workflow_call"]["inputs"]
     merged = {name: spec.get("default") for name, spec in declared.items()}
@@ -94,9 +108,10 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
     bash, failed, results = find_bash(), False, {}
     with tempfile.TemporaryDirectory() as tmp:
         output_file = Path(tmp) / "github_output"
-        runner_temp = Path(tmp) / "runner_temp"
-        runner_temp.mkdir()
+        runner_temp = Path(runner_temp) if runner_temp else Path(tmp) / "runner_temp"   # đặt --runner-temp để giữ lại refine.patch sau khi chạy
+        runner_temp.mkdir(parents=True, exist_ok=True)
         if policy_dir is not None:   # thay bước fetch: cùng vị trí như bản fetch thật
+            shutil.rmtree(runner_temp / "qc-policy", ignore_errors=True)
             shutil.copytree(policy_dir, runner_temp / "qc-policy")
             ctx.steps["policy"] = {"outputs": {"ref": LOCAL_POLICY_REF}, "outcome": "success"}
         for step in steps:
@@ -108,6 +123,9 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
                 echo(f"[skip] {name}")
                 continue
             condition = str(step.get("if", ""))
+            if condition and not ctx.check(condition):
+                echo(f"[skip] {name} (điều kiện if sai)")
+                continue
             if failed and "always()" not in condition:
                 echo(f"[skip] {name} (bước trước lỗi)")
                 continue
@@ -123,7 +141,8 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
             echo(f"[run ] {name}")
             proc = subprocess.run([bash, "-e", "-c", step["run"]], cwd=workspace, env=env, text=True, encoding="utf-8",
                                   capture_output=True)
-            for line in (proc.stdout + proc.stderr).splitlines()[-25:]:
+            tail = int(os.environ.get("QC_HARNESS_TAIL", "25"))   # số dòng cuối của MỖI luồng (stdout, stderr) được in
+            for line in proc.stdout.splitlines()[-tail:] + proc.stderr.splitlines()[-tail:]:
                 echo("       " + line)
             outputs = {}
             for line in output_file.read_text(encoding="utf-8").splitlines():
@@ -133,7 +152,7 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
             if step.get("id"):
                 ctx.steps[step["id"]] = {"outputs": outputs, "outcome": "success" if proc.returncode == 0 else "failure"}
             results[name] = {"returncode": proc.returncode, "outputs": outputs}
-            if proc.returncode != 0:
+            if proc.returncode != 0 and not step.get("continue-on-error"):
                 failed = True
     return results
 
@@ -149,18 +168,19 @@ def main(argv=None) -> int:
     ap.add_argument("--sha", default="abc1234def5678")
     ap.add_argument("--pr", type=int, default=7)
     ap.add_argument("--token", default="ghs_local_test_token")
+    ap.add_argument("--runner-temp", metavar="DIR", help="dùng thư mục này làm $RUNNER_TEMP (giữ lại policy và refine/ sau khi chạy)")
     ap.add_argument("--policy-dir", metavar="DIR", help="dùng thư mục này làm policy thay vì fetch từ qc-agent@main (không cần mạng)")
     args = ap.parse_args(argv)
     kv = lambda items: dict(item.split("=", 1) for item in items)  # noqa: E731
     with tempfile.TemporaryDirectory() as tmp:
         event = Path(tmp) / "event.json"
         event.write_text(json.dumps({"pull_request": {"number": args.pr, "head": {"sha": args.sha, "ref": "feat/x"}}}), encoding="utf-8")
-        github = {"token": args.token, "sha": "mergecommit0000", "actor": "tester", "run_attempt": "1",
+        github = {"token": args.token, "sha": "mergecommit0000", "actor": "tester", "run_attempt": "1", "event_name": "pull_request",
                   "event": {"pull_request": {"number": args.pr, "head": {"sha": args.sha}}},
                   "env": {"GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": args.repository, "GITHUB_SHA": "mergecommit0000",
                           "GITHUB_RUN_ID": "1001", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SERVER_URL": "https://github.com",
                           "GITHUB_API_URL": args.github_api, "GITHUB_REF_NAME": "feat/x"}}
-        results = run_workflow(args.workflow, args.workspace, kv(args.input), kv(args.secret), github, policy_dir=args.policy_dir)
+        results = run_workflow(args.workflow, args.workspace, kv(args.input), kv(args.secret), github, policy_dir=args.policy_dir, runner_temp=args.runner_temp)
     return results.get("Enforce gate result", {}).get("returncode", 1)
 
 
