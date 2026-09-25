@@ -1,12 +1,5 @@
-# Project `vahan-rpa` — TẬP TRUNG: đổi file này phải qua PR vào qc-agent (nó được đóng gói trong image).
-# Suite (nội dung task) nằm trong repo SUT tại suites_dir.
+# Project `vahan-rpa` — chỉ ĐĂNG KÝ (để có dashboard/--report-to/manual từ web); policy kế thừa toàn bộ từ _default.yaml.
+# TẬP TRUNG: đổi file này phải qua PR vào qc-agent. Suite (nội dung task) nằm trong repo SUT tại suites_dir.
 slug: vahan-rpa
 name: "VAHAN Report Automation"
 repo: "Muteen-Felix/vahan-rpa"
-modes:
-  pr:                                  # tự động, mỗi PR
-    blocking_suites: [api-contract]    # mọi task lane=gate: chặn merge
-    advisory_suites: [perf-smoke, ui-explore]  # mọi task lane=discovery: chỉ tham khảo, không chặn
-    on_skipped_gate_task: fail         # task chặn mà bị bỏ qua thì KHÔNG được xanh giả
-  manual:                              # chạy tay trên web/API; lane giữ như suite khai báo
-    suites: "*"

@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import pytest
+from qc_agent.core.plan import PlanError
 import uvicorn
 import yaml
 
@@ -237,7 +238,8 @@ def test_no_api_generates_only_ui_and_marks_the_project_as_having_no_blocking_su
     text = (tmp_path / "projects" / "vahan-rpa.yaml").read_text(encoding="utf-8")
     assert "blocking_suites: []" in text and t.TODO in text  # gate luôn PASS: phải để người quyết định, không im lặng
     assert any("projects" in o.label and o.todos for o in outcomes)
-    assert pj.load_project("vahan-rpa", tmp_path / "projects")["modes"]["pr"]["blocking_suites"] == []
+    with pytest.raises(PlanError, match="blocking_suites"):   # Q6: mode pr không được rỗng blocking_suites; project này chỉ dùng được mode manual
+        pj.load_project("vahan-rpa", tmp_path / "projects")
 
 
 def test_no_project_skips_the_central_config(tmp_path):

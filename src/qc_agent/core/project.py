@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -92,7 +93,17 @@ SUITE_SCHEMA = {
     },
 }
 
+DEFAULT_NAME = "_default"   # bắt đầu bằng "_" nên không thể trùng một slug hợp lệ (_NAME)
+_DEFAULT_ONLY_FORBIDDEN = ("slug", "name", "repo", "sut_checkout")
+
+# Đăng ký project: chỉ `slug` là bắt buộc trong file (modes/... kế thừa từ _default). Kết quả SAU merge phải qua PROJECT_SCHEMA đầy đủ.
+REGISTRATION_SCHEMA = {**PROJECT_SCHEMA, "required": ["slug"]}
+DEFAULT_SCHEMA = {**PROJECT_SCHEMA, "required": ["modes"],
+                  "properties": {k: v for k, v in PROJECT_SCHEMA["properties"].items() if k not in _DEFAULT_ONLY_FORBIDDEN}}
+
 _PROJECT_V = Draft202012Validator(PROJECT_SCHEMA)
+_REGISTRATION_V = Draft202012Validator(REGISTRATION_SCHEMA)
+_DEFAULT_V = Draft202012Validator(DEFAULT_SCHEMA)
 _SUITE_V = Draft202012Validator(SUITE_SCHEMA)
 
 
@@ -108,18 +119,64 @@ def _read_yaml(path: Path, what: str) -> Any:
         raise PlanError(f"không đọc được {what} {path}: {error}") from None
 
 
-def load_project(slug: str, projects_dir) -> dict:
-    path = Path(projects_dir) / f"{slug}.yaml"
-    if not path.is_file():
-        raise PlanError(f"không có project {slug!r}: thiếu {path}")
-    data = _read_yaml(path, "project")
-    errors = _errors(_PROJECT_V, data)
+def deep_merge(base: Any, override: Any) -> Any:
+    """Hàm merge DUY NHẤT của policy: dict => đệ quy theo key; list và scalar => bản `override` THAY bản `base` (không cộng dồn).
+    Cộng dồn list sẽ không cho gỡ một suite khỏi default; thay list buộc người viết khai tường minh."""
+    if isinstance(base, dict) and isinstance(override, dict):
+        out = {key: copy.deepcopy(value) for key, value in base.items()}
+        for key, value in override.items():
+            out[key] = deep_merge(out[key], value) if key in out else copy.deepcopy(value)
+        return out
+    return copy.deepcopy(override)
+
+
+def _load_file(path: Path, validator, what: str) -> dict:
+    data = _read_yaml(path, what)
+    errors = _errors(validator, data)
     if errors:
-        raise PlanError(f"project {path.name} không hợp lệ: " + "; ".join(errors))
-    if data["slug"] != slug:
-        raise PlanError(f"project {path.name}: slug {data['slug']!r} phải trùng tên file {slug!r}")
-    data.setdefault("suites_dir", ".qc-agent/suites")
+        raise PlanError(f"{what} {path.name} không hợp lệ: " + "; ".join(errors))
     return data
+
+
+def resolve_project(slug: str, projects_dir) -> tuple[dict, dict]:
+    """(project hiệu lực, info). hiệu lực = deep_merge(_default.yaml, <slug>.yaml); chưa đăng ký => _default thuần (source="default").
+    info = {"source": "registered"|"default", "sha256": hash cấu hình hiệu lực, "files": {tên file: sha256}}.
+    Không có _default.yaml thì <slug>.yaml phải tự đủ (hành vi cũ). `pr.blocking_suites` rỗng là LỖI: chống gate xanh giả."""
+    if not re.match(_NAME, slug or ""):
+        raise PlanError(f"slug không hợp lệ: {slug!r}")
+    root = Path(projects_dir)
+    reg_path, def_path = root / f"{slug}.yaml", root / f"{DEFAULT_NAME}.yaml"
+    files: dict[str, str] = {}
+    base: dict = {}
+    if def_path.is_file():
+        base = _load_file(def_path, _DEFAULT_V, "project mặc định")
+        files[def_path.name] = file_sha256(def_path)
+    registered = reg_path.is_file()
+    if registered:
+        own = _load_file(reg_path, _REGISTRATION_V, "project")
+        if own["slug"] != slug:
+            raise PlanError(f"project {reg_path.name}: slug {own['slug']!r} phải trùng tên file {slug!r}")
+        files[reg_path.name] = file_sha256(reg_path)
+    elif not base:
+        raise PlanError(f"không có project {slug!r}: thiếu {reg_path} (và không có {def_path.name} để dùng mặc định)")
+    else:
+        own = {"slug": slug}
+    merged = deep_merge(base, own)
+    errors = _errors(_PROJECT_V, merged)
+    if errors:
+        raise PlanError(f"project {slug} (sau khi gộp với {DEFAULT_NAME}) không hợp lệ: " + "; ".join(errors))
+    pr = merged["modes"].get("pr")
+    if pr is not None and not pr.get("blocking_suites"):
+        raise PlanError(f"project {slug}: mode pr phải có ít nhất một suite trong blocking_suites (rỗng => gate luôn xanh giả). "
+                        f"Repo không có suite gate thì chưa đủ điều kiện mode pr, chỉ dùng mode manual")
+    merged.setdefault("suites_dir", ".qc-agent/suites")
+    info = {"source": "registered" if registered else "default", "files": files,
+            "sha256": hashlib.sha256(json.dumps(merged, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()}
+    return merged, info
+
+
+def load_project(slug: str, projects_dir) -> dict:
+    return resolve_project(slug, projects_dir)[0]
 
 
 def load_suites(suites_dir) -> dict[str, dict]:
@@ -179,6 +236,9 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
         if not names:
             raise PlanError("--suites rỗng")
 
+    # Suite ADVISORY vắng mặt thì bỏ qua (không chặn ai): repo không có UI/perf vẫn dùng được _default. Blocking/manual vắng mặt vẫn là lỗi.
+    absent_advisory = [n for n in names if n not in suites and roles[n] == "advisory"]
+    names = [n for n in names if n not in absent_advisory]
     missing = [n for n in names if n not in suites]
     if missing:
         raise PlanError(f"mode {mode!r} cần suite không có trong thư mục suite: {', '.join(missing)}")
@@ -204,6 +264,7 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
         "project": project["slug"], "mode": mode,
         "suite_sha256": {n: suites[n]["sha256"] for n in names},
         "on_skipped_gate_task": policy.get("on_skipped_gate_task"),
+        "absent_advisory_suites": absent_advisory,
     }
     return {"name": plan["name"], "sut": sut, "tasks": tasks, "text": text}, meta
 
@@ -212,11 +273,12 @@ _ENV_REF = re.compile(r"\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def list_projects(projects_dir) -> dict[str, dict]:
-    """Nạp và validate MỌI project trong thư mục; một file hỏng làm cả danh sách lỗi (fail-fast lúc khởi động service)."""
+    """Nạp và validate MỌI project ĐÃ ĐĂNG KÝ trong thư mục (không kể _default); một file hỏng làm cả danh sách lỗi (fail-fast lúc khởi động service)."""
     root = Path(projects_dir)
     if not root.is_dir():
         raise PlanError(f"thư mục project không tồn tại: {root}")
-    return {p.stem: load_project(p.stem, root) for p in sorted(root.glob("*.yaml"))}
+    return {p.stem: load_project(p.stem, root) for p in sorted(root.glob("*.yaml"))
+            if not p.stem.startswith("_")}  # _default không phải project
 
 
 def file_sha256(path) -> str:
