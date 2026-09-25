@@ -25,6 +25,9 @@ class RunContext:
     tickets_draft: list = field(default_factory=list)
     project: str | None = None  # chỉ có khi chạy qua project/suite
     mode: str | None = None
+    policy_source: str | None = None  # "registered" | "default": policy từ <slug>.yaml hay _default.yaml
+    policy_sha256: str | None = None  # hash cấu hình project hiệu lực: chạy lại thấy policy có đổi không
+    policy_ref: str | None = None     # commit qc-agent@main mà gate CI đã lấy policy (QC_POLICY_REF)
     suite_sha256: dict = field(default_factory=dict)  # sha256 nội dung từng suite đã chạy: reviewer thấy suite có bị sửa không
 
 
@@ -93,7 +96,8 @@ def render(ctx: RunContext) -> tuple[str, dict]:
         },
     }
     if ctx.project is not None:
-        report_json.update(project=ctx.project, mode=ctx.mode, suite_sha256=ctx.suite_sha256)
+        report_json.update(project=ctx.project, mode=ctx.mode, suite_sha256=ctx.suite_sha256,
+                           policy={"source": ctx.policy_source, "sha256": ctx.policy_sha256, "ref": ctx.policy_ref})
     return "\n".join(lines).rstrip() + "\n", report_json
 
 

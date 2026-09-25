@@ -65,8 +65,16 @@ COPY package.json package-lock.json ./
 RUN npm ci && npx playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/* /root/.npm && chmod -R a+rX /opt/ms-playwright /opt/qc-node
 
+# Midscene CLI dùng Puppeteer, mà Puppeteer không tự tìm Chromium của Playwright ('Could not find Chrome'): trỏ tới bản đã cài bằng symlink có tên ổn định
+# (đường dẫn thật chứa số phiên bản). Nếu không có bước này mọi task Midscene trong image đều lỗi, gồm cả canary (fail đúng kỳ vọng nhưng vì lý do sai).
+RUN ln -s "$(find /opt/ms-playwright -path '*chrome-linux*/chrome' -type f | head -1)" /opt/ms-playwright/chrome && test -x /opt/ms-playwright/chrome
+ENV PUPPETEER_EXECUTABLE_PATH=/opt/ms-playwright/chrome
+
 # không chạy bằng root: mã của SUT/PR là input không tin cậy
 RUN useradd --uid 10001 --create-home qc && mkdir /work && chown qc:qc /work
+# commit của qc-agent mà image này build từ đó: `qc-agent init` dùng để ghim sẵn `uses:` trong qc.yml; `validate` in ra khi phải dùng snapshot policy
+ARG QC_AGENT_GIT_SHA=unknown
+ENV QC_AGENT_GIT_SHA=${QC_AGENT_GIT_SHA}
 WORKDIR /work
 USER qc
 ENTRYPOINT ["qc-agent"]

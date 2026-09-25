@@ -34,6 +34,12 @@ def main(argv: list[str]) -> int:
         if argv and argv[0] in ("user", "token"):  # quản trị tài khoản/token (cần QC_DATABASE_URL)
             from qc_agent.auth.cli import main as admin_main
             return admin_main(argv)
+        if argv and argv[0] == "init":  # sinh khung cấu hình cho repo SUT
+            from qc_agent.scaffold.init import main as init_main
+            return init_main(argv[1:])
+        if argv and argv[0] == "validate":  # kiểm cấu hình project offline
+            from qc_agent.scaffold.validate import main as validate_main
+            return validate_main(argv[1:])
         if argv and argv[0] == "run":  # `qc-agent run --project ...` và `qc-agent --plan ...` đều được
             argv = argv[1:]
         args = _parser().parse_args(argv)
@@ -60,6 +66,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--suites-dir", metavar="DIR", help="thư mục suite (mặc định <sut-root>/<project.suites_dir>)")
     ap.add_argument("--sut-root", metavar="DIR", help="thư mục checkout của SUT (mặc định cwd); worker chạy với cwd này")
     ap.add_argument("--projects-dir", metavar="DIR", help="thư mục configs/projects (mặc định $QC_PROJECTS_DIR)")
+    ap.add_argument("--expect-repo", metavar="OWNER/REPO",
+                    help="repo đang chạy gate (CI: $GITHUB_REPOSITORY); project ĐÃ ĐĂNG KÝ cho repo khác thì exit 3")
     ap.add_argument("--only", help="chỉ chạy các task này, vd t-a,t-b (phải kèm đủ task được depends_on)")
     ap.add_argument("--yellow-exit", type=int, default=0, metavar="N", help="exit code khi gate YELLOW (mặc định 0)")
     ap.add_argument("--on-skipped-gate-task", choices=engine.SKIPPED_POLICIES, default=None,
@@ -89,7 +97,7 @@ def _run(args) -> int:
         result = engine.run_project(
             args.project, args.mode, Path(args.runs_dir), projects_dir=args.projects_dir, suites_dir=args.suites_dir,
             sut_root=args.sut_root, on_skipped_gate_task=args.on_skipped_gate_task,
-            only_suites=[s.strip() for s in args.suites.split(",") if s.strip()] if args.suites else None, **common)
+            expect_repo=args.expect_repo, only_suites=[s.strip() for s in args.suites.split(",") if s.strip()] if args.suites else None, **common)
     print(result.report_md, end="")
     return result.exit_code
 

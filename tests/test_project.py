@@ -96,9 +96,11 @@ def test_manual_mode_does_not_enforce_lanes(tmp_path, sut):
 
 
 def test_missing_suite_unknown_mode_duplicate_ids(tmp_path, sut):
-    (sut / ".qc-agent" / "suites" / "extra.yaml").unlink()
+    (sut / ".qc-agent" / "suites" / "core.yaml").unlink()   # suite blocking vắng mặt: lỗi (advisory vắng mặt chỉ bị bỏ qua)
     with pytest.raises(PlanError, match="cần suite không có"):
         build(tmp_path, sut)
+    write_suite(sut, "core", [task("t-1")])
+    (sut / ".qc-agent" / "suites" / "extra.yaml").unlink()
     with pytest.raises(PlanError, match="không có mode"):
         build(tmp_path, sut, mode="nightly")
     write_suite(sut, "extra", [task("t-1", lane="discovery")])  # trùng t-1 của core
@@ -180,3 +182,140 @@ def test_cli_usage_errors_exit_3(tmp_path, sut):
     assert main([*base]) == 3  # không có gì để chạy
     assert main(["--project", "demo", "--mode", "nightly", *base]) == 3
     assert main(["--project", "khong-co", "--mode", "pr", *base]) == 3
+
+
+# ---- bước 30: _default.yaml + deep merge + đăng ký mỏng -------------------------------------------------------------------------
+
+_DEFAULT = """\
+modes:
+  pr:
+    blocking_suites: [api-contract]
+    advisory_suites: [perf-smoke, ui-explore]
+    on_skipped_gate_task: fail
+  manual:
+    suites: "*"
+"""
+
+
+def _policy_dir(tmp_path, files):
+    root = tmp_path / "projects"
+    root.mkdir()
+    for name, text in files.items():
+        (root / name).write_text(text, encoding="utf-8")
+    return root
+
+
+def test_unregistered_slug_uses_default_policy(tmp_path):
+    root = _policy_dir(tmp_path, {"_default.yaml": _DEFAULT})
+    cfg, info = pj.resolve_project("team-x", root)
+    assert cfg["slug"] == "team-x" and cfg["modes"]["pr"]["blocking_suites"] == ["api-contract"]
+    assert info["source"] == "default" and list(info["files"]) == ["_default.yaml"]
+
+
+def test_registration_inherits_missing_keys_and_lists_are_replaced_not_appended(tmp_path):
+    root = _policy_dir(tmp_path, {"_default.yaml": _DEFAULT, "team-x.yaml": (
+        "slug: team-x\nrepo: org/team-x\nmodes:\n  pr:\n    advisory_suites: [ui-explore]\n")})
+    cfg, info = pj.resolve_project("team-x", root)
+    pr = cfg["modes"]["pr"]
+    assert pr["advisory_suites"] == ["ui-explore"]                 # list THAY, không cộng dồn với [perf-smoke, ui-explore]
+    assert pr["blocking_suites"] == ["api-contract"] and pr["on_skipped_gate_task"] == "fail"   # kế thừa nguyên vẹn
+    assert cfg["modes"]["manual"] == {"suites": "*"} and info["source"] == "registered"
+
+
+def test_thin_registration_is_valid_without_modes(tmp_path):
+    root = _policy_dir(tmp_path, {"_default.yaml": _DEFAULT, "team-x.yaml": "slug: team-x\nrepo: org/team-x\n"})
+    assert pj.load_project("team-x", root)["modes"]["pr"]["blocking_suites"] == ["api-contract"]
+
+
+def test_empty_blocking_suites_is_rejected_even_when_inherited_or_in_default(tmp_path):
+    root = _policy_dir(tmp_path, {"_default.yaml": _DEFAULT, "team-x.yaml": (
+        "slug: team-x\nmodes:\n  pr:\n    blocking_suites: []\n")})
+    with pytest.raises(PlanError, match="blocking_suites"):
+        pj.load_project("team-x", root)
+    bad_default = _policy_dir(tmp_path / "d", {"_default.yaml": "modes:\n  pr:\n    blocking_suites: []\n    advisory_suites: [a]\n"}) if (tmp_path / "d").mkdir() is None else None
+    with pytest.raises(PlanError, match="blocking_suites"):
+        pj.load_project("anything", bad_default)
+
+
+def test_mode_cannot_mix_suites_and_blocking_after_merge(tmp_path):
+    root = _policy_dir(tmp_path, {"_default.yaml": _DEFAULT, "team-x.yaml": "slug: team-x\nmodes:\n  pr:\n    suites: '*'\n"})
+    with pytest.raises(PlanError, match="sau khi gộp"):
+        pj.load_project("team-x", root)
+
+
+def test_default_file_cannot_carry_identity_fields(tmp_path):
+    root = _policy_dir(tmp_path, {"_default.yaml": "slug: x\n" + _DEFAULT})
+    with pytest.raises(PlanError, match="mặc định"):
+        pj.load_project("team-x", root)
+
+
+def test_missing_registration_and_default_is_an_error_and_default_is_not_a_slug(tmp_path):
+    root = _policy_dir(tmp_path, {})
+    with pytest.raises(PlanError, match="không có project"):
+        pj.load_project("team-x", root)
+    root2 = tmp_path / "b"
+    root2.mkdir()
+    (root2 / "_default.yaml").write_text(_DEFAULT, encoding="utf-8")
+    with pytest.raises(PlanError, match="slug không hợp lệ"):
+        pj.load_project("_default", root2)
+    assert pj.list_projects(root2) == {}
+
+
+def test_registration_slug_must_match_file_name(tmp_path):
+    root = _policy_dir(tmp_path, {"_default.yaml": _DEFAULT, "team-x.yaml": "slug: other\n"})
+    with pytest.raises(PlanError, match="phải trùng tên file"):
+        pj.load_project("team-x", root)
+
+
+def test_project_without_default_file_still_needs_to_be_complete(tmp_path):
+    root = _policy_dir(tmp_path, {"team-x.yaml": "slug: team-x\n"})
+    with pytest.raises(PlanError, match="modes"):
+        pj.load_project("team-x", root)
+
+
+def test_expect_repo_blocks_registered_slug_from_another_repo_but_not_default(tmp_path):
+    from qc_agent.core import engine
+    root = _policy_dir(tmp_path, {"_default.yaml": _DEFAULT, "team-x.yaml": "slug: team-x\nrepo: Org/Team-X\n"})
+    with pytest.raises(PlanError, match="đăng ký cho repo"):
+        engine.run_project("team-x", "pr", tmp_path / "runs", projects_dir=root, sut_root=tmp_path, expect_repo="org/other")
+    # cùng repo (không phân biệt hoa thường) qua bước kiểm danh tính, dừng ở chỗ sau đó (không có thư mục suite)
+    with pytest.raises(PlanError, match="thư mục suite"):
+        engine.run_project("team-x", "pr", tmp_path / "runs", projects_dir=root, sut_root=tmp_path, expect_repo="org/team-x")
+    with pytest.raises(PlanError, match="thư mục suite"):   # chưa đăng ký => luôn dùng _default, không so repo
+        engine.run_project("brand-new", "pr", tmp_path / "runs", projects_dir=root, sut_root=tmp_path, expect_repo="org/whatever")
+
+
+def test_noteboard_resolves_to_exactly_its_own_file_plus_default_suites_dir():
+    """Gộp với _default không được đổi policy của project đã khai đủ."""
+    root = Path(__file__).resolve().parent.parent / "configs" / "projects"
+    raw = yaml.safe_load((root / "noteboard.yaml").read_text(encoding="utf-8"))
+    assert pj.load_project("noteboard", root) == {**raw, "suites_dir": raw["suites_dir"]}
+
+
+def test_report_records_policy_source_and_ref(tmp_path, monkeypatch, sut):
+    projects = write_project(tmp_path)
+    monkeypatch.setenv("QC_POLICY_REF", "abc1234def")
+    result = engine.run_project("demo", "pr", tmp_path / "runs", projects_dir=projects, sut_root=sut)
+    data = json.loads((result.run_dir / "report.json").read_text(encoding="utf-8"))
+    assert data["policy"]["source"] == "registered" and data["policy"]["ref"] == "abc1234def" and len(data["policy"]["sha256"]) == 64
+
+
+def test_summary_shows_which_policy_was_used():
+    from qc_agent.integrations import github
+    run = {"report": {"gate_verdict": "PASS", "deterministic_view": [],
+                      "policy": {"source": "default", "sha256": "0" * 64, "ref": "abcdef0123456789"}}}
+    assert "policy: _default @ main abcdef0" in github.render_summary(run, project="teamx", mode="pr")
+    run["report"]["policy"] = {"source": "registered", "sha256": "0" * 64, "ref": "not-a-sha"}
+    text = github.render_summary(run, project="teamx", mode="pr")
+    assert "policy: teamx" in text and "@ main" not in text
+
+
+def test_absent_advisory_suite_is_skipped_but_absent_blocking_suite_is_an_error(tmp_path, sut):
+    projects = write_project(tmp_path, modes={"pr": {"blocking_suites": ["core"], "advisory_suites": ["extra", "nope"]}})
+    cfg = pj.load_project("demo", projects)
+    suites = pj.load_suites(sut / ".qc-agent" / "suites")
+    plan, meta = pj.build_plan(cfg, "pr", suites)
+    assert meta["absent_advisory_suites"] == ["nope"] and {t["task_id"] for t in plan["tasks"]} >= {t["task_id"] for s in ("core", "extra") for t in suites[s]["tasks"]}
+    projects = write_project(tmp_path, slug="b", modes={"pr": {"blocking_suites": ["nope"]}})
+    with pytest.raises(PlanError, match="cần suite không có"):
+        pj.build_plan(pj.load_project("b", projects), "pr", suites)

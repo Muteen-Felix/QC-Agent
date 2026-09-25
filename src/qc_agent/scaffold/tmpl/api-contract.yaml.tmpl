@@ -1,0 +1,44 @@
+# qc-agent:generated — suite của repo SUT (contract API). Đường dẫn tương đối = tương đối gốc repo SUT (worker chạy với cwd = SUT root).
+# Chặn merge hay không do POLICY của qc-agent (configs/projects/_default.yaml hoặc <slug>.yaml, lấy từ nhánh main) quyết định, không do file này.
+suite: api-contract
+description: Contract API bằng Schemathesis (chặn merge ở mode pr)
+tasks:
+- task_id: t-001
+  capability: api.property
+  lane: gate
+  intent: 'API: schema conformance + không 5xx (property-based)'
+  target:
+    kind: http_service
+    base_url: ${env.APP_BASE_URL}
+    spec_ref: ${env.APP_BASE_URL}{{openapi_path}}
+{{schema_note}}
+  inputs:
+    schema_url: ${env.APP_BASE_URL}{{openapi_path}}
+    checks:
+    - not_a_server_error
+    - response_schema_conformance
+    max_examples: 25
+    seed: 1337
+{{exclude_block}}
+  oracle:
+    kind: checks
+    required:
+    - not_a_server_error
+    - response_schema_conformance
+  expected_result_kind: verdict
+  budget:
+    wallclock_s: 120
+    tokens: 0
+    usd: 0
+  determinism:
+    seed: 1337
+    replayable: true
+  evidence_required:
+  - raw_output
+  - stdout
+  retry:
+    max: 1
+    'on':
+    - error
+  prefer:
+  - schemathesis

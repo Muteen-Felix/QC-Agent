@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import re
 import shutil
 import time
@@ -56,14 +57,18 @@ def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int =
 def run_project(project: str, mode: str, runs_dir, *, projects_dir=None, suites_dir=None, sut_root=None,
                 only_suites: list[str] | None = None, only: str | None = None, yellow_exit: int = 0,
                 workers_dirs=None, run_id: str | None = None, on_skipped_gate_task: str | None = None,
-                sut_ref: str | None = None) -> RunResult:
+                sut_ref: str | None = None, expect_repo: str | None = None) -> RunResult:
     """Chạy các suite mà policy của `mode` chọn cho `project`. Suite nằm trong repo SUT (`sut_root`, mặc định cwd);
     worker chạy với cwd = sut_root nên đường dẫn tương đối trong suite là tương đối repo SUT.
     `on_skipped_gate_task=None` => lấy từ policy của mode (mặc định yellow)."""
     sut_root = Path(sut_root or Path.cwd()).resolve()
-    cfg = project_lib.load_project(project, projects_dir or settings.get().resolved_projects_dir)
+    cfg, policy_info = project_lib.resolve_project(project, projects_dir or settings.get().resolved_projects_dir)
+    if expect_repo and policy_info["source"] == "registered" and cfg.get("repo") and cfg["repo"].lower() != expect_repo.lower():
+        raise PlanError(f"project {project!r} đăng ký cho repo {cfg['repo']!r} nhưng đang chạy từ repo {expect_repo!r}: "
+                        f"dùng slug của repo mình, hoặc để repo chưa đăng ký dùng chính sách mặc định")
     suites = project_lib.load_suites(Path(suites_dir) if suites_dir else sut_root / cfg["suites_dir"])
     plan, meta = project_lib.build_plan(cfg, mode, suites, only_suites)
+    meta.update(policy_source=policy_info["source"], policy_sha256=policy_info["sha256"], policy_ref=os.environ.get("QC_POLICY_REF") or None)
     policy = on_skipped_gate_task or meta["on_skipped_gate_task"] or "yellow"
     return _execute(plan, None, runs_dir, only=only, yellow_exit=yellow_exit, workers_dirs=workers_dirs, run_id=run_id,
                     on_skipped_gate_task=policy, sut_ref=sut_ref, sut_root=sut_root, meta=meta)
@@ -126,7 +131,7 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
         run_id=run_id, plan_id=plan_id, plan_name=plan["name"], plan_path=plan_label or f"{run_id}/plan.yaml",
         plan_text=plan["text"], sut_id=sut, run_signature=signature_hex, generated_at=now(),
         wallclock_s=round(wallclock, 3), specs=specs, results=results, gate=gate,
-        canary=canary_alerts(results, extras), **{k: v for k, v in (meta or {}).items() if k in ("project", "mode", "suite_sha256")})
+        canary=canary_alerts(results, extras), **{k: v for k, v in (meta or {}).items() if k in ("project", "mode", "suite_sha256", "policy_source", "policy_sha256", "policy_ref")})
     md, _ = report.write(run_ctx, run_dir)
     return RunResult(run_id, run_dir, gate.exit_code, gate, md, run_ctx)
 

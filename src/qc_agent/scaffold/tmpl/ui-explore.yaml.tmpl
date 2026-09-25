@@ -1,0 +1,68 @@
+# qc-agent:generated — suite UI (Midscene, discovery): CHỈ tham khảo, không bao giờ chặn merge. Đường dẫn tương đối = tương đối gốc repo SUT.
+# Cần secret MIDSCENE_MODEL_* ở repo SUT; thiếu key thì task bị skipped (không ảnh hưởng gate).
+suite: ui-explore
+description: Khám phá UI bằng Midscene + canary (discovery, KHÔNG chặn)
+tasks:
+- task_id: t-101
+  capability: ui.explore
+  lane: discovery
+  intent: {{intent}}
+  target:
+    kind: web_app
+    base_url: ${env.APP_UI_URL}
+    entry_path: {{entry_path}}
+  inputs:
+    flow: {{explore_flow}}
+    max_steps: 8
+  oracle:
+    kind: implicit_signals
+    signals:
+    - element_not_found
+    llm_observations_allowed: true
+  expected_result_kind: candidate_finding
+  budget:
+    wallclock_s: 600
+    tokens: 150000
+    usd: 1.0
+  determinism:
+    seed: null
+    replayable: false
+  evidence_required:
+  - raw_output
+  retry:
+    max: 0
+    'on': []
+  prefer:
+  - midscene-cli
+- task_id: t-canary-01
+  capability: ui.explore
+  lane: discovery
+  intent: 'CANARY: task chắc chắn phải fail (nút không tồn tại). Worker báo pass = worker hỏng, không phải app tốt'
+  target:
+    kind: web_app
+    base_url: ${env.APP_UI_URL}
+    entry_path: {{entry_path}}
+  expect_status: fail
+  inputs:
+    flow: {{canary_flow}}
+    max_steps: 8
+  oracle:
+    kind: implicit_signals
+    signals:
+    - element_not_found
+    llm_observations_allowed: false
+  expected_result_kind: candidate_finding
+  budget:
+    wallclock_s: 300
+    tokens: 80000
+    usd: 0.5
+  determinism:
+    seed: null
+    replayable: false
+  evidence_required:
+  - raw_output
+  retry:
+    max: 0
+    'on': []
+  prefer:
+  - midscene-cli

@@ -1,0 +1,6 @@
+[project]
+name = "vahan-rpa-api"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "python-socketio>=5",
+]

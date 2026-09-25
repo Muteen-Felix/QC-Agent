@@ -144,6 +144,11 @@ def render_summary(run: dict, *, project: str, mode: str, exit_code: int | None 
     lines = [f"## {emoji} QC-Agent · {clean_md(project, 60)} · {clean_md(mode, 30)} — {clean_md(verdict, 12)}", "", " · ".join(meta)]
     if link and _SAFE_LINK.match(link):
         lines[-1] += f" · [chi tiết]({link})"
+    policy = report.get("policy") if isinstance(report.get("policy"), dict) else {}
+    if policy.get("source") in ("default", "registered"):
+        ref = str(policy.get("ref") or "")
+        lines.append(f"policy: {'_default' if policy['source'] == 'default' else clean_md(project, 60)}"
+                     f"{' @ main ' + ref[:7] if re.fullmatch(r'[0-9a-f]{7,40}', ref) else ''}")
     if problem:
         lines += ["", "> ⚠️ Lỗi hệ thống/cấu hình (không phải kết quả của gate). Xem log của job."]
     if gating:

@@ -1,0 +1,21 @@
+# qc-agent:generated — gate tự động của repo này. Ghim @<commit SHA> (không @main) và image theo digest.
+# Xem docs/usage-ci.md trong repo qc-agent. Bật chặn merge: branch protection yêu cầu job `qc-agent / {{project}}` xanh.
+name: qc
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  qc:
+    permissions:               # quyền TỐI THIỂU; workflow tái sử dụng không xin thêm
+      contents: read
+      checks: write            # Check Run "qc-agent / {{project}}"
+      pull-requests: write     # comment dính trên PR
+      packages: read           # kéo image từ GHCR
+    uses: {{qc_repo}}/.github/workflows/qc-gate.reusable.yml@{{qc_ref}}
+    with:
+      project: {{project}}
+      image: {{image}}
+{{with_block}}
+    secrets: inherit

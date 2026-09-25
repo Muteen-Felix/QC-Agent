@@ -11,7 +11,10 @@
 #       secrets: inherit
 # Xem docs/usage-ci.md. Bật chặn merge: branch protection của SUT yêu cầu job này xanh.
 #
-# Luồng: build + chạy SUT của PR trong container tạm -> chạy image qc-agent (CLI) trên mạng docker riêng -> báo cáo (Check Run,
+# POLICY: gate đọc chính sách (configs/projects/) TỪ NHÁNH `main` CỦA qc-agent lúc chạy (bước "Fetch policy"), không đọc bản đóng gói trong image;
+# lấy không được thì job ĐỎ (không fallback). Repo chưa đăng ký dùng `_default.yaml`. Mô hình tin cậy: tin team SUT, chỉ chống sơ suất.
+#
+# Luồng: build + chạy SUT của PR (và web UI nếu khai sut_ui_dockerfile) trong container tạm -> chạy image qc-agent (CLI) trên mạng docker riêng -> báo cáo (Check Run,
 # comment dính, lịch sử tập trung, webhook) -> upload artifact -> job xanh/đỏ THEO EXIT CODE của gate (báo cáo lỗi không đổi kết quả).
 #
 # AN TOÀN: đầu vào (inputs) và bí mật đều đi qua biến môi trường của step, KHÔNG nội suy ${{ }} vào script (chống chèn lệnh);
@@ -19,6 +22,10 @@
 # theo digest (trừ khi allow_unpinned_image). Code của PR là input KHÔNG TIN CẬY: chạy trong container không phải root, mạng docker riêng.
 # Rủi ro còn lại: worker eval của chính repo SUT (vd. pytest tests/eval) chạy mã của PR với các key LLM trong env — dùng key giới hạn ngân sách.
 name: qc-gate (reusable)
+
+env:
+  # Repo chứa policy. HARD-CODE vì trong workflow_call `github.repository` là repo GỌI, không phải qc-agent. Fork/đổi tên repo thì sửa đúng chỗ này.
+  QC_AGENT_REPO: Muteen-Felix/QC-Agent
 
 on:
   workflow_call:
@@ -58,6 +65,23 @@ on:
         description: "KEY=VALUE mỗi dòng cho container SUT (KHÔNG đặt bí mật ở đây)"
         type: string
         default: ""
+      sut_ui_dockerfile:
+        description: "Dockerfile của web UI (tuỳ chọn): có thì dựng thêm container `ui` để suite UI (Midscene) dùng qua APP_UI_URL"
+        type: string
+        default: ""
+      sut_ui_context:
+        type: string
+        default: "."
+      sut_ui_port:
+        type: string
+        default: "8080"
+      sut_ui_health_path:
+        type: string
+        default: "/"
+      sut_ui_build_args:
+        description: "KEY=VALUE mỗi dòng cho `docker build` của UI, vd. VITE_API_URL=http://sut:8000 (KHÔNG đặt bí mật: build-arg nằm trong lớp image)"
+        type: string
+        default: ""
       qc_api_url:
         description: "gốc URL của service qc-agent để lưu lịch sử (cần secret QC_API_TOKEN)"
         type: string
@@ -66,10 +90,15 @@ on:
         description: "cho phép image không ghim digest (KHÔNG khuyến nghị)"
         type: boolean
         default: false
+      refine:
+        description: "auto = trên PR, nếu repo còn marker qc-agent (REFINE/SUGGESTED), đề xuất phần cần dữ liệu sống bằng review ```suggestion``` + artifact refine.patch; off = tắt"
+        type: string
+        default: auto
       timeout_minutes:
         type: number
         default: 30
     secrets:
+      qc_read_token: { required: false }   # đọc policy (contents:read) + kéo image (read:packages) khi repo qc-agent/image chuyển private
       QC_API_TOKEN: { required: false }
       GHCR_PULL_TOKEN: { required: false }
       OPENAI_API_KEY: { required: false }
@@ -117,7 +146,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.qc_read_token || secrets.GITHUB_TOKEN }}
 
       - name: Pull qc-agent image
         env:
@@ -134,6 +163,39 @@ jobs:
           esac
           docker pull "$IMAGE"
 
+      - name: Fetch policy
+        id: policy
+        env:
+          PROJECT: ${{ inputs.project }}
+          POLICY_TOKEN: ${{ secrets.qc_read_token || github.token }}
+        run: |
+          set -euo pipefail
+          # policy = configs/projects/{_default,<slug>}.yaml của qc-agent@main, để NGOÀI workspace SUT (PR có thể commit sẵn thư mục trùng tên,
+          # và /work được mount vào container gate). Lấy không được => dừng job: KHÔNG dùng snapshot trong image.
+          if ! [[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then echo "::error::project không hợp lệ: $PROJECT"; exit 1; fi
+          dest="$RUNNER_TEMP/qc-policy"
+          rm -rf "$dest"; mkdir -p "$dest"
+          api="${GITHUB_API_URL:-https://api.github.com}/repos/${QC_AGENT_REPO}"
+          get() {  # $1 = URL, $2 = Accept, $3 = file ra; in mã HTTP. Token đi qua stdin của curl, không nằm trên dòng lệnh
+            printf 'header = "Authorization: Bearer %s"\n' "$POLICY_TOKEN" | curl -sS -K - --max-time 20 -o "$3" -w '%{http_code}' \
+              -H "Accept: $2" -H 'X-GitHub-Api-Version: 2022-11-28' "$1" || echo 000
+          }
+          code=$(get "$api/contents/configs/projects/_default.yaml?ref=main" 'application/vnd.github.raw+json' "$dest/_default.yaml")
+          if [ "$code" != 200 ]; then echo "::error::không lấy được policy _default.yaml từ ${QC_AGENT_REPO}@main (HTTP $code)"; exit 1; fi
+          code=$(get "$api/contents/configs/projects/${PROJECT}.yaml?ref=main" 'application/vnd.github.raw+json' "$dest/${PROJECT}.yaml")
+          case "$code" in
+            200) ;;
+            404) rm -f "$dest/${PROJECT}.yaml"; echo "project ${PROJECT} chưa đăng ký: dùng _default" ;;
+            *) echo "::error::không lấy được policy ${PROJECT}.yaml từ ${QC_AGENT_REPO}@main (HTTP $code)"; exit 1 ;;
+          esac
+          ref_file=$(mktemp)
+          code=$(get "$api/commits/main" 'application/vnd.github.sha' "$ref_file")
+          ref=$(cat "$ref_file")
+          if [ "$code" != 200 ] || ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then echo "::error::không xác định được commit của ${QC_AGENT_REPO}@main (HTTP $code)"; exit 1; fi
+          chmod -R a+rX "$dest"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "policy: ${QC_AGENT_REPO}@main = $ref"
+
       - name: Start SUT
         id: sut
         env:
@@ -144,33 +206,100 @@ jobs:
           SUT_PORT: ${{ inputs.sut_port }}
           SUT_HEALTH_PATH: ${{ inputs.sut_health_path }}
           SUT_ENV: ${{ inputs.sut_env }}
+          SUT_UI_DOCKERFILE: ${{ inputs.sut_ui_dockerfile }}
+          SUT_UI_CONTEXT: ${{ inputs.sut_ui_context }}
+          SUT_UI_PORT: ${{ inputs.sut_ui_port }}
+          SUT_UI_HEALTH_PATH: ${{ inputs.sut_ui_health_path }}
+          SUT_UI_BUILD_ARGS: ${{ inputs.sut_ui_build_args }}
         run: |
           set -euo pipefail
           docker network create qc-net
-          if [ -n "$SUT_BASE_URL" ]; then
-            echo "base_url=$SUT_BASE_URL" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          docker build -f "$SUT_DOCKERFILE" -t qc-sut "$SUT_CONTEXT"
-          env_args=()
-          while IFS= read -r line; do [ -n "$line" ] && env_args+=(-e "$line"); done <<< "$SUT_ENV"
-          docker run -d --name sut --network qc-net "${env_args[@]}" qc-sut
           # sẵn sàng = server trả lời HTTP (mọi mã, kể cả 404); dùng chính image qc-agent (đã ghim) để thăm dò trong mạng docker
           PROBE='import sys, urllib.request as u, urllib.error as e
           try:
               u.urlopen(sys.argv[1], timeout=2)
           except e.HTTPError:
               pass'
-          ready=0
-          for _ in $(seq 1 60); do
-            if docker run --rm --network qc-net --entrypoint python "$IMAGE" -c "$PROBE" "http://sut:${SUT_PORT}${SUT_HEALTH_PATH}" 2>/dev/null; then ready=1; break; fi
-            sleep 2
-          done
-          if [ "$ready" != 1 ]; then
-            docker logs sut 2>&1 | tail -50
-            echo "::error::SUT không sẵn sàng sau 120s"; exit 1
+          wait_ready() {  # $1 = tên container, $2 = URL thăm dò
+            local ready=0
+            for _ in $(seq 1 60); do
+              if docker run --rm --network qc-net --entrypoint python "$IMAGE" -c "$PROBE" "$2" 2>/dev/null; then ready=1; break; fi
+              sleep 2
+            done
+            if [ "$ready" != 1 ]; then
+              docker logs "$1" 2>&1 | tail -50
+              echo "::error::$1 không sẵn sàng sau 120s"; exit 1
+            fi
+          }
+          if [ -n "$SUT_BASE_URL" ]; then
+            echo "base_url=$SUT_BASE_URL" >> "$GITHUB_OUTPUT"
+          else
+            docker build -f "$SUT_DOCKERFILE" -t qc-sut "$SUT_CONTEXT"
+            env_args=()
+            while IFS= read -r line; do [ -n "$line" ] && env_args+=(-e "$line"); done <<< "$SUT_ENV"
+            docker run -d --name sut --network qc-net "${env_args[@]}" qc-sut
+            wait_ready sut "http://sut:${SUT_PORT}${SUT_HEALTH_PATH}"
+            echo "base_url=http://sut:${SUT_PORT}" >> "$GITHUB_OUTPUT"
           fi
-          echo "base_url=http://sut:${SUT_PORT}" >> "$GITHUB_OUTPUT"
+          # web UI (tuỳ chọn): container `ui` cùng mạng; trình duyệt của Midscene chạy trong container gate nên phân giải được `sut` và `ui`
+          if [ -n "$SUT_UI_DOCKERFILE" ]; then
+            build_args=()
+            while IFS= read -r line; do [ -n "$line" ] && build_args+=(--build-arg "$line"); done <<< "$SUT_UI_BUILD_ARGS"
+            docker build -f "$SUT_UI_DOCKERFILE" "${build_args[@]}" -t qc-sut-ui "$SUT_UI_CONTEXT"
+            docker run -d --name ui --network qc-net qc-sut-ui
+            wait_ready ui "http://ui:${SUT_UI_PORT}${SUT_UI_HEALTH_PATH}"
+            echo "ui_url=http://ui:${SUT_UI_PORT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refine (onboarding suggestions)
+        id: refine
+        if: github.event_name == 'pull_request' && inputs.refine != 'off'
+        continue-on-error: true   # refine lỗi không được làm hỏng gate
+        env:
+          IMAGE: ${{ inputs.image }}
+          BASE_URL: ${{ steps.sut.outputs.base_url }}
+          UI_URL: ${{ steps.sut.outputs.ui_url }}
+          MIDSCENE_MODEL_BASE_URL: ${{ secrets.MIDSCENE_MODEL_BASE_URL }}
+          MIDSCENE_MODEL_API_KEY: ${{ secrets.MIDSCENE_MODEL_API_KEY }}
+          MIDSCENE_MODEL_NAME: ${{ secrets.MIDSCENE_MODEL_NAME }}
+          MIDSCENE_MODEL_FAMILY: ${{ secrets.MIDSCENE_MODEL_FAMILY }}
+        run: |
+          set -uo pipefail
+          # Chỉ chạy khi repo còn marker của qc-agent (Pha 1 chưa được điền/duyệt xong). Workspace được mount CHỈ-ĐỌC; kết quả ghi vào $RUNNER_TEMP/refine.
+          if ! grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' .qc-agent .github/workflows/qc.yml >/dev/null 2>&1; then
+            echo "refine: không còn marker REFINE/SUGGESTED, bỏ qua"; exit 0
+          fi
+          out="$RUNNER_TEMP/refine"; rm -rf "$out"; mkdir -p "$out"; chmod 777 "$out"
+          schema_path=$(sed -n 's#^ *schema_url: [$]{env.APP_BASE_URL}\(/[^ ]*\).*#\1#p' .qc-agent/suites/api-contract.yaml 2>/dev/null | head -1)
+          ui_args=()
+          # gợi ý flow UI cần UI đang chạy + khoá LLM; PR từ fork không có secret nên tự bỏ qua
+          if [ -n "${UI_URL:-}" ] && [ -n "${MIDSCENE_MODEL_API_KEY:-}" ]; then ui_args=(--suggest-ui --ui-url "$UI_URL"); fi
+          docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work:ro" -v "$out:/out" -w /work \
+            -e MIDSCENE_MODEL_BASE_URL -e MIDSCENE_MODEL_API_KEY -e MIDSCENE_MODEL_NAME -e MIDSCENE_MODEL_FAMILY \
+            "$IMAGE" init --refine --sut-root /work --openapi "${BASE_URL}${schema_path:-/openapi.json}" --out /out "${ui_args[@]}"
+          if [ -s "$out/refine.patch" ]; then echo "has_patch=true" >> "$GITHUB_OUTPUT"; else echo "refine: không có gì để đề xuất"; fi
+
+      - name: Post refine review
+        if: always() && steps.refine.outputs.has_patch == 'true'
+        continue-on-error: true   # fork: GITHUB_TOKEN chỉ-đọc => không đăng được, chỉ còn artifact
+        env:
+          IMAGE: ${{ inputs.image }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$RUNNER_TEMP/refine:/out:ro" \
+            -v "$GITHUB_EVENT_PATH:/tmp/event.json:ro" -e GITHUB_EVENT_PATH=/tmp/event.json \
+            -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_API_URL -e GITHUB_TOKEN \
+            --entrypoint python "$IMAGE" -m qc_agent.integrations.ci --refine-dir /out
+
+      - name: Upload refine patch
+        if: always() && steps.refine.outputs.has_patch == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qc-refine-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/refine/refine.patch
+            ${{ runner.temp }}/refine/suggestions.json
+          retention-days: 14
 
       - name: Run qc-agent gate
         id: gate
@@ -180,7 +309,9 @@ jobs:
           MODE: ${{ inputs.mode }}
           SUITES: ${{ inputs.suites }}
           BASE_URL: ${{ steps.sut.outputs.base_url }}
+          UI_URL: ${{ steps.sut.outputs.ui_url }}
           SUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          QC_POLICY_REF: ${{ steps.policy.outputs.ref }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MIDSCENE_MODEL_BASE_URL: ${{ secrets.MIDSCENE_MODEL_BASE_URL }}
@@ -194,10 +325,12 @@ jobs:
         run: |
           set +e   # exit code của gate được ghi lại để bước báo cáo chạy xong rồi bước cuối mới quyết định xanh/đỏ
           mkdir -p runs
-          args=(run --project "$PROJECT" --mode "$MODE" --sut-root /work --runs-dir /work/runs --sut-ref "$SUT_REF")
+          args=(run --project "$PROJECT" --mode "$MODE" --sut-root /work --runs-dir /work/runs --sut-ref "$SUT_REF"
+                --projects-dir /policy --expect-repo "$GITHUB_REPOSITORY")
           if [ -n "$SUITES" ]; then args+=(--suites "$SUITES"); fi
-          docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -w /work \
-            -e APP_BASE_URL="$BASE_URL" \
+          ui_args=(); if [ -n "${UI_URL:-}" ]; then ui_args=(-e APP_UI_URL="$UI_URL"); fi
+          docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work \
+            -e APP_BASE_URL="$BASE_URL" -e QC_POLICY_REF "${ui_args[@]}" \
             -e OPENAI_API_KEY -e GEMINI_API_KEY \
             -e MIDSCENE_MODEL_BASE_URL -e MIDSCENE_MODEL_API_KEY -e MIDSCENE_MODEL_NAME -e MIDSCENE_MODEL_FAMILY \
             -e QC_JUDGE_PROVIDER -e QC_JUDGE_MODEL -e QC_JUDGE_FALLBACK_PROVIDER -e QC_JUDGE_FALLBACK_MODEL \
@@ -220,8 +353,8 @@ jobs:
         run: |
           RUN=$(ls -d runs/r-* 2>/dev/null | sort | tail -1 || true)
           if [ -z "$RUN" ]; then echo "::warning::không có run nào để báo cáo"; exit 0; fi
-          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -w /work \
-            -v "$GITHUB_EVENT_PATH:/tmp/event.json:ro" -e GITHUB_EVENT_PATH=/tmp/event.json \
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work \
+            -e QC_PROJECTS_DIR=/policy -v "$GITHUB_EVENT_PATH:/tmp/event.json:ro" -e GITHUB_EVENT_PATH=/tmp/event.json \
             -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_REF_NAME -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e GITHUB_SERVER_URL -e GITHUB_API_URL \
             -e GITHUB_TOKEN -e QC_API_URL -e QC_API_TOKEN -e ALERT_WEBHOOK_URL -e ALERT_TELEGRAM_CHAT_ID -e DASHBOARD_URL \
             --entrypoint python "$IMAGE" -m qc_agent.integrations.ci --run-dir "$RUN" --project "$PROJECT" --mode "$MODE" ${EXIT_CODE:+--exit-code "$EXIT_CODE"}
@@ -238,7 +371,7 @@ jobs:
       - name: Clean up SUT
         if: always()
         run: |
-          docker rm -f sut >/dev/null 2>&1 || true
+          docker rm -f sut ui >/dev/null 2>&1 || true
           docker network rm qc-net >/dev/null 2>&1 || true
 
       - name: Enforce gate result
