@@ -88,8 +88,11 @@ def render(ctx: RunContext) -> tuple[str, dict]:
             "results": {
                 task_id: {
                     "status": result["status"],
+                    "lane": ctx.specs.get(task_id, {}).get("lane"),  # ingest cần lane THẬT (gate/discovery), không suy ra từ deterministic_view
                     "cost": result.get("cost", {}),
                     "metrics": result.get("metrics", {}),
+                    # chỉ id + tiêu đề (không evidence/rationale): đủ để service dựng sổ nợ và liệt kê, không phình payload ingest
+                    "findings": [{"finding_id": f.get("finding_id"), "title": f.get("title")} for f in result.get("findings", [])],
                 }
                 for task_id, result in sorted(ctx.results.items())
             },

@@ -300,11 +300,13 @@ def apply_debt(session: Session, project_slug: str, *, job_id: uuid.UUID, findin
     return DebtDelta(opened=tuple(sorted(seen - open_now)), refreshed=tuple(sorted(seen & open_now)), closed=tuple(closed))
 
 
-def list_debt(session: Session, project_slug: str, *, open_only: bool = True, kind: str | None = None) -> list[DebtEntry]:
+def list_debt(session: Session, project_slug: str, *, open_only: bool = True, kind: str | None = None,
+              limit: int | None = None) -> list[DebtEntry]:
     project = get_project(session, project_slug)
     stmt = select(DebtEntry).where(DebtEntry.project_id == project.id)
     if open_only:
         stmt = stmt.where(DebtEntry.closed_at.is_(None))
     if kind is not None:
         stmt = stmt.where(DebtEntry.kind == kind)
-    return list(session.scalars(stmt.order_by(DebtEntry.kind, DebtEntry.surface, DebtEntry.opened_at)))
+    stmt = stmt.order_by(DebtEntry.kind, DebtEntry.surface, DebtEntry.opened_at)
+    return list(session.scalars(stmt.limit(limit) if limit is not None else stmt))
