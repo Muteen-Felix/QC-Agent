@@ -78,8 +78,7 @@ def report_run(run_dir, *, project: str, mode: str, exit_code: int | None, env=N
                 try:
                     out["check_run"] = {"id": client.create_check_run(
                         ctx["repo"], ctx["sha"], name=f"qc-agent / {project}", conclusion=github.conclusion_for(verdict, exit_code),
-                        title=f"{verdict} — gate {sum(1 for g in run['report'].get('deterministic_view') or [] if isinstance(g, dict) and g.get('status') == 'pass')}/"
-                              f"{len(run['report'].get('deterministic_view') or [])}", summary=summary, details_url=link)}
+                        title=github.check_title(run), summary=summary, details_url=link)}
                 except (github.GitHubError, ValueError) as error:
                     out["check_run"] = f"error: {error}"
             else:

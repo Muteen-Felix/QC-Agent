@@ -16,6 +16,8 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
+from qc_agent.debt import DebtReportError, DebtScan, debt_scan_from_report
+
 TIMEOUT_S = 15.0
 DEFAULT_API = "https://api.github.com"
 ZWSP = "​"
@@ -27,7 +29,7 @@ _MD = re.compile(r"([\\`*_{}\[\]()#+!|~>-])")
 _EMOJI = {"PASS": "🟢", "FAIL": "🔴", "YELLOW": "🟡"}
 _ICON = {"pass": "✅", "fail": "❌", "error": "⚠️", "skipped": "⏭️"}
 MAX_COMMENT = 60000
-MAX_ROWS, MAX_FINDINGS = 100, 15
+MAX_ROWS, MAX_FINDINGS, MAX_DEBT = 100, 15, 30
 
 
 class GitHubError(Exception):
@@ -127,6 +129,57 @@ def marker_for(project: str, mode: str) -> str:
     return f"<!-- qc-agent:{re.sub(r'[^A-Za-z0-9_.-]', '_', project)}:{re.sub(r'[^A-Za-z0-9_.-]', '_', mode)} -->"
 
 
+def _debt_of(report: dict) -> tuple[DebtScan | None, bool]:
+    """(nợ test có trong report, report_không_nhất_quán). Không có khoản nợ nào => (None, False)."""
+    try:
+        scan = debt_scan_from_report(report)
+    except DebtReportError:
+        return None, True
+    return (scan if scan is not None and scan.findings else None), False
+
+
+def _yellow_is_only_debt(report: dict) -> bool:
+    """YELLOW không phải do task GATE bị skipped: mọi task skipped trong banner đều được biết chắc là lane discovery
+    (report cũ chưa có lane => coi là có thể thuộc gate, không nhận vơ)."""
+    results = (report.get("details") or {}).get("results") if isinstance(report.get("details"), dict) else None
+    lanes = results if isinstance(results, dict) else {}
+    for entry in report.get("banner") or []:
+        if isinstance(entry, (list, tuple)) and len(entry) >= 2 and str(entry[1]).startswith("skipped"):
+            row = lanes.get(entry[0])
+            if (row.get("lane") if isinstance(row, dict) else None) != "discovery":
+                return False
+    return True
+
+
+def check_title(run: dict) -> str:
+    """Tiêu đề Check Run. YELLOW do nợ test (mọi task gate đều pass): `PASS hồi quy · N bề mặt mới chưa có test`; còn lại `<verdict> — gate p/n`."""
+    report = run["report"]
+    verdict = str(report.get("gate_verdict", "UNKNOWN"))
+    gating = [g for g in report.get("deterministic_view") or [] if isinstance(g, dict)]
+    scan, _ = _debt_of(report)
+    if verdict == "YELLOW" and scan is not None and _yellow_is_only_debt(report):
+        return f"PASS hồi quy · {len(scan.findings)} bề mặt {'' if scan.full_scan else 'mới '}chưa có test"
+    return f"{verdict} — gate {sum(1 for g in gating if g.get('status') == 'pass')}/{len(gating)}"
+
+
+def _debt_lines(scan: DebtScan | None, inconsistent: bool) -> list[str]:
+    """Mục "Nợ test" trong comment. kind/surface do MÃ CỦA PR quyết định (tên route/đường dẫn) => luôn qua clean_md."""
+    if inconsistent:
+        return ["", "> ⚠️ Không đọc được danh sách nợ test (report không nhất quán): nợ của lần chạy này không được ghi nhận."]
+    if scan is None:
+        return []
+    items = sorted(scan.findings)
+    if scan.full_scan:
+        head, intro = "### ⚠️ Nợ test hiện có — quét toàn bộ (Không chặn merge)", f"{len(items)} bề mặt hiện có chưa có test nào chạm tới."
+    else:
+        head, intro = "### ⚠️ Nợ test mới phát sinh (Không chặn merge)", f"{len(items)} bề mặt mới thêm trong PR này chưa có test nào chạm tới."
+    lines = ["", head, "", intro + " Thêm test, hoặc khai báo có lý do trong `.qc-agent/coverage.yaml` (`ignore`).", ""]
+    lines += [f"- **{clean_md(kind, 30)}** — {clean_md(surface)}" for kind, surface in items[:MAX_DEBT]]
+    if len(items) > MAX_DEBT:
+        lines.append(f"- … +{len(items) - MAX_DEBT} bề mặt nữa")
+    return lines
+
+
 def render_summary(run: dict, *, project: str, mode: str, exit_code: int | None = None, sut_sha: str | None = None,
                    link: str | None = None) -> str:
     """Markdown tóm tắt (dùng cho cả comment và summary của Check Run)."""
@@ -165,7 +218,10 @@ def render_summary(run: dict, *, project: str, mode: str, exit_code: int | None 
     for canary in report.get("canary") or []:
         if isinstance(canary, dict) and not canary.get("ok"):
             lines += ["", f"🚨 canary: {clean_md(canary.get('message', ''), 200)}"]
-    findings = run.get("findings") or []
+    scan, inconsistent = _debt_of(report)
+    lines += _debt_lines(scan, inconsistent)
+    known_debt_titles = scan.titles if scan is not None else frozenset()
+    findings = [f for f in run.get("findings") or [] if f not in known_debt_titles]  # nợ đã có mục riêng ở trên
     if findings:
         lines += ["", f"<details><summary>🔎 {len(findings)} finding discovery (tham khảo, KHÔNG chặn merge)</summary>", ""]
         lines += [f"- {clean_md(f)}" for f in findings[:MAX_FINDINGS]]
