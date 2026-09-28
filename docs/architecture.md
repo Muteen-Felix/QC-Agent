@@ -16,7 +16,45 @@
 
 ## 1. Sơ đồ tổng thể — 4 khâu × 2 mode
 
-### 1.1 Toàn cảnh
+### 1.1 Hai vòng — đọc cái này trước
+
+Hệ thống là **hai vòng lồng nhau**, khác nhau ở *quyền*, ở *nhịp chạy* và ở *chỗ LLM được phép có mặt*.
+
+```
+  ┌── VÒNG NGOÀI · AGENT · CÓ LLM · KHÔNG có quyền chặn ──────────────────────┐
+  │                                                                            │
+  │   PRD của SUT ─┐                                                           │
+  │                ├─→  ĐỌC & CHẨN ĐOÁN (LLM)  ─→  sinh test mới              │
+  │   lịch sử chạy ┘                                sửa test đã hỏng           │
+  │        ▲                                        gom lỗi cùng nguyên nhân   │
+  │        │                                              │                    │
+  │        │                                              ▼                    │
+  │        │                                     PR đề xuất → NGƯỜI DUYỆT      │
+  └────────┼───────────────────────────────────────────────────┬───────────────┘
+           │ kết quả · log · ảnh chụp          file đã đóng băng│
+           │                                                    ▼
+  ┌────────┴── VÒNG TRONG · GATE · TẤT ĐỊNH · CÓ quyền chặn merge ────────────┐
+  │                                                                            │
+  │   PR / bấm chạy  →  chạy đúng plan đã duyệt  →  đỏ hoặc xanh trong ~5 phút │
+  │                                                                            │
+  └────────────────────────────────────────────────────────────────────────────┘
+```
+
+| | Vòng trong (gate) | Vòng ngoài (agent) |
+|---|---|---|
+| Làm gì | Chạy những gì **đã được duyệt** | **Sinh ra** và **bảo trì** những thứ đó |
+| LLM | Không, lúc chạy | Có |
+| Quyền | Chặn merge | Chỉ đề xuất, người duyệt |
+| Nhịp | Mọi PR, vài phút | Theo lịch, chạy lâu được |
+| Hỏng thì sao | Cả phòng tắc | Không ai chặn ai, sửa sau |
+
+**Vòng lặp có khép kín**: kết quả của gate chảy ngược lên nuôi agent. Nó chỉ không khép bằng
+cách để model ứng biến lúc chạy, mà khép qua **một file có người duyệt**.
+
+> **Tự động hóa tăng nhờ có thêm test và test sống lâu, không nhờ việc ai chọn test để chạy.**
+> Đó là lý do vòng ngoài mới là chỗ LLM tạo ra giá trị, còn vòng trong thì không.
+
+### 1.2 Chi tiết vòng trong — gate
 
 ```
   MODE 1 — TỰ ĐỘNG TRÊN PR                          MODE 2 — THỦ CÔNG THEO SPRINT/PHASE
@@ -33,7 +71,8 @@
           └────────────────────────┬────────────────────────────┘
                                    ▼
         ┌──────────────────────────────────────────────────────────────────┐
-        │  ORCHESTRATOR  ·  core/engine.py  ·  TẤT ĐỊNH, KHÔNG LLM         │
+        │  ĐIỀU PHỐI · core/engine.py · KHÔNG gọi LLM LÚC CHẠY             │
+        │  thi hành policy ĐÃ ĐƯỢC NGƯỜI DUYỆT, không tự nghĩ ra việc      │
         │  policy: configs/projects/_default.yaml  +  <slug>.yaml          │
         │  plan → resolve → chọn worker theo capability → chạy → verdict   │
         └──────────────────────────────────────────────────────────────────┘
@@ -80,7 +119,18 @@
                                                                   sai → bỏ qua, ghi vết
 ```
 
-### 1.2 Quy tắc phán quyết — hình nhỏ, đọc kèm 1.1
+**LLM nằm ở đâu trong hình trên** — câu "không gọi LLM lúc chạy" chỉ nói về **ô điều phối**,
+không nói về cả hệ thống:
+
+```
+  ✔ LÚC SOẠN (vòng ngoài)  sinh TC từ PRD · gợi ý flow UI · sửa test hỏng
+                           → người duyệt → đóng băng thành file
+  ✔ TRONG WORKER           Midscene dò UI bằng VLM · G-Eval chấm chất lượng
+                           → luôn ở lane tư vấn, không bao giờ chặn
+  ✘ LÚC ĐIỀU PHỐI          không bao giờ — vì đây là chỗ cầm quyền chặn merge
+```
+
+### 1.3 Quy tắc phán quyết — hình nhỏ, đọc kèm 1.2
 
 ```
              Ai sinh ra test?                 Chạy thế nào?              Quyền
@@ -92,6 +142,9 @@
                                         │  (VLM, LLM-as-judge)   ├──→ TƯ VẤN + HITL
                                         └─ hoặc chạm trang B thật┘
 ```
+
+Cột trái cho thấy **nguồn gốc của test không quyết định quyền của nó**. Test do LLM sinh, sau khi
+người duyệt và nếu chạy không cần LLM, vẫn được chặn merge như test người viết.
 
 > **Một câu tóm tắt kiến trúc:**
 > *LLM được sinh ứng viên và điều khiển thao tác. LLM không được phán quyết.*
@@ -153,10 +206,73 @@ Nguyên tắc chọn: **ưu tiên công cụ tất định** (được chặn me
 4. **Test chạm B thật không được chặn merge**, vì B có thể chậm, đổi giao diện hoặc bật captcha. Gate dùng bản ghi của B. *(D6 — chờ owner xác nhận)*
 5. **Policy tập trung tại qc-agent@main**, lấy không được thì gate đỏ. Không dùng bản chụp trong image.
 6. **Multi-repo, không hardcode**: mọi thứ riêng của một sản phẩm nằm trong cấu hình, không nằm trong code.
-7. **Không làm ở giai đoạn này:** mobile, red-team, LLM phán quyết, LLM phân loại lỗi.
+7. **LLM được phép lúc soạn, không được phép lúc chạy điều phối.** Sản phẩm của LLM phải là một
+   file đọc được, diff được và duyệt được, trước khi nó có quyền ảnh hưởng tới ai.
+8. **Vòng ngoài không bao giờ tự merge.** Mọi thứ nó sinh ra đều đi qua PR và người duyệt.
+9. **Không làm ở giai đoạn này:** mobile, red-team, LLM phán quyết lúc chạy.
 
 ---
 
-## 5. Hướng đi
+## 5. Hướng đi: từ dây chuyền thành agent
 
-> **[T4 — cần điền]** Khung Now / Next / Later + 4 quyết định cần mentor chốt: xem doc 19 §4.3.
+### 5.1 Agentic nghĩa là gì, và hiện thiếu gì
+
+Một hệ thống được gọi là agentic khi có đủ 5 tính chất. Trạng thái hôm nay:
+
+| Tính chất | Hôm nay | Nằm ở vòng nào |
+|---|---|---|
+| Dùng được công cụ | ✅ 5 worker | trong |
+| Tự sinh việc cần làm | ❌ test sinh từ OpenAPI, tức từ **code**, không từ **yêu cầu** | ngoài |
+| Vòng lặp: chạy → đọc → thử lại | ❌ chạy một lượt rồi dừng | ngoài |
+| Nhớ giữa các lần chạy | ❌ mỗi lần chạy là một tờ giấy trắng | ngoài |
+| Tự sửa khi hỏng | ❌ hỏng thì người sửa | ngoài |
+
+**Bốn thứ còn thiếu đều nằm ở vòng ngoài.** Vòng trong đã làm xong việc của nó.
+
+### 5.2 Vì sao ô điều phối không dùng LLM — trả lời trước câu hỏi khó nhất
+
+Ô điều phối chỉ quyết 4 thứ: chạy suite nào (policy quy định), worker nào nhận task (capability
+quy định), thứ tự nào (phụ thuộc quy định), đỏ hay xanh (lane và ngưỡng quy định). **Cả bốn đều
+chỉ có một đáp án đúng.** Đưa LLM vào đây không thêm năng lực nào, chỉ thêm chi phí, độ trễ và
+sai số.
+
+Quan trọng hơn: gate có quyền chặn code của người khác, nên phải trả lời được câu *"vì sao PR
+của tôi bị chặn"*. Tất định thì mở file policy ra là thấy. Dùng LLM thì chạy lại lần nữa có khi
+ra kết quả khác — và như vậy không còn là quality gate.
+
+Ranh giới thật **không phải** "có LLM hay không", mà là:
+
+> **LLM được phép lúc soạn. Không được phép lúc chạy.**
+
+Vì lúc soạn, sản phẩm của LLM là **một file**: đọc được, diff được trong PR, duyệt được, và đóng
+băng được để chạy lại y hệt nghìn lần. Còn quyết định lúc chạy thì không để lại gì để xem trước,
+không ai duyệt được, và lần sau sẽ khác.
+
+Ba lý do phải tách vòng ngoài khỏi vòng trong, chứ không nhập làm một:
+
+1. **Quyền.** Nhập lại là LLM thừa hưởng quyền chặn merge.
+2. **Nhịp.** Vòng trong phải xong trong vài phút ở *mọi* PR; vòng ngoài được chạy 20 phút, chạy đêm, thử lại. Nhập lại thì mọi PR của mọi team gánh chi phí đó.
+3. **Hỏng.** LLM hết quota thì vòng ngoài dừng, không sao. Nhập lại thì gate của cả phòng phụ thuộc một nhà cung cấp bên ngoài.
+
+### 5.3 Now / Next / Later
+
+| Chặng | Làm gì | Đầu ra kiểm được |
+|---|---|---|
+| **Now** — đã có | Gate PR tất định (hợp đồng API) · perf smoke và full · onboarding một lệnh cho repo mới · chạy thủ công qua dashboard | Đã chạy trên bản copy vahan-rpa |
+| **Next** — 1–2 sprint | Worker security (chặn high/critical) · Integration qua bản ghi HAR · **PRD → TC → người duyệt** (vòng ngoài, bước 1) | Mỗi khâu có ít nhất một suite gate chạy trên PR thật |
+| **Later** | **Trí nhớ finding** · **tự chữa khi trang B đổi** · gom lỗi cùng nguyên nhân · EvalGate chấm TC · GitLab · mobile · AI app | Có số liệu sau ít nhất một sprint chạy thật |
+
+Thứ tự trong vòng ngoài, xếp theo *rẻ và cứu được nhiều nhất trước*:
+
+1. **Trí nhớ finding.** Rẻ nhất, đã có sẵn Postgres. Thiếu nó thì sau khoảng hai tuần QA ngừng đọc nhánh tư vấn, vì không có gì phân biệt test chập chờn với lỗi thật — và lúc đó cả nửa phải của sơ đồ thành đồ trang trí.
+2. **Tự chữa khi trang B đổi giao diện.** Đúng nỗi đau lớn nhất của một sản phẩm RPA.
+3. **PRD → TC.** Nặng nhất, nhưng là thứ duy nhất chứng minh đây là *Agent* QC chứ không phải CI.
+4. **Gom lỗi cùng nguyên nhân.** Đẹp, không cấp thiết.
+
+### 5.4 Cần mentor chốt
+
+1. Tiếp tục pilot trên vahan-rpa, hay đổi sang sản phẩm khác?
+2. GitHub hay GitLab đi trước?
+3. Có được gửi PRD, mã nguồn hoặc nhãn giao diện của sản phẩm qua LLM bên ngoài không?
+4. Chấp nhận cách đo 80–90% theo định nghĩa ở spec (`knowledge/_derived/18-…` §6) không?
+   Hiện **chưa có baseline thời gian QC**, nên tài liệu này không hứa con số nào.
