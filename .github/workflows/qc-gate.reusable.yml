@@ -139,6 +139,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 2   # dò nợ test: trên pull_request HEAD là merge commit, HEAD^1 là nhánh đích => cần đúng 2 commit (mặc định 1 làm diff lỗi)
 
       - name: Log in to GHCR
         if: startsWith(inputs.image, 'ghcr.io/')
@@ -312,6 +313,9 @@ jobs:
           UI_URL: ${{ steps.sut.outputs.ui_url }}
           SUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
           QC_POLICY_REF: ${{ steps.policy.outputs.ref }}
+          # Dò nợ test là MỘT suite trong lượt gate này (không bước riêng, không continue-on-error). Có base => diff-scan (chỉ mở nợ của PR);
+          # rỗng (push/dispatch) => full-scan. Giá trị cố định, không lấy từ input/PR => không thể bị SUT chèn.
+          QC_DIFF_BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MIDSCENE_MODEL_BASE_URL: ${{ secrets.MIDSCENE_MODEL_BASE_URL }}
@@ -330,7 +334,7 @@ jobs:
           if [ -n "$SUITES" ]; then args+=(--suites "$SUITES"); fi
           ui_args=(); if [ -n "${UI_URL:-}" ]; then ui_args=(-e APP_UI_URL="$UI_URL"); fi
           docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work \
-            -e APP_BASE_URL="$BASE_URL" -e QC_POLICY_REF "${ui_args[@]}" \
+            -e APP_BASE_URL="$BASE_URL" -e QC_POLICY_REF -e QC_DIFF_BASE "${ui_args[@]}" \
             -e OPENAI_API_KEY -e GEMINI_API_KEY \
             -e MIDSCENE_MODEL_BASE_URL -e MIDSCENE_MODEL_API_KEY -e MIDSCENE_MODEL_NAME -e MIDSCENE_MODEL_FAMILY \
             -e QC_JUDGE_PROVIDER -e QC_JUDGE_MODEL -e QC_JUDGE_FALLBACK_PROVIDER -e QC_JUDGE_FALLBACK_MODEL \

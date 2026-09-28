@@ -247,7 +247,7 @@ def test_passthrough_constant_matches_the_env_the_workflow_passes_to_the_gate():
     text = REUSABLE.read_text(encoding="utf-8")
     gate_run = yaml.safe_load(text)["jobs"]["gate"]["steps"]
     run = next(s["run"] for s in gate_run if s.get("id") == "gate")
-    passed = set(re.findall(r"-e ([A-Z][A-Z0-9_]*)(?=[ \\\n]|$)", run)) - {"HOME", "APP_BASE_URL", "APP_UI_URL", "QC_POLICY_REF"}
+    passed = set(re.findall(r"-e ([A-Z][A-Z0-9_]*)(?=[ \\\n]|$)", run)) - {"HOME", "APP_BASE_URL", "APP_UI_URL", "QC_POLICY_REF", "QC_DIFF_BASE"}  # biến hạ tầng do workflow đặt, suite không tham chiếu ${env.X}
     assert passed == set(v.PASSTHROUGH)
 
 
