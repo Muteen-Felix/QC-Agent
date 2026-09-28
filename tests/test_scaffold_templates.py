@@ -12,6 +12,7 @@ from qc_agent.adapters.k6_adapter import K6Adapter
 from qc_agent.adapters.schemathesis_adapter import SchemathesisAdapter
 from qc_agent.core import plan as plan_lib
 from qc_agent.core import project as pj
+from qc_agent.scaffold import init as init_mod, suites_integration, suites_security
 from qc_agent.scaffold import templates as t
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -230,6 +231,8 @@ def test_every_template_is_used_by_a_builder_and_every_builder_fills_all_placeho
         t.api_contract_suite(); t.perf_smoke_suite(); t.k6_smoke_script(paths=["/x"]); t.ui_explore_suite()
         t.midscene_explore_flow(); t.midscene_canary_flow(); t.qc_workflow(project="a")
         t.ui_dockerfile(node_major=22, lockfile="package-lock.json", output_dir="dist")
+        for lane in (suites_security, suites_integration):     # mẫu của từng làn (Phase 1) nằm trong module suites_<làn>: thêm mẫu mới không phải sửa test này
+            lane.add_suites(lambda rel, content: None, init_mod.Options(sut_root=tmp_path))
     finally:
         t.render = original
     assert used == set(t.template_names())
@@ -237,7 +240,7 @@ def test_every_template_is_used_by_a_builder_and_every_builder_fills_all_placeho
 
 def test_templates_ship_inside_the_package_directory():
     names = t.template_names()
-    assert len(names) == 8 and all((ROOT / "src" / "qc_agent" / "scaffold" / "tmpl" / n).is_file() for n in names)
+    assert len(names) >= 8 and all((ROOT / "src" / "qc_agent" / "scaffold" / "tmpl" / n).is_file() for n in names)
 
 
 # ---------- bước 32-33: Dockerfile.ui, khối REFINE, dấu TODO 4 dạng ----------

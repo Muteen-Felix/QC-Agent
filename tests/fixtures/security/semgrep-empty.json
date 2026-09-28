@@ -1,0 +1,24 @@
+{
+  "version": "1.99.0",
+  "results": [],
+  "errors": [],
+  "paths": {
+    "scanned": [
+      "apps/api-server/app/api/jobs.py",
+      "apps/api-server/app/main.py",
+      "apps/api-server/app/services/runner.py"
+    ]
+  },
+  "time": {
+    "rules": [],
+    "rules_parse_time": 0.02,
+    "profiling_times": {
+      "config_time": 0.4,
+      "core_time": 1.1,
+      "ignores_time": 0.0,
+      "total_time": 1.6
+    }
+  },
+  "engine_requested": "OSS",
+  "skipped_rules": []
+}

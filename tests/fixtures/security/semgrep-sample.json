@@ -1,0 +1,98 @@
+{
+  "version": "1.99.0",
+  "results": [
+    {
+      "check_id": "qc-rules.python-subprocess-shell-true",
+      "path": "apps/api-server/app/api/jobs.py",
+      "start": {
+        "line": 42,
+        "col": 5,
+        "offset": 1180
+      },
+      "end": {
+        "line": 42,
+        "col": 47,
+        "offset": 1222
+      },
+      "extra": {
+        "message": "subprocess được gọi với shell=True và lệnh nối từ input: nguy cơ chèn lệnh.",
+        "severity": "ERROR",
+        "metadata": {
+          "cwe": [
+            "CWE-78"
+          ],
+          "category": "security"
+        },
+        "lines": "requires login",
+        "fingerprint": "requires login",
+        "is_ignored": false
+      }
+    },
+    {
+      "check_id": "qc-rules.python-requests-no-timeout",
+      "path": "apps/api-server/app/services/runner.py",
+      "start": {
+        "line": 17,
+        "col": 9,
+        "offset": 402
+      },
+      "end": {
+        "line": 17,
+        "col": 40,
+        "offset": 433
+      },
+      "extra": {
+        "message": "requests không có timeout.",
+        "severity": "WARNING",
+        "metadata": {
+          "category": "best-practice"
+        },
+        "lines": "requires login",
+        "fingerprint": "requires login",
+        "is_ignored": false
+      }
+    },
+    {
+      "check_id": "qc-rules.python-assert-used",
+      "path": "apps/api-server/app/main.py",
+      "start": {
+        "line": 9,
+        "col": 1,
+        "offset": 150
+      },
+      "end": {
+        "line": 9,
+        "col": 20,
+        "offset": 169
+      },
+      "extra": {
+        "message": "assert bị bỏ khi chạy -O.",
+        "severity": "INFO",
+        "metadata": {},
+        "lines": "requires login",
+        "fingerprint": "requires login",
+        "is_ignored": false
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": [
+      "apps/api-server/app/api/jobs.py",
+      "apps/api-server/app/main.py",
+      "apps/api-server/app/services/runner.py"
+    ]
+  },
+  "time": {
+    "rules": [],
+    "rules_parse_time": 0.02,
+    "profiling_times": {
+      "config_time": 0.4,
+      "core_time": 1.2,
+      "ignores_time": 0.0,
+      "total_time": 1.7
+    }
+  },
+  "engine_requested": "OSS",
+  "skipped_rules": []
+}

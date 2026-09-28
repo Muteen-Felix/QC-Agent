@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from qc_agent.scaffold import gitinfo, openapi, scan, suggest
+from qc_agent.scaffold import gitinfo, openapi, scan, suggest, suites_integration, suites_security
 from qc_agent.scaffold import templates as t
 
 SYSTEM_ERROR = 3
@@ -118,6 +118,8 @@ def build(opts: Options) -> Plan:
             _api_suites(opts, found, plan, add)
         if opts.no_api and not (opts.ui_dockerfile or found.ui):
             raise InitError("--no-api mà không có UI thì không có gì để sinh")
+        suites_security.add_suites(add, opts)      # Làn A (sast/secrets/deps)
+        suites_integration.add_suites(add, opts)   # Làn B (integration)
 
         ui_dockerfile, ui_context, ui_port = opts.ui_dockerfile, opts.ui_context, opts.ui_port
         ui_build_args = list(opts.ui_build_args)

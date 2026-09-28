@@ -1,0 +1,51 @@
+# qc-agent:generated — suite SAST (Semgrep). Chặn merge hay không do POLICY của qc-agent quyết định, không do file này.
+# Rule ghim trong image (/opt/qc-rules/semgrep), chạy offline. Bỏ qua một finding có lý do: `# nosemgrep: <rule-id>` ngay dòng đó (hiện trong diff PR).
+# `paths` mặc định quét cả repo (loại thư mục không phải mã ở `exclude`); thu hẹp về thư mục nguồn nếu repo có nhiều thứ không cần quét.
+suite: sast
+description: SAST bằng Semgrep, rule ghim trong image (chặn merge ở mode pr)
+tasks:
+- task_id: t-010
+  capability: code.sast
+  lane: gate
+  intent: 'SAST: không có finding mức high/critical trong mã nguồn, và có quét được file'
+  target:
+    kind: source_tree
+    base_url: ${env.APP_BASE_URL}
+  inputs:
+    rules_dir: /opt/qc-rules/semgrep
+{{verify_note}}
+    paths: {{scan_paths}}
+    exclude:
+    - node_modules
+    - tests
+    - dist
+    - build
+  oracle:
+    kind: threshold
+    assertions:
+    - metric: semgrep.high
+      op: ==
+      value: 0
+    - metric: semgrep.critical
+      op: ==
+      value: 0
+    - metric: semgrep.files_scanned
+      op: '>='
+      value: 1
+  expected_result_kind: verdict
+  budget:
+    wallclock_s: 300
+    tokens: 0
+    usd: 0
+  determinism:
+    seed: 0
+    replayable: true
+  evidence_required:
+  - raw_output
+  - stdout
+  retry:
+    max: 1
+    'on':
+    - error
+  prefer:
+  - semgrep

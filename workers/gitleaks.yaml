@@ -1,0 +1,14 @@
+name: gitleaks
+version_probe: "gitleaks version"
+adapter: "qc_agent/adapters/gitleaks_adapter.py"
+lanes: [gate]
+capabilities:
+  - id: code.secret
+    oracle_kinds: [threshold]
+    verdict_sources: [deterministic_assert]
+    parallel_safe: true
+requires:
+  env: []
+  binaries: [gitleaks]
+data_egress: [source_code]     # mã nguồn vào công cụ, không rời máy; báo cáo luôn --redact (adapter từ chối báo cáo còn secret)
+cost_profile: { tokens_per_run: 0, typical_wallclock_s: 30 }

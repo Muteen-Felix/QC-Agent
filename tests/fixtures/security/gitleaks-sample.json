@@ -1,0 +1,42 @@
+[
+  {
+    "Description": "Detected a Generic API Key",
+    "StartLine": 12,
+    "EndLine": 12,
+    "StartColumn": 14,
+    "EndColumn": 60,
+    "Match": "API_KEY = \"REDACTED\"",
+    "Secret": "REDACTED",
+    "File": "apps/api-server/app/config.py",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 4.2,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "RuleID": "generic-api-key",
+    "Fingerprint": "apps/api-server/app/config.py:generic-api-key:12"
+  },
+  {
+    "Description": "Identified an AWS Access Key",
+    "StartLine": 5,
+    "EndLine": 5,
+    "StartColumn": 14,
+    "EndColumn": 60,
+    "Match": "export AWS_ACCESS_KEY_ID=REDACTED",
+    "Secret": "REDACTED",
+    "File": "scripts/deploy.sh",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 4.2,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "RuleID": "aws-access-token",
+    "Fingerprint": "scripts/deploy.sh:aws-access-token:5"
+  }
+]

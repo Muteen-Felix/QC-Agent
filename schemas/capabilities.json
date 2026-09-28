@@ -7,7 +7,11 @@
     "ui.explore":    "Khám phá UI, discovery lane  (oracle: implicit_signals)",
     "demo.echo":     "Worker giả để dựng skeleton  (oracle: trivial | checks)",
     "demo.echo2":    "Worker giả thứ hai — chứng minh N5 (STEP 44)",
-    "security.stub": "Task security giả cho luật always_on (STEP 49)  (oracle: trivial)"
+    "security.stub": "Task security giả cho luật always_on (STEP 49)  (oracle: trivial)",
+    "code.sast":        "SAST trên source của SUT  (oracle: threshold)",
+    "code.secret":      "Quét secret trong source (+ lịch sử git nếu bật)  (oracle: threshold)",
+    "deps.vuln":        "CVE của dependency  (oracle: threshold)",
+    "flow.integration": "Chuỗi tích hợp qua runner giả / bản ghi HAR  (oracle: checks)"
   },
   "oracle_kinds": ["trivial", "checks", "threshold", "implicit_signals"]
 }
