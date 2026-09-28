@@ -55,6 +55,17 @@ suite chặn merge là **`api-contract`** (Schemathesis), còn `perf-smoke`/`ui-
 `init` cũng sinh ba suite Security: **`sast`** (Semgrep), **`secrets`** (gitleaks), **`deps`** (Trivy, cần có lockfile). Chúng **chưa chặn merge** cho tới khi policy của qc-agent liệt kê chúng ở `blocking_suites`
 (phòng QC bật sau khi thử trên repo thật); chạy thử ngay ở mode `manual` (`qc-agent run --project <slug> --mode manual --suites sast,secrets,deps`; mode `pr` từ chối suite ngoài policy). Muốn bỏ qua một finding có lý do: `docs/usage-ci.md` mục 4b.
 
+## Nợ test (`coverage-debt`): dò bề mặt mới chưa có test, không chặn merge
+`init` **chưa** tự sinh suite này (khác ba suite Security ở trên). Muốn bật: thêm
+`.qc-agent/suites/coverage-debt.yaml` vào repo của bạn — nội dung mẫu lấy từ
+`qc-agent`'s `src/qc_agent/scaffold/templates.py:coverage_debt_suite()` (copy nguyên văn, không có
+chỗ trống cần điền) — rồi nhờ phòng QC thêm `coverage-debt` vào **cả hai** `advisory_suites` và
+`advisory_yellow_suites` của project bạn trong `configs/projects/<slug>.yaml` (PR 3 dòng, mục dưới).
+Thiếu một trong hai thì suite hoặc không chạy (`qc-agent validate` báo NOTE), hoặc chạy nhưng im lặng
+PASS khi có nợ thay vì báo ⚪ (`validate` báo WARN nếu vậy). Chi tiết cách đọc kết quả, Check Run
+`neutral`, mục "Nợ test" trong comment, và file `.qc-agent/coverage.yaml` để bỏ qua một bề mặt có lý
+do: `docs/usage-ci.md` mục 4c.
+
 ## Muốn dashboard / `manual` từ web: đăng ký bằng PR 3 dòng vào qc-agent
 Không đăng ký thì bạn vẫn có gate PR đầy đủ (Check Run, comment, artifact). Muốn lịch sử trên dashboard, `--report-to` hoặc chạy `manual` từ web thì mở PR vào qc-agent thêm
 `configs/projects/<slug>.yaml`:

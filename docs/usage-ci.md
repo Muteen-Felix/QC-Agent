@@ -162,6 +162,48 @@ Khi gate Security (`sast`, `secrets`, `deps`) đỏ vì một finding mà bạn 
 - `trivy.db_age_days` đỏ (báo cáo nói DB CVE quá 14 ngày) **không phải finding của bạn** và không bỏ qua được bằng cách trên: image qc-agent đang dùng đã cũ, hãy cập nhật digest `image:` trong `qc.yml` lên bản mới hơn.
 - Lỗi công cụ (`error`) hoặc công cụ thiếu (`skipped`) cũng làm gate đỏ nhưng là lỗi hạ tầng, không phải finding: báo cho phòng QC thay vì bỏ qua.
 
+### 4c. Nợ test (`coverage-debt`): không chặn, nhưng không được lờ
+
+Nếu policy của project bật `coverage-debt` trong `advisory_suites` **và** `advisory_yellow_suites`
+(mặc định của `noteboard`; xem `docs/architecture.md` §1.5), mỗi PR được dò bề mặt **mới thêm**
+(endpoint API, route UI, operation OpenAPI) mà **chưa có test nào chạm tới**. PR vẫn merge được —
+đây là nợ, không phải lỗi — nhưng bạn thấy ngay, không phải đoán:
+
+- Check Run: **⚪ `PASS hồi quy · N bề mặt mới chưa có test`** (kết luận `neutral`, không phải xanh
+  `success` trơn).
+- Comment dính có thêm mục **"⚠️ Nợ test mới phát sinh (Không chặn merge)"**, liệt kê từng bề mặt
+  (`kind` — `surface`).
+- Reusable workflow tự checkout `fetch-depth: 2` và đặt `QC_DIFF_BASE=HEAD^1` trên `pull_request` —
+  bạn không cần cấu hình gì để có bước này; workflow tái sử dụng phiên bản mới hơn tự có sẵn.
+
+**Bỏ qua một bề mặt có lý do** (ví dụ endpoint nội bộ không cần test, hoặc route đã có test ở nơi khác
+mà bộ dò không nhận ra): tạo `.qc-agent/coverage.yaml` ở gốc repo SUT.
+
+```yaml
+# .qc-agent/coverage.yaml — nằm trong repo của bạn nên mọi dòng bỏ qua hiện trong diff PR để người review thấy
+ignore:
+  - surface: "GET /internal/debug"
+    reason: chỉ dùng nội bộ, không thuộc hợp đồng public
+  - surface: "api_endpoint:POST /admin/*"     # tiền tố "<kind>:" tuỳ chọn, và glob (*) dùng được
+    reason: đã có test ở service khác, kiểm bằng contract test riêng
+
+test_globs:                                    # mặc định, chỉ khai khi thư mục test của bạn khác
+  - .qc-agent/**
+  - tests/**
+  - e2e/**
+  - midscene/**
+```
+
+- `ignore[].reason` **bắt buộc**, không được rỗng — đây là quyết định của người review, không phải
+  lối tắt để im lặng tắt cảnh báo.
+- `test_globs` là danh sách glob quyết định file nào được coi là "test" khi bộ dò kiểm "đã có test
+  chưa" (khớp tên đường dẫn theo mẫu, ví dụ `spec/**` cho repo dùng Playwright ở thư mục `spec/`).
+- Nợ **thuộc về repo**, không thuộc về một PR: nợ mở ở PR này mà không có test theo kịp thì vẫn nằm
+  trong sổ, không tự hết hạn. Nợ chỉ đóng khi **full-scan** (chạy `qc-agent run --mode manual`, hoặc
+  Mode 2 qua executor của dashboard) không còn thấy bề mặt đó thiếu test nữa.
+- Xem sổ nợ hiện có: `GET /api/v1/projects/<slug>/debt?open=true` (cần đăng nhập; API của dashboard,
+  không phải endpoint của SUT).
+
 ## 5. Kết quả ở đâu
 - **Comment dính** trên PR (một comment, cập nhật tại chỗ mỗi lần push): bảng task chặn merge, skipped/error, finding tham khảo.
 - **Check Run** `qc-agent / <project>`.

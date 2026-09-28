@@ -36,14 +36,16 @@ def test_reference_project_and_suites_load_and_build_both_modes():
     suites = pj.load_suites(NOTEBOARD_SUT / cfg["suites_dir"])
     assert sorted(suites) == ["ai-eval", "api-contract", "coverage-debt", "perf-full", "perf-smoke", "ui-explore"]
     pr, meta = pj.build_plan(cfg, "pr", suites)
-    assert [t["task_id"] for t in pr["tasks"]] == ["t-001", "t-003", "t-101", "t-canary-01", "t-102"]
-    assert meta["on_skipped_gate_task"] == "fail" and set(meta["suite_sha256"]) == {"api-contract", "ai-eval", "ui-explore", "perf-smoke"}
+    assert [t["task_id"] for t in pr["tasks"]] == ["t-001", "t-003", "t-101", "t-canary-01", "t-102", "t-103"]
+    assert meta["on_skipped_gate_task"] == "fail"
+    assert set(meta["suite_sha256"]) == {"api-contract", "ai-eval", "ui-explore", "perf-smoke", "coverage-debt"}
+    assert meta["yellow_task_ids"] == ["t-103"]  # P2-8: coverage-debt bật advisory_yellow_suites ở noteboard.yaml
     manual, _ = pj.build_plan(cfg, "manual", suites)
     assert "t-002" in {t["task_id"] for t in manual["tasks"]}  # perf-full chỉ chạy thủ công
     assert "t-002" not in {t["task_id"] for t in pr["tasks"]}
-    assert "t-103" in {t["task_id"] for t in manual["tasks"]} and "t-103" not in {t["task_id"] for t in pr["tasks"]}  # coverage-debt: chưa bật ở pr (P2-8)
+    assert "t-103" in {t["task_id"] for t in manual["tasks"]}
     lanes = {t["task_id"]: t["lane"] for t in pr["tasks"]}
-    assert lanes["t-102"] == "discovery" and meta["on_skipped_gate_task"] == "fail"  # perf-smoke trên PR: không bao giờ là gate
+    assert lanes["t-102"] == "discovery" and lanes["t-103"] == "discovery" and meta["on_skipped_gate_task"] == "fail"  # coverage-debt trên PR: không bao giờ là gate
     assert {t["task_id"]: t["lane"] for t in manual["tasks"]}["t-002"] == "gate"
 
 

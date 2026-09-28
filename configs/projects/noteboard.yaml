@@ -21,7 +21,8 @@ sut:
 modes:
   pr:                                    # tự động, mỗi PR
     blocking_suites: [api-contract, ai-eval]   # mọi task lane=gate: chặn merge
-    advisory_suites: [ui-explore, perf-smoke]  # mọi task lane=discovery: không chặn (perf-smoke: SUT trong runner, số đo chỉ tham khảo)
+    advisory_suites: [ui-explore, perf-smoke, coverage-debt]  # mọi task lane=discovery: không chặn (perf-smoke: SUT trong runner, số đo chỉ tham khảo)
+    advisory_yellow_suites: [coverage-debt]    # P2-8: suite trên fail => YELLOW (⚪ neutral + comment), không PASS im lặng (docs/phase2/plan-debt.md)
     on_skipped_gate_task: fail                 # task gate bị skip không được cho qua
   manual:                                # QA/Dev chạy trên web; lane giữ như suite khai báo
     suites: "*"
