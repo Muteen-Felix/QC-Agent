@@ -28,7 +28,7 @@ def lane_files() -> list[str]:
     """File mà suites_security/suites_integration (Phase 1, mỗi làn một module) thêm vào kế hoạch `init`; lấy từ chính chúng nên thêm mẫu mới không phải sửa test này."""
     labels: list[str] = []
     for lane in (suites_security, suites_integration):
-        lane.add_suites(lambda rel, content: labels.append(rel), init_mod.Options(sut_root=Path(".")))
+        lane.add_suites(lambda rel, content: labels.append(rel), init_mod.Options(sut_root=SCAN_FIXTURE))
     return labels
 VAHAN = ROOT / "tests" / "fixtures" / "openapi" / "vahan-rpa.json"
 NOTEBOARD = ROOT / "tests" / "fixtures" / "sut" / "noteboard"
@@ -297,14 +297,16 @@ def test_init_writes_only_inside_sut_root_and_leaves_no_temp_files(tmp_path):
 def test_todos_are_reported_with_their_location(tmp_path):
     _, outcomes = run_init(tmp_path)
     todos = {o.label: o.todos for o in outcomes if o.todos}
-    assert set(todos) == {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/midscene/explore.yaml", ".github/workflows/qc.yml"}
+    assert set(todos) == {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/midscene/explore.yaml",
+                          ".qc-agent/integration/tier1.spec.mjs", ".qc-agent/integration/tier2.spec.mjs", ".github/workflows/qc.yml"}
     assert all(entry.startswith("dòng ") for entries in todos.values() for entry in entries)
 
 
 def test_pins_given_leave_only_the_scanner_and_refine_todos(tmp_path):
     _, outcomes = run_init(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, openapi_source=str(VAHAN),
                            sut_env=["X=y"])
-    assert {o.label for o in outcomes if o.todos} == {".qc-agent/midscene/explore.yaml"}
+    assert {o.label for o in outcomes if o.todos} == {".qc-agent/midscene/explore.yaml", ".qc-agent/integration/tier1.spec.mjs",
+                                                       ".qc-agent/integration/tier2.spec.mjs"}
 
 
 def test_existing_files_are_never_overwritten_without_force(tmp_path):

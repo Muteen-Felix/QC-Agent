@@ -23,6 +23,8 @@
   },
   "homepage": "https://github.com/Muteen-Felix/QC-Agent#readme",
   "devDependencies": {
-    "@midscene/cli": "1.13.0"
+    "@midscene/cli": "1.13.0",
+    "@playwright/test": "1.63.0",
+    "socket.io-client": "4.8.1"
   }
 }

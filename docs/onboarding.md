@@ -68,6 +68,8 @@ Phần policy bỏ trống thì kế thừa `_default` (dict gộp theo key, **l
 Không có cách tự đăng ký từ repo của bạn: chủ ý, để phòng QC review thay đổi chính sách.
 
 ## Giới hạn cần biết
+
+- Repo có chuỗi RPA/tích hợp với hệ thống ngoài cần hoàn tất hai spec trong `.qc-agent/integration/`, cung cấp `b_host` và một `.qc-agent/har/vahan-b.har` đã lọc. Khung do `init` sinh có `qc-agent:todo VERIFY`, nên gate chưa thể bật trước khi team xác nhận giao thức runner, selector UI và HAR. Gate PR chỉ dùng bản phát lại; suite `integration-live` chạm hệ thống thật chỉ chạy manual.
 - Scanner là heuristic: lựa chọn không chắc thì có `VERIFY`, nhưng **một ứng viên duy nhất mà sai thì không có VERIFY** (vd. health route nằm dưới router có prefix `/api` được đọc là `/health`).
   Pha 2 bắt được lỗi health nhờ OpenAPI sống; cổng và biến API của UI chỉ lộ ra khi gate chạy.
 - `Dockerfile.ui` chỉ cho SPA tĩnh (Vite, CRA, Next `output: 'export'`) và cần lockfile cạnh `package.json`.

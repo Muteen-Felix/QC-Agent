@@ -162,7 +162,7 @@ người duyệt và nếu chạy không cần LLM, vẫn được chặn merge 
 |---|---|---|---|---|
 | **Functional** | `api-contract` (chặn) · `ui-explore` (tư vấn) | cùng suite, phạm vi toàn sản phẩm | Schemathesis · Midscene | *Đã chạy* (hợp đồng API) · *Thiết kế* (TC theo PRD) |
 | **Performance** | `perf-smoke` (tư vấn) | `perf-full` (staging, chặn) | k6 | *Đã chạy* |
-| **Integration** | hợp đồng runner/job với runner giả (chặn) | chuỗi đầy đủ qua bản ghi HAR của B (chặn) · B thật (tư vấn, tần suất thấp) | Playwright `routeFromHAR` · (Keploy) | *Thiết kế* → T6 |
+| **Integration** | hợp đồng Socket.IO runner/job với runner giả (chặn) | chuỗi đầy đủ qua bản ghi HAR của B (chặn) · B thật (tư vấn, tần suất thấp) | Playwright `routeFromHAR` | *Thiết kế* → T6 |
 | **Security** | SAST + secret + dependency (chặn ở mức high/critical) | DAST trên web app của team · rà quyền extension và credential vào B | Semgrep · gitleaks · Trivy · (ZAP) | *Thiết kế* (worker + test đã có, chưa chạy thật — xem §2.4) |
 
 Căn cứ chọn công cụ, kèm số sao, lần push cuối và giấy phép: `knowledge/_derived/21-…`.
@@ -178,9 +178,16 @@ Nguyên tắc chọn: **ưu tiên công cụ tất định** (được chặn me
 > diện production**; **không bắn tải vào trang B**. Việc còn thiếu là đo thời gian một lượt RPA thật.
 
 ### 2.3 Integration
-> **[T6]** Thiết kế ba tầng: (1) runner giả, chặn; (2) bản ghi HAR của trang B, chặn;
-> (3) B thật, tư vấn, tần suất thấp, dùng để phát hiện B đổi giao diện. Khi tầng 3 fail thì việc
-> cần làm là **ghi lại HAR mới**, không phải chặn dev.
+
+Ba tầng dùng chung worker Playwright nhưng khác quyền phán quyết:
+
+1. `integration/t-020` dùng Socket.IO runner giả để kiểm đăng ký runner, nhận đúng job, chuỗi trạng thái hợp lệ và từ chối chuyển trạng thái sai. Tầng này chặn merge.
+2. `integration/t-021` chạy UI/runner/extension với host B được phát lại từ `.qc-agent/har/vahan-b.har`. Guard giữ cố định `update:false`, `notFound:'abort'`, chặn host ngoài allowlist và biến request thiếu thành `har_covers_all_requests=false`. Tầng này chặn merge.
+3. `integration-live/t-022` chạy cùng flow nhưng không có HAR. Đây là discovery chỉ chạy manual, một luồng, không retry; fail nghĩa là cần kiểm tra B và ghi lại HAR, không chặn PR.
+
+HAR phải được ghi bằng tài khoản thử nghiệm/dữ liệu ẩn danh, qua `tools/har_scrub.py`, grep credential và được người thứ hai xem trước khi commit. Tier 2 xanh chỉ chứng minh PR tương thích với hợp đồng đã ghi, không chứng minh B thật đang hoạt động hôm nay.
+
+Trước khi chuyển trạng thái sang *Đã chạy* phải spike extension thật: request từ service worker có thể không đi qua `BrowserContext.routeFromHAR`. Nếu không intercept được và extension không đổi được base URL, Tier 2 dừng ở runner; đoạn extension ↔ B thuộc Tier 3 và phải được ghi rõ trong report.
 
 ### 2.4 Security
 
