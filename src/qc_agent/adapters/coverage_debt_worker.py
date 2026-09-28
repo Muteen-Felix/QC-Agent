@@ -53,8 +53,11 @@ class DebtError(Exception):
 # ───────────────────────────── git ─────────────────────────────
 
 def _git(root: Path, *args: str) -> bytes:
+    # safe.directory=*: gate chạy container với `--user <uid runner>` trên checkout bind-mount; runner tự host (uid map khác) hoặc Docker Desktop
+    # thì chủ thư mục lệch => git từ chối ("dubious ownership") và dò nợ ra error. Chỉ áp cho các lệnh ĐỌC của worker (rev-parse/diff/show)
+    # chạy tại SUT root do vận hành chỉ định; không sửa cấu hình toàn cục nào.
     try:
-        done = subprocess.run(["git", *args], cwd=root, capture_output=True)
+        done = subprocess.run(["git", "-c", "safe.directory=*", *args], cwd=root, capture_output=True)
     except FileNotFoundError as error:
         raise DebtError("không có binary git") from error
     if done.returncode != 0:

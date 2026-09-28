@@ -427,3 +427,22 @@ def test_cli_runs_as_module_from_sut_root(repo, tmp_path):
                           env={**os.environ, "QC_DIFF_BASE": "HEAD^1", "PYTHONUTF8": "1"})
     assert done.returncode == 0, done.stderr
     assert [f["surface"] for f in json.loads(out.read_text(encoding="utf-8"))["findings"]] == ["GET /ping"]
+
+
+def test_git_commands_trust_the_mounted_sut_root(repo, monkeypatch):
+    """Container gate chạy `--user <uid runner>` trên checkout bind-mount: chủ thư mục có thể lệch => git "dubious ownership" => dò nợ error.
+    Mọi lệnh git của worker (rev-parse, diff, show) phải mang `-c safe.directory=*` TRƯỚC lệnh con."""
+    seen = []
+    real_run = subprocess.run
+
+    def spy(cmd, *args, **kwargs):
+        seen.append(list(cmd))
+        return real_run(cmd, *args, **kwargs)
+
+    repo.write("app/main.py", MAIN_PY)
+    repo.commit("base")
+    repo.write("app/main.py", MAIN_PY + PING)
+    repo.commit("pr")
+    monkeypatch.setattr(cd.subprocess, "run", spy)
+    assert repo.ids() == ["debt:api_endpoint:GET /ping"]
+    assert all(c[:3] == ["git", "-c", "safe.directory=*"] for c in seen) and {c[3] for c in seen} == {"rev-parse", "diff", "show"}
