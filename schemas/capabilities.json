@@ -11,7 +11,8 @@
     "code.sast":        "SAST trên source của SUT  (oracle: threshold)",
     "code.secret":      "Quét secret trong source (+ lịch sử git nếu bật)  (oracle: threshold)",
     "deps.vuln":        "CVE của dependency  (oracle: threshold)",
-    "flow.integration": "Chuỗi tích hợp qua runner giả / bản ghi HAR  (oracle: checks)"
+    "flow.integration": "Chuỗi tích hợp qua runner giả / bản ghi HAR  (oracle: checks)",
+    "repo.coverage_debt": "Nợ test: bề mặt mới thêm (endpoint, route UI, contract) chưa có test  (oracle: threshold; lane discovery)"
   },
   "oracle_kinds": ["trivial", "checks", "threshold", "implicit_signals"]
 }

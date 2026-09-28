@@ -228,7 +228,7 @@ def test_every_template_is_used_by_a_builder_and_every_builder_fills_all_placeho
     original = t.render
     try:
         t.render = lambda name, values: (used.add(name), original(name, values))[1]
-        t.api_contract_suite(); t.perf_smoke_suite(); t.k6_smoke_script(paths=["/x"]); t.ui_explore_suite()
+        t.api_contract_suite(); t.perf_smoke_suite(); t.k6_smoke_script(paths=["/x"]); t.ui_explore_suite(); t.coverage_debt_suite()
         t.midscene_explore_flow(); t.midscene_canary_flow(); t.qc_workflow(project="a")
         t.ui_dockerfile(node_major=22, lockfile="package-lock.json", output_dir="dist")
         for lane in (suites_security, suites_integration):     # mẫu của từng làn (Phase 1) nằm trong module suites_<làn>: thêm mẫu mới không phải sửa test này
