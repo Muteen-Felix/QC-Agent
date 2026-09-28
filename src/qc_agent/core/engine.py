@@ -123,7 +123,8 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
         results = runner.run_all(specs, extras, _Registry(workers), run_dir, cwd=cwd)  # runner tự truyền QC_RUNS_DIR cho từng worker
         wallclock = time.perf_counter() - started
 
-        signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit, on_skipped_gate_task)
+        signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit, on_skipped_gate_task,
+                                    yellow_on_fail=frozenset(plan.get("yellow_on_fail") or ()))
         logging_setup.event(log, "run.end", gate=gate.value, exit_code=gate.exit_code, wallclock_s=round(wallclock, 3),
                             counts={status: sum(1 for r in results.values() if r["status"] == status) for status in
                                     sorted({r["status"] for r in results.values()})})
@@ -141,9 +142,10 @@ def select_tasks(plan: dict, only: str | None) -> list[str]:
     return _select(plan, only)
 
 
-def judge(specs: dict, results: dict, plan_id: str, sut: str, yellow_exit: int, on_skipped_gate_task: str = "yellow"):
+def judge(specs: dict, results: dict, plan_id: str, sut: str, yellow_exit: int, on_skipped_gate_task: str = "yellow",
+          yellow_on_fail: frozenset = frozenset()):
     """verdict.gate_verdict không biết --yellow-exit; gán exit_code thật ở đây để report.json khớp exit của tiến trình."""
-    gate = gate_verdict(results, specs, skipped_gate_is_fail=(on_skipped_gate_task == "fail"))
+    gate = gate_verdict(results, specs, skipped_gate_is_fail=(on_skipped_gate_task == "fail"), yellow_on_fail=yellow_on_fail)
     code = {PASS: 0, YELLOW: yellow_exit, FAIL: 1}[gate.value]
     return signature.run_signature(plan_id, sut, results, specs), dataclasses.replace(gate, exit_code=code)
 

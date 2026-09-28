@@ -136,7 +136,8 @@ def _rerender(args) -> int:
     }
     plan_id = signature.plan_id(plan["text"])
     sut = signature.sut_id(_read_json(run_dir / "sut_identity.json"))
-    signature_hex, gate = engine.judge(specs, results, plan_id, sut, args.yellow_exit, args.on_skipped_gate_task or "yellow")
+    signature_hex, gate = engine.judge(specs, results, plan_id, sut, args.yellow_exit, args.on_skipped_gate_task or "yellow",
+                                      yellow_on_fail=frozenset(plan["yellow_on_fail"]))
     try:
         wallclock = float(_read_json(run_dir / "report.json")["details"]["wallclock_s"])
     except (PlanError, KeyError, TypeError, ValueError):
