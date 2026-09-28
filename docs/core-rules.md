@@ -38,6 +38,27 @@ Nếu A (chủ `core/`) kẹt, hai người còn lại nhận việc theo bảng
 
 Toàn bộ: `pytest -q`. Cổng kiểm tay: `python orchestrator.py --plan tests\fixtures\plans\demo.yaml` phải `exit=0`, `tests\fixtures\plans\demo_fail.yaml` phải `exit=1`.
 
+## Quy ước đặt tên (Phase 1)
+
+| Thứ | Quy ước | Ví dụ |
+|---|---|---|
+| Metric worker đếm | `<worker>.<mức>` và `<worker>.total`, mức ∈ `critical/high/medium/low` | `semgrep.high`, `trivy.critical` |
+| Check của worker luồng | `snake_case` theo bước nghiệp vụ | `filter_applied`, `report_downloaded` |
+| Tên suite | một từ, trùng tên file `.qc-agent/suites/<tên>.yaml` và tên trong policy | `sast`, `secrets`, `deps`, `integration` |
+| `task_id` | Làn A (Security) dùng `t-010…t-019`, Làn B (Integration) dùng `t-020…t-029`; không bao giờ trùng | `t-010` |
+| Nhánh | `feat/<worker>-<việc>`, một PR một việc, ≤ ~400 dòng | `feat/worker-semgrep` |
+
+Khâu Security (Làn A) — tên đã chốt, suite và test dựa vào chúng:
+
+| Suite (`task_id`) | Worker · capability | Metric adapter phát ra (luôn đủ key, kể cả khi bằng 0) |
+|---|---|---|
+| `sast` (`t-010`) | `semgrep` · `code.sast` | `semgrep.critical/high/medium/low/total`, `semgrep.files_scanned` |
+| `secrets` (`t-011`) | `gitleaks` · `code.secret` | `gitleaks.count` (secret không có "mức") |
+| `deps` (`t-012`) | `trivy` · `deps.vuln` | `trivy.critical/high/medium/low/unknown/total`, `trivy.targets`, `trivy.db_age_days` |
+
+- `critical` vẫn chỉ có ở **metric**: `severity_hint` của finding không có `critical` nên nó ghi là `high`. Vì vậy suite phải chặn `*.critical` riêng, chỉ chặn `*.high` sẽ bỏ lọt.
+- Adapter **đếm**, ngưỡng nằm trong file suite (oracle `threshold`); adapter không có nhánh nào phán pass/fail. Vị trí `file:dòng` đi vào `title` (`rule @ path:line`), không có trường `location`.
+
 ## Cấm
 
 - **Cấm gọi LLM trong `core/`**: verdict phải tái lập được; LLM chỉ được nằm trong worker và chỉ cho finding không chặn gate.

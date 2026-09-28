@@ -52,6 +52,9 @@ Gate đọc chính sách từ nhánh **`main` của qc-agent** lúc chạy (`con
 suite chặn merge là **`api-contract`** (Schemathesis), còn `perf-smoke`/`ui-explore` chỉ tham khảo. Repo **không có API** và không có suite DeepEval deterministic thì chưa đủ điều kiện mode `pr`
 (exit 3), chỉ dùng được mode `manual`. Chi tiết: `docs/usage-ci.md` mục 1b.
 
+`init` cũng sinh ba suite Security: **`sast`** (Semgrep), **`secrets`** (gitleaks), **`deps`** (Trivy, cần có lockfile). Chúng **chưa chặn merge** cho tới khi policy của qc-agent liệt kê chúng ở `blocking_suites`
+(phòng QC bật sau khi thử trên repo thật); chạy thử ngay ở mode `manual` (`qc-agent run --project <slug> --mode manual --suites sast,secrets,deps`; mode `pr` từ chối suite ngoài policy). Muốn bỏ qua một finding có lý do: `docs/usage-ci.md` mục 4b.
+
 ## Muốn dashboard / `manual` từ web: đăng ký bằng PR 3 dòng vào qc-agent
 Không đăng ký thì bạn vẫn có gate PR đầy đủ (Check Run, comment, artifact). Muốn lịch sử trên dashboard, `--report-to` hoặc chạy `manual` từ web thì mở PR vào qc-agent thêm
 `configs/projects/<slug>.yaml`:

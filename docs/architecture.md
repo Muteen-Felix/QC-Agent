@@ -163,7 +163,7 @@ người duyệt và nếu chạy không cần LLM, vẫn được chặn merge 
 | **Functional** | `api-contract` (chặn) · `ui-explore` (tư vấn) | cùng suite, phạm vi toàn sản phẩm | Schemathesis · Midscene | *Đã chạy* (hợp đồng API) · *Thiết kế* (TC theo PRD) |
 | **Performance** | `perf-smoke` (tư vấn) | `perf-full` (staging, chặn) | k6 | *Đã chạy* |
 | **Integration** | hợp đồng runner/job với runner giả (chặn) | chuỗi đầy đủ qua bản ghi HAR của B (chặn) · B thật (tư vấn, tần suất thấp) | Playwright `routeFromHAR` · (Keploy) | *Thiết kế* → T6 |
-| **Security** | SAST + secret + dependency (chặn ở mức high/critical) | DAST trên web app của team · rà quyền extension và credential vào B | Semgrep · gitleaks · Trivy · (ZAP) | *Thiết kế* → T5 |
+| **Security** | SAST + secret + dependency (chặn ở mức high/critical) | DAST trên web app của team · rà quyền extension và credential vào B | Semgrep · gitleaks · Trivy · (ZAP) | *Thiết kế* (worker + test đã có, chưa chạy thật — xem §2.4) |
 
 Căn cứ chọn công cụ, kèm số sao, lần push cuối và giấy phép: `knowledge/_derived/21-…`.
 Nguyên tắc chọn: **ưu tiên công cụ tất định** (được chặn merge) hơn agent LLM (chỉ tư vấn).
@@ -183,9 +183,26 @@ Nguyên tắc chọn: **ưu tiên công cụ tất định** (được chặn me
 > cần làm là **ghi lại HAR mới**, không phải chặn dev.
 
 ### 2.4 Security
-> **[T5]** Ba công cụ tất định chạy ở lane gate (Semgrep, gitleaks, Trivy), ngưỡng chặn
-> critical/high, có đường bỏ qua kèm lý do. Thêm một mục người đọc: **quyền của extension**
-> (`manifest.json`) và **đường đi của credential vào trang B**.
+
+Ba công cụ **tất định** chạy ở lane gate, mỗi công cụ là một worker (manifest + adapter) và một suite trong `.qc-agent/suites/` của repo SUT:
+
+| Suite | Công cụ | Bắt gì | Chặn merge khi (ngưỡng nằm trong file suite) | Bỏ qua có lý do bằng |
+|---|---|---|---|---|
+| `sast` | Semgrep | lỗi trong mã nguồn theo rule đã ghim (`rules/semgrep/`) | `semgrep.high == 0`, `semgrep.critical == 0`, `semgrep.files_scanned >= 1` | `# nosemgrep: <rule-id>` ngay dòng đó |
+| `secrets` | gitleaks | secret/token nằm trong mã | `gitleaks.count == 0` | fingerprint trong `.gitleaksignore` |
+| `deps` | Trivy | dependency có CVE đã công bố | `trivy.critical == 0`, `trivy.high == 0`, `trivy.db_age_days <= 14` | dòng trong `.trivyignore` |
+
+**PR bị chặn vì sao.** Adapter chỉ *đếm* finding theo mức thành metric phẳng (`semgrep.high`, `trivy.critical`, `gitleaks.count`…); oracle `threshold` (đã có sẵn) so metric với ngưỡng ghi trong file suite. Muốn biết vì sao PR đỏ: mở `.qc-agent/suites/<suite>.yaml`, đọc `oracle.assertions`, rồi xem finding `rule @ file:dòng` trong comment PR (một review riêng gắn đúng dòng nếu dòng đó nằm trong diff; ngoài diff và mọi lỗ hổng thư viện thì nằm ở thân review). Đổi ngưỡng = sửa một dòng YAML, không sửa code. Mọi dòng bỏ qua (`nosemgrep`, `.gitleaksignore`, `.trivyignore`) nằm trong repo SUT nên **hiện trong diff của PR** để người review thấy.
+
+**Chạy offline để tái lập được.** Rule Semgrep vendored trong `rules/semgrep/` và copy vào image; DB CVE của Trivy nướng vào image lúc build (runtime `--skip-db-update`); gitleaks quét working tree (checkout nông, chỉ bắt secret *mới* đưa vào PR này; `inputs.history: true` quét lịch sử nhưng cần `fetch-depth: 0`). Đổi giá: rule/DB chỉ cập nhật khi có người build lại image, và `trivy.db_age_days` ép việc đó (image quá 14 ngày ⇒ gate đỏ). Container gate **có** ra được internet (mạng docker `qc-net` không `--internal`, `core/egress.py` chỉ ghi nhận khai báo, không chặn), nên tính offline nằm ở thiết kế của công cụ chứ không dựa vào mạng.
+
+**Công cụ hỏng không bao giờ là xanh.** Thiếu binary ⇒ `skipped` ⇒ gate FAIL (mode `pr` đặt `on_skipped_gate_task: fail`); công cụ chết, JSON hỏng, Semgrep báo `errors[]`, thiếu DB Trivy, repo không có lockfile ⇒ `error` ⇒ gate đỏ nhãn hạ tầng. gitleaks luôn chạy với `--redact` và adapter từ chối (rồi xoá) báo cáo còn giá trị secret, để chính gate quét secret không làm rò secret vào artifact. Đường dẫn trong suite bị từ chối nếu có `..`, tuyệt đối hoặc bắt đầu bằng `-`.
+
+**Trạng thái và giới hạn (nói thẳng).**
+- Đã có worker, suite mẫu (`qc-agent init` sinh sẵn), review gắn dòng và test âm tính; **chưa chạy bằng công cụ thật trong image** và chưa bật ở `configs/projects/` (suite mới chưa nằm trong `blocking_suites` cho tới bước ghép).
+- **Xanh không có nghĩa là an toàn.** Semgrep so khớp mẫu nên chắc chắn bỏ sót; bộ rule khởi điểm còn nhỏ. Gate chỉ bắt *lỗi đã có luật* và *CVE đã công bố*.
+- gitleaks mặc định không thấy secret đã bị xoá khỏi cây nhưng còn trong lịch sử; Trivy mù với CVE chưa vào DB của nó.
+- **Chưa kiểm tự động:** quyền của extension (`manifest.json`) và **đường đi của credential vào trang B** — vẫn là mục đọc tay khi review. DAST (ZAP) và quét container image để Later (§5.4).
 
 ---
 

@@ -146,6 +146,22 @@ PR từ **fork** không nhận secret: task cần key sẽ `skipped`; project n�
 ## 4. Chặn merge
 Branch protection của repo SUT → *Require status checks* → chọn job `qc-agent / <project>` (chính job trong workflow). Job **xanh/đỏ theo exit code của gate**: `0` PASS, `1` FAIL, `3` lỗi cấu hình/hệ thống. Check Run, comment và lịch sử chỉ là phần báo cáo: lỗi ở đó không làm đổi kết quả.
 
+### 4b. Bỏ qua một finding Security có lý do
+
+Khi gate Security (`sast`, `secrets`, `deps`) đỏ vì một finding mà bạn xác định là **chấp nhận được** (dương tính giả, hoặc rủi ro đã được duyệt), bỏ qua đúng finding đó bằng cơ chế của công cụ. Mọi dòng bỏ qua nằm **trong repo của bạn** nên hiện trong diff của PR để người review thấy. Đừng nới ngưỡng trong suite hay gỡ suite để "cho xanh".
+
+| Finding | Cách bỏ qua | Ví dụ |
+|---|---|---|
+| Semgrep (`sast`) | comment `# nosemgrep: <rule-id>` ở **chính dòng** bị báo (hoặc dòng ngay trên nó); ghi lý do ở một comment riêng liền trước | `# cmd là hằng do CI đặt, không nhận input` rồi `subprocess.run(cmd, shell=True)  # nosemgrep: python-subprocess-shell-true` |
+| gitleaks (`secrets`) | thêm **fingerprint** vào `.gitleaksignore` ở gốc repo (mỗi dòng một fingerprint, nên có comment `#` giải thích) | `# khoá giả trong tài liệu` rồi `docs/example.md:generic-api-key:12` |
+| Trivy (`deps`) | thêm mã CVE vào `.trivyignore` ở gốc repo, kèm lý do | `# chưa có bản vá; chỉ dùng ở dev, không lên production` rồi `CVE-2024-12345` |
+
+- Rule id, mã CVE và `file:dòng` có trong review Security của PR. Fingerprint của gitleaks (ở chế độ quét working tree có dạng `file:rule-id:dòng`) nằm trong `gitleaks.json` của artifact `qc-runs-*` (cùng `semgrep.json`, `trivy.json`).
+- Nếu là **secret thật**: đừng bỏ qua. Thu hồi/xoay secret ngay rồi xoá khỏi mã (xoá khỏi commit cuối là chưa đủ, secret vẫn nằm trong lịch sử git).
+- Bỏ qua là quyết định của người review PR, không phải của tác giả một mình. Ghi lý do đủ để người đọc sau này hiểu tại sao lúc đó chấp nhận.
+- `trivy.db_age_days` đỏ (báo cáo nói DB CVE quá 14 ngày) **không phải finding của bạn** và không bỏ qua được bằng cách trên: image qc-agent đang dùng đã cũ, hãy cập nhật digest `image:` trong `qc.yml` lên bản mới hơn.
+- Lỗi công cụ (`error`) hoặc công cụ thiếu (`skipped`) cũng làm gate đỏ nhưng là lỗi hạ tầng, không phải finding: báo cho phòng QC thay vì bỏ qua.
+
 ## 5. Kết quả ở đâu
 - **Comment dính** trên PR (một comment, cập nhật tại chỗ mỗi lần push): bảng task chặn merge, skipped/error, finding tham khảo.
 - **Check Run** `qc-agent / <project>`.
