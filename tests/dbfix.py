@@ -12,7 +12,7 @@ from qc_agent.jobs.db import make_engine, normalize_url, session_scope
 ADMIN_URL = os.environ.get("QC_TEST_DATABASE_URL", "")
 requires_pg = pytest.mark.skipif(not ADMIN_URL, reason="needs QC_TEST_DATABASE_URL (PostgreSQL)")
 
-TABLES = ["artifacts", "job_tasks", "jobs", "api_tokens", "sessions", "users", "projects"]
+TABLES = ["test_debt", "artifacts", "job_tasks", "jobs", "api_tokens", "sessions", "users", "projects"]
 
 
 def _url_for(name: str) -> str:
