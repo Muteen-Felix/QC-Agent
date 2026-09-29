@@ -52,6 +52,20 @@ Gate đọc chính sách từ nhánh **`main` của qc-agent** lúc chạy (`con
 suite chặn merge là **`api-contract`** (Schemathesis), còn `perf-smoke`/`ui-explore` chỉ tham khảo. Repo **không có API** và không có suite DeepEval deterministic thì chưa đủ điều kiện mode `pr`
 (exit 3), chỉ dùng được mode `manual`. Chi tiết: `docs/usage-ci.md` mục 1b.
 
+`init` cũng sinh ba suite Security: **`sast`** (Semgrep), **`secrets`** (gitleaks), **`deps`** (Trivy, cần có lockfile). Chúng **chưa chặn merge** cho tới khi policy của qc-agent liệt kê chúng ở `blocking_suites`
+(phòng QC bật sau khi thử trên repo thật); chạy thử ngay ở mode `manual` (`qc-agent run --project <slug> --mode manual --suites sast,secrets,deps`; mode `pr` từ chối suite ngoài policy). Muốn bỏ qua một finding có lý do: `docs/usage-ci.md` mục 4b.
+
+## Nợ test (`coverage-debt`): dò bề mặt mới chưa có test, không chặn merge
+`init` **chưa** tự sinh suite này (khác ba suite Security ở trên). Muốn bật: thêm
+`.qc-agent/suites/coverage-debt.yaml` vào repo của bạn — nội dung mẫu lấy từ
+`qc-agent`'s `src/qc_agent/scaffold/templates.py:coverage_debt_suite()` (copy nguyên văn, không có
+chỗ trống cần điền) — rồi nhờ phòng QC thêm `coverage-debt` vào **cả hai** `advisory_suites` và
+`advisory_yellow_suites` của project bạn trong `configs/projects/<slug>.yaml` (PR 3 dòng, mục dưới).
+Thiếu một trong hai thì suite hoặc không chạy (`qc-agent validate` báo NOTE), hoặc chạy nhưng im lặng
+PASS khi có nợ thay vì báo ⚪ (`validate` báo WARN nếu vậy). Chi tiết cách đọc kết quả, Check Run
+`neutral`, mục "Nợ test" trong comment, và file `.qc-agent/coverage.yaml` để bỏ qua một bề mặt có lý
+do: `docs/usage-ci.md` mục 4c.
+
 ## Muốn dashboard / `manual` từ web: đăng ký bằng PR 3 dòng vào qc-agent
 Không đăng ký thì bạn vẫn có gate PR đầy đủ (Check Run, comment, artifact). Muốn lịch sử trên dashboard, `--report-to` hoặc chạy `manual` từ web thì mở PR vào qc-agent thêm
 `configs/projects/<slug>.yaml`:
@@ -65,6 +79,8 @@ Phần policy bỏ trống thì kế thừa `_default` (dict gộp theo key, **l
 Không có cách tự đăng ký từ repo của bạn: chủ ý, để phòng QC review thay đổi chính sách.
 
 ## Giới hạn cần biết
+
+- Repo có chuỗi RPA/tích hợp với hệ thống ngoài cần hoàn tất hai spec trong `.qc-agent/integration/`, cung cấp `b_host` và một `.qc-agent/har/vahan-b.har` đã lọc. Khung do `init` sinh có `qc-agent:todo VERIFY`, nên gate chưa thể bật trước khi team xác nhận giao thức runner, selector UI và HAR. Gate PR chỉ dùng bản phát lại; suite `integration-live` chạm hệ thống thật chỉ chạy manual.
 - Scanner là heuristic: lựa chọn không chắc thì có `VERIFY`, nhưng **một ứng viên duy nhất mà sai thì không có VERIFY** (vd. health route nằm dưới router có prefix `/api` được đọc là `/health`).
   Pha 2 bắt được lỗi health nhờ OpenAPI sống; cổng và biến API của UI chỉ lộ ra khi gate chạy.
 - `Dockerfile.ui` chỉ cho SPA tĩnh (Vite, CRA, Next `output: 'export'`) và cần lockfile cạnh `package.json`.

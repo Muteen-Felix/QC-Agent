@@ -140,6 +140,12 @@ def perf_smoke_suite(*, script: str = ".qc-agent/perf/smoke.js", vus: int = 2, d
                                            "duration": _need(_DURATION, duration, "duration")})
 
 
+def coverage_debt_suite() -> str:
+    """Suite dò nợ test (lane discovery, threshold `debt.new == 0`). Không có chỗ trống: mọi repo dùng chung một mẫu.
+    `init` CHƯA tự sinh: suite chỉ có nghĩa khi policy liệt kê nó trong advisory_suites/advisory_yellow_suites (P2-8), nên bật theo từng project."""
+    return render("coverage-debt.yaml.tmpl", {})
+
+
 def k6_smoke_script(*, paths: list[str], refine: bool = False) -> str:
     """`refine=True`: danh sách path tạm (thường chỉ health path) nằm trong vùng REFINE để Pha 2 thay bằng GET không tham số từ OpenAPI sống."""
     if not paths:

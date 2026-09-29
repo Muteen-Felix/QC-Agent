@@ -1,0 +1,14 @@
+name: semgrep
+version_probe: "semgrep --version"
+adapter: "qc_agent/adapters/semgrep_adapter.py"
+lanes: [gate]
+capabilities:
+  - id: code.sast
+    oracle_kinds: [threshold]
+    verdict_sources: [deterministic_assert]
+    parallel_safe: true        # chỉ đọc file: chạy song song với worker khác được
+requires:
+  env: []
+  binaries: [semgrep]
+data_egress: [source_code]     # khai thật: mã nguồn được đưa vào công cụ. Chạy offline (rule vendored, --metrics=off) nên không rời máy
+cost_profile: { tokens_per_run: 0, typical_wallclock_s: 120 }

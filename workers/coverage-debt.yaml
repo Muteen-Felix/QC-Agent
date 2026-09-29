@@ -1,0 +1,14 @@
+name: coverage-debt
+version_probe: "git --version"
+adapter: "qc_agent/adapters/coverage_debt_adapter.py"
+lanes: [discovery]             # chỉ discovery: nợ test không bao giờ chặn merge (chỉ YELLOW qua policy advisory_yellow_suites)
+capabilities:
+  - id: repo.coverage_debt
+    oracle_kinds: [threshold]
+    verdict_sources: [deterministic_assert, heuristic]   # heuristic: khớp chuỗi để biết "đã có test chưa"; deterministic_assert: ngưỡng của oracle
+    parallel_safe: true        # chỉ đọc cây làm việc + git: chạy song song với worker khác được
+requires:
+  env: []
+  binaries: [git]
+data_egress: []                # đọc mã nguồn tại chỗ, không gửi gì ra ngoài máy
+cost_profile: { tokens_per_run: 0, typical_wallclock_s: 20 }

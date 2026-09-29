@@ -13,10 +13,12 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, MetaData,
-                        String, Text, UniqueConstraint, func)
+                        String, Text, UniqueConstraint, func, text)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+DEBT_CLOSE_REASONS = ("covered", "surface_gone", "ignored")
+DEBT_KINDS = ("api_contract", "api_endpoint", "ui_route")  # loại nợ do khâu dò nợ (Phase 2) sinh ra; cột `kind` KHÔNG có CHECK để Phase 3 dùng chung bảng
 JOB_STATUSES = ("queued", "running", "succeeded", "failed", "cancelled", "timed_out")
 TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
 JOB_SOURCES = ("web", "ci")
@@ -156,3 +158,27 @@ class Artifact(Base):
     storage_uri: Mapped[str] = mapped_column(String(1024))  # file:// hoặc s3:// (ArtifactStore, bước sau)
     job: Mapped[Job] = relationship(back_populates="artifacts")
     __table_args__ = (UniqueConstraint("job_id", "path", name="uq_artifacts_job_path"),)
+
+
+class DebtEntry(Base):
+    """Sổ nợ test: một dòng = một bề mặt (kind, surface) của project mà chưa có test. Mở khi khâu dò nợ thấy, đóng khi full-scan không còn thấy.
+    Một khoản đóng rồi mà xuất hiện lại là dòng MỚI (giữ lịch sử); chỉ được có một dòng ĐANG MỞ cho mỗi (project, kind, surface)."""
+    __tablename__ = "test_debt"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(32))  # api_contract | api_endpoint | ui_route | (Phase 3: loại khác) — cố ý không CHECK
+    surface: Mapped[str] = mapped_column(String(1024))  # vd. "GET /notes/{id}" hoặc "/settings"
+    opened_at: Mapped[datetime] = _ts(server_default=func.now())
+    closed_at: Mapped[datetime | None] = _ts(nullable=True)
+    closed_reason: Mapped[str | None] = mapped_column(String(16))
+    pr_url: Mapped[str | None] = mapped_column(String(512))  # PR làm phát sinh nợ (nếu biết)
+    opened_job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="RESTRICT"))
+    last_seen_job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="RESTRICT"))
+    last_seen_at: Mapped[datetime] = _ts(server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("closed_reason IS NULL OR closed_reason IN ('covered','surface_gone','ignored')", name="closed_reason_valid"),
+        CheckConstraint("(closed_at IS NULL) = (closed_reason IS NULL)", name="closed_pair"),  # đóng thì phải có lý do, và ngược lại
+        Index("uq_test_debt_open", "project_id", "kind", "surface", unique=True,
+              postgresql_where=text("closed_at IS NULL"), sqlite_where=text("closed_at IS NULL")),
+    )

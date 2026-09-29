@@ -14,10 +14,13 @@ class GateVerdict:
     banner: list = field(default_factory=list)  # in Ở ĐẦU report: skipped / error
 
 
-def gate_verdict(results: dict, specs: dict, skipped_gate_is_fail: bool = False) -> GateVerdict:
+def gate_verdict(results: dict, specs: dict, skipped_gate_is_fail: bool = False,
+                 yellow_on_fail: frozenset | set = frozenset()) -> GateVerdict:
     """results: {task_id: result_dict}; specs: {task_id: spec_dict} — chỉ gồm task ĐƯỢC CHỌN.
     skipped_gate_is_fail: task lane gate bị skipped (thiếu tool/probe hỏng/phụ thuộc không đạt) => FAIL thay vì YELLOW,
-    để gate không xanh giả khi một phần gate không chạy (mặc định False để giữ hành vi cũ)."""
+    để gate không xanh giả khi một phần gate không chạy (mặc định False để giữ hành vi cũ).
+    yellow_on_fail: task_id do policy chỉ định (advisory_yellow_suites, vd. nợ test): status=fail => YELLOW, không bao giờ FAIL.
+    Chỉ có tác dụng với task lane discovery; task gate luôn đi đường FAIL."""
     reasons, banner, skipped_gate = [], [], []
     fail = yellow = False
     gating_seen = 0
@@ -29,7 +32,10 @@ def gate_verdict(results: dict, specs: dict, skipped_gate_is_fail: bool = False)
             fail = fail or lane == "gate"
             continue
         st = r["status"]
-        if st == "error":
+        if tid in yellow_on_fail and lane != "gate" and st == "fail":
+            yellow = True
+            reasons.append((tid, "nợ/cảnh báo (advisory_yellow_suites), không chặn"))
+        elif st == "error":
             banner.append((tid, "error: " + str((r["verdict"].get("rationale") or ""))[:120]))
             if lane == "gate":
                 fail = True

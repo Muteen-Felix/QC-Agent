@@ -20,6 +20,32 @@ FROM ${NODE_IMAGE} AS node
 FROM ${K6_IMAGE} AS k6
 FROM ${UV_IMAGE} AS uv
 
+# ==== qc-agent:region security-stages (A) ====
+# Ba công cụ Security (Semgrep, gitleaks, Trivy) chạy OFFLINE trong gate: rule vendored, DB CVE nướng sẵn, không tải gì lúc chạy (tái lập được, không rò mã).
+# Ghim theo DIGEST như mọi image nền khác. Nâng phiên bản = đổi tag+digest ở đây qua PR có diff duyệt được. Lấy digest: xem chú thích đầu file.
+# Viết literal thay vì ARG vì ARG ở đầu file nằm ngoài vùng của Làn A. Semgrep dùng docker/semgrep.lock (có hash), tạo lại bằng:
+#   uv pip compile docker/semgrep.in --python-version 3.11 --python-platform x86_64-manylinux_2_34 --generate-hashes --no-header -o docker/semgrep.lock
+FROM zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f AS gitleaks
+
+# Trivy: binary + DB CVE nướng vào image lúc build (runtime chạy --skip-db-update). Tuổi DB do suite `deps` chặn qua trivy.db_age_days (<= 14): image cũ => gate đỏ, buộc build lại.
+# Cache thư mục ghi được cho mọi uid: gate chạy bằng `--user $(id -u)` của runner (không phải 10001) và Trivy có thể ghi khoá/cache cạnh DB.
+FROM aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 AS trivy
+RUN trivy --cache-dir /opt/trivy-cache image --download-db-only \
+    && test -s /opt/trivy-cache/db/metadata.json && chmod -R a+rwX /opt/trivy-cache
+
+# Semgrep (Python) trong venv RIÊNG: các phiên bản nó ghim (vd. jsonschema) lệch với uv.lock của qc-agent, nên không đưa vào lock chính.
+FROM ${PYTHON_IMAGE} AS semgrep
+COPY --from=uv /uv /bin/uv
+ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 UV_PYTHON_DOWNLOADS=never
+COPY docker/semgrep.lock /tmp/semgrep.lock
+RUN uv venv /opt/semgrep-venv --python /usr/local/bin/python \
+    && uv pip install --python /opt/semgrep-venv/bin/python --require-hashes --no-deps -r /tmp/semgrep.lock
+# ==== qc-agent:end ====
+
+# ==== qc-agent:region integration-stages (B) ====
+# (Làn B — Integration: stage phụ trợ cho playwright, nếu cần. Chỉ người B sửa trong vùng này.)
+# ==== qc-agent:end ====
+
 # ---- build: cài phụ thuộc + qc-agent (KHÔNG editable) từ uv.lock vào /opt/venv ----
 FROM ${PYTHON_IMAGE} AS build
 COPY --from=uv /uv /uvx /bin/
@@ -57,6 +83,25 @@ COPY docker/npx /usr/local/bin/npx
 RUN chmod +x /usr/local/bin/npx
 
 COPY --from=k6 /usr/bin/k6 /usr/bin/k6
+
+# ==== qc-agent:region security-runtime (A) ====
+COPY --from=gitleaks /usr/bin/gitleaks /usr/local/bin/gitleaks
+COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
+COPY --from=trivy /opt/trivy-cache /opt/trivy-cache
+COPY --from=semgrep /opt/semgrep-venv /opt/semgrep-venv
+COPY rules/semgrep /opt/qc-rules/semgrep
+# Semgrep không được gọi mạng lúc chạy (kiểm phiên bản/metrics). Đường dẫn binary do image nguồn quyết định: smoke test ngay khi build để thiếu/sai đường dẫn làm
+# BUILD đỏ chứ không phải đến lúc chạy gate mới thành `skipped`/`error`.
+ENV SEMGREP_SEND_METRICS=off SEMGREP_ENABLE_VERSION_CHECK=0
+RUN ln -s /opt/semgrep-venv/bin/semgrep /usr/local/bin/semgrep \
+    && chmod -R a+rX /opt/qc-rules /opt/semgrep-venv \
+    && gitleaks version && trivy --version && semgrep --version && test -s /opt/trivy-cache/db/metadata.json
+# ==== qc-agent:end ====
+
+# ==== qc-agent:region integration-runtime (B) ====
+# (Làn B — Integration: phần runtime của playwright, nếu cần. Chỉ người B sửa trong vùng này.)
+# ==== qc-agent:end ====
+
 COPY --from=build /opt/venv /opt/venv
 
 # @midscene/cli (ghim bằng package-lock.json) + Chromium của Playwright cùng các thư viện hệ thống của nó

@@ -1,0 +1,71 @@
+# Rule Semgrep của qc-agent cho Python (khâu Security, worker `semgrep`, suite `sast`). VENDORED: ghim trong image tại /opt/qc-rules/semgrep, chạy offline.
+# Mức: ERROR => metric semgrep.high (chặn merge ở mode pr) · WARNING => semgrep.medium · INFO => semgrep.low. Thêm/sửa rule = PR có diff duyệt được.
+rules:
+  - id: python-subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: subprocess được gọi với shell=True và lệnh không phải hằng chuỗi. Nếu lệnh có dữ liệu từ ngoài thì đây là chèn lệnh hệ điều hành; hãy truyền danh sách đối số và bỏ shell=True.
+    metadata: {category: security, cwe: ["CWE-78: OS Command Injection"]}
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+      - pattern-not: subprocess.$FUNC("...", ..., shell=True, ...)
+
+  - id: python-os-system-dynamic
+    languages: [python]
+    severity: ERROR
+    message: os.system với lệnh không phải hằng chuỗi. Nếu lệnh có dữ liệu từ ngoài thì đây là chèn lệnh hệ điều hành; dùng subprocess.run với danh sách đối số.
+    metadata: {category: security, cwe: ["CWE-78: OS Command Injection"]}
+    patterns:
+      - pattern: os.system($CMD)
+      - pattern-not: os.system("...")
+
+  - id: python-eval-exec-dynamic
+    languages: [python]
+    severity: ERROR
+    message: eval/exec với đối số không phải hằng chuỗi cho phép chạy mã tuỳ ý. Dùng ast.literal_eval hoặc bỏ hẳn.
+    metadata: {category: security, cwe: ["CWE-95: Eval Injection"]}
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: exec($X)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+
+  - id: python-yaml-unsafe-load
+    languages: [python]
+    severity: ERROR
+    message: yaml.load không có SafeLoader (hoặc yaml.unsafe_load) dựng được đối tượng Python tuỳ ý từ dữ liệu YAML. Dùng yaml.safe_load.
+    metadata: {category: security, cwe: ["CWE-502: Deserialization of Untrusted Data"]}
+    patterns:
+      - pattern-either:
+          - pattern: yaml.unsafe_load(...)
+          - pattern: yaml.load($X)
+          - pattern: yaml.load($X, Loader=yaml.Loader)
+          - pattern: yaml.load($X, Loader=yaml.UnsafeLoader)
+          - pattern: yaml.load($X, Loader=yaml.FullLoader)
+
+  - id: python-requests-verify-false
+    languages: [python]
+    severity: ERROR
+    message: Tắt kiểm tra chứng chỉ TLS (verify=False) khiến kết nối bị nghe lén/giả mạo. Bỏ verify=False hoặc trỏ tới CA bundle đúng.
+    metadata: {category: security, cwe: ["CWE-295: Improper Certificate Validation"]}
+    pattern-either:
+      - pattern: requests.$FUNC(..., verify=False, ...)
+      - pattern: httpx.$FUNC(..., verify=False, ...)
+      - pattern: httpx.Client(..., verify=False, ...)
+
+  - id: python-pickle-load
+    languages: [python]
+    severity: WARNING
+    message: pickle.load/loads chạy mã tuỳ ý khi dữ liệu không đáng tin. Chỉ dùng với dữ liệu do chính hệ thống ghi; nếu không, dùng JSON.
+    metadata: {category: security, cwe: ["CWE-502: Deserialization of Untrusted Data"]}
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+
+  - id: python-flask-debug-true
+    languages: [python]
+    severity: WARNING
+    message: Chạy ứng dụng với debug=True bật trình gỡ lỗi tương tác (chạy mã từ xa nếu lộ ra ngoài). Không bật ở môi trường thật.
+    metadata: {category: security, cwe: ["CWE-489: Active Debug Code"]}
+    pattern: $APP.run(..., debug=True, ...)

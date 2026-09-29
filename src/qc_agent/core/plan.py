@@ -55,11 +55,18 @@ def load_plan(path: str | Path) -> dict[str, Any]:
     if "selection" in raw and not isinstance(raw["selection"], dict):
         raise PlanError(f"plan {path}: selection phải là object")
 
+    yellow = raw.get("yellow_on_fail", [])
+    if not isinstance(yellow, list) or any(not isinstance(item, str) for item in yellow):
+        raise PlanError(f"plan {path}: yellow_on_fail phải là danh sách task_id")
+    unknown = [item for item in yellow if item not in task_ids]
+    if unknown:
+        raise PlanError(f"plan {path}: yellow_on_fail chứa task không có trong plan: {', '.join(unknown)}")
     plan: dict[str, Any] = {
         "name": raw["name"],
         "sut": raw["sut"],
         "tasks": tasks,
         "text": text,
+        "yellow_on_fail": yellow,
     }
     if "selection" in raw:
         plan["selection"] = raw["selection"]

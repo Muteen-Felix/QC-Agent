@@ -1,0 +1,35 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.74.0"
+  },
+  "ReportID": "01a0eb17-98ba-767c-b2ac-95a1b39cdf1c",
+  "CreatedAt": "2026-09-29T02:56:27.322427059Z",
+  "ArtifactName": ".",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Packages": [
+        {
+          "ID": "qc-agent-internal-placeholder@9.9.9",
+          "Name": "qc-agent-internal-placeholder",
+          "Identifier": {
+            "PURL": "pkg:npm/qc-agent-internal-placeholder@9.9.9",
+            "UID": "979cc749016da383"
+          },
+          "Version": "9.9.9",
+          "Locations": [
+            {
+              "StartLine": 7,
+              "EndLine": 7
+            }
+          ],
+          "AnalyzedBy": "npm"
+        }
+      ]
+    }
+  ]
+}

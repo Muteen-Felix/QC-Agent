@@ -16,6 +16,7 @@ from qc_agent.auth import service
 from qc_agent.core.evidence import sha256_file
 from qc_agent.jobs import repository as repo
 from qc_agent.jobs.db import session_scope
+from qc_agent.jobs.debt_report import try_apply_report_debt
 
 router = APIRouter(prefix="/api/v1", tags=["ingest"])
 log = logging.getLogger("qc_agent.api")
@@ -36,11 +37,14 @@ def _tasks_from_report(report: dict) -> list[dict]:
         if not isinstance(result, dict):
             continue
         cost, view = result.get("cost") or {}, gating.get(task_id) or {}
+        lane = result.get("lane")  # lane THẬT do CLI ghi vào report; payload cũ chưa có thì suy ra như trước (gate nếu gating)
+        findings = [f["title"] for f in result.get("findings") or [] if isinstance(f, dict) and isinstance(f.get("title"), str)]
         rows.append({
             "task_id": str(task_id)[:128], "worker": view.get("worker"), "capability": view.get("capability"),
-            "lane": "gate" if view else None, "status": str(result.get("status", "error"))[:16], "gating": bool(view),
+            "lane": lane[:16] if isinstance(lane, str) and lane else ("gate" if view else None),
+            "status": str(result.get("status", "error"))[:16], "gating": bool(view),
             "duration_s": cost.get("wallclock_s"), "tokens": cost.get("tokens"), "usd": cost.get("usd"),
-            "summary": {"metrics": result.get("metrics") or {}}})
+            "summary": {"metrics": result.get("metrics") or {}, "findings": findings}})
     return rows
 
 
@@ -95,6 +99,7 @@ async def ingest_run(slug: str, request: Request, response: Response):
                 artifacts.append({"path": name, "size_bytes": path.stat().st_size, "sha256": sha256_file(path),
                                   "storage_uri": path.resolve().as_uri()})
             repo.replace_job_results(session, job_id, _tasks_from_report(report), artifacts)
+            try_apply_report_debt(session, slug, job_id, report)  # nợ test (D2/D4): lỗi ở đây không làm mất job vừa ghi
     logging_setup.event(log, "job.ingested", job_id=str(job_id), project=slug, mode=run.mode, source="ci", gate=verdict, created=created)
     if not created:
         response.status_code = 200  # gửi lại cùng external_id: trả job cũ, không tạo trùng

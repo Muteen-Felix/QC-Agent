@@ -1,0 +1,14 @@
+name: playwright
+version_probe: "npx playwright --version"
+adapter: "qc_agent/adapters/playwright_adapter.py"
+lanes: [gate, discovery]
+capabilities:
+  - id: flow.integration
+    oracle_kinds: [checks]
+    verdict_sources: [deterministic_assert]
+    parallel_safe: false
+requires:
+  env: [APP_BASE_URL]
+  binaries: [npx]
+data_egress: [app_input, app_output]
+cost_profile: {tokens_per_run: 0, typical_wallclock_s: 180}

@@ -1,7 +1,8 @@
 """Cấu hình đa dự án: project (TẬP TRUNG ở qc-agent: configs/projects/<slug>.yaml) + suite (PHÂN TÁN ở repo SUT: <suites_dir>/<name>.yaml).
 
   project: slug, suites_dir, sut{files,attrs,probe_url}, modes{<mode>: policy}
-  mode `pr`-kiểu : blocking_suites (mọi task phải lane=gate), advisory_suites (mọi task phải lane=discovery), on_skipped_gate_task
+  mode `pr`-kiểu : blocking_suites (mọi task phải lane=gate), advisory_suites (mọi task phải lane=discovery), on_skipped_gate_task,
+                   advisory_yellow_suites (tập con của advisory_suites: task fail => verdict YELLOW thay vì im lặng)
   mode `manual`-kiểu: suites: "*" | [tên...] (lane giữ nguyên như suite khai báo)
   suite  : {suite: <tên == tên file>, tasks: [task như trong plan]}
 
@@ -70,6 +71,7 @@ PROJECT_SCHEMA = {
                 "properties": {
                     "blocking_suites": _NAME_LIST,
                     "advisory_suites": _NAME_LIST,
+                    "advisory_yellow_suites": _NAME_LIST,  # tập con của advisory_suites: task fail ở đây => YELLOW (nợ test), không chặn
                     "suites": {"oneOf": [{"const": "*"}, _NAME_LIST]},
                     "on_skipped_gate_task": {"enum": ["yellow", "fail"]},
                 },
@@ -169,6 +171,8 @@ def resolve_project(slug: str, projects_dir) -> tuple[dict, dict]:
     if pr is not None and not pr.get("blocking_suites"):
         raise PlanError(f"project {slug}: mode pr phải có ít nhất một suite trong blocking_suites (rỗng => gate luôn xanh giả). "
                         f"Repo không có suite gate thì chưa đủ điều kiện mode pr, chỉ dùng mode manual")
+    for mode_name, mode_policy in merged["modes"].items():
+        _check_yellow_subset(slug, mode_name, mode_policy)
     merged.setdefault("suites_dir", ".qc-agent/suites")
     info = {"source": "registered" if registered else "default", "files": files,
             "sha256": hashlib.sha256(json.dumps(merged, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()}
@@ -209,12 +213,20 @@ def _check_lanes(suite: dict, want: str, mode: str, role: str) -> None:
                 f"{role} của mode {mode!r} (cần lane={want}). Sửa suite cho khớp policy.")
 
 
+def _check_yellow_subset(slug: str, mode: str, policy: dict) -> None:
+    outside = [n for n in policy.get("advisory_yellow_suites") or [] if n not in (policy.get("advisory_suites") or [])]
+    if outside:
+        raise PlanError(f"project {slug}: mode {mode!r}: advisory_yellow_suites phải nằm trong advisory_suites "
+                        f"(suite chặn merge đã có verdict riêng), thừa: {', '.join(outside)}")
+
+
 def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: list[str] | None = None) -> tuple[dict, dict]:
     """Ghép các suite được policy chọn thành một plan (cùng hình dạng `load_plan`) + meta để ghi vào report."""
     policies = project["modes"]
     if mode not in policies:
         raise PlanError(f"project {project['slug']}: không có mode {mode!r} (có: {', '.join(sorted(policies))})")
     policy = policies[mode]
+    _check_yellow_subset(project["slug"], mode, policy)  # resolve_project đã kiểm; project dựng tay (test/API) không qua đó
 
     if "suites" in policy:
         names = sorted(suites) if policy["suites"] == "*" else list(policy["suites"])
@@ -243,7 +255,8 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
     if missing:
         raise PlanError(f"mode {mode!r} cần suite không có trong thư mục suite: {', '.join(missing)}")
 
-    tasks, seen = [], {}
+    yellow_suites = set(policy.get("advisory_yellow_suites") or [])
+    tasks, seen, yellow_on_fail = [], {}, []
     for name in names:
         suite = suites[name]
         if roles[name] == "blocking":
@@ -256,17 +269,22 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
                 raise PlanError(f"task_id {task_id!r} trùng giữa suite {seen[task_id]} và {name}")
             seen[task_id] = name
             tasks.append(copy.deepcopy(task))
+            if name in yellow_suites:
+                yellow_on_fail.append(task_id)
 
     sut = copy.deepcopy(project.get("sut", {}))
     plan = {"plan_version": 1, "name": f"{project['slug']}:{mode}", "sut": sut, "tasks": tasks}
+    if yellow_on_fail:  # nằm TRONG plan text: được hash vào plan_id và --rerender dựng lại đúng verdict
+        plan["yellow_on_fail"] = yellow_on_fail
     text = yaml.safe_dump(plan, allow_unicode=True, sort_keys=False)
     meta = {
         "project": project["slug"], "mode": mode,
         "suite_sha256": {n: suites[n]["sha256"] for n in names},
         "on_skipped_gate_task": policy.get("on_skipped_gate_task"),
         "absent_advisory_suites": absent_advisory,
+        "yellow_task_ids": list(yellow_on_fail),
     }
-    return {"name": plan["name"], "sut": sut, "tasks": tasks, "text": text}, meta
+    return {"name": plan["name"], "sut": sut, "tasks": tasks, "text": text, "yellow_on_fail": yellow_on_fail}, meta
 
 
 _ENV_REF = re.compile(r"\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}")

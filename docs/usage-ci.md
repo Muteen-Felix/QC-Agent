@@ -143,8 +143,87 @@ Bước `Refine (onboarding suggestions)` nằm **sau `Start SUT`, trước `Run
 
 PR từ **fork** không nhận secret: task cần key sẽ `skipped`; project nên đặt `on_skipped_gate_task: fail` cho mode `pr` để gate không xanh giả.
 
+### Integration với hệ thống ngoài qua HAR
+
+Suite `integration` gồm Tier 1 (runner giả) và Tier 2 (phát lại trang ngoài từ HAR), đều có thể chặn merge. Repo cần hoàn tất `.qc-agent/integration/tier1.spec.mjs`, `tier2.spec.mjs`, đặt HAR đã lọc tại `.qc-agent/har/vahan-b.har` và thay `b_host` trong suite. `qc-agent validate` từ chối khung còn `qc-agent:todo VERIFY`.
+
+Ghi lại HAR bằng tài khoản thử nghiệm hoặc dữ liệu ẩn danh, rồi chạy:
+
+```bash
+python tools/har_scrub.py raw.har .qc-agent/har/vahan-b.har
+git grep -i -E "authorization|cookie|bearer|eyJ" .qc-agent/har/
+```
+
+Không commit `raw.har`. Sau scrub vẫn cần người thứ hai xem response body vì công cụ lọc credential, không bảo đảm xoá dữ liệu cá nhân.
+
+Tier 3 nằm trong suite `integration-live`, chỉ chạy manual:
+
+```bash
+qc-agent run --project <slug> --mode manual --suites integration-live --sut-root <repo>
+```
+
+Tier 3 fail là tín hiệu trang ngoài hoặc flow đã đổi: điều tra rồi ghi HAR mới. Nó là discovery, không chặn merge và không được thêm vào `advisory_suites` của mode `pr`.
+
 ## 4. Chặn merge
 Branch protection của repo SUT → *Require status checks* → chọn job `qc-agent / <project>` (chính job trong workflow). Job **xanh/đỏ theo exit code của gate**: `0` PASS, `1` FAIL, `3` lỗi cấu hình/hệ thống. Check Run, comment và lịch sử chỉ là phần báo cáo: lỗi ở đó không làm đổi kết quả.
+
+### 4b. Bỏ qua một finding Security có lý do
+
+Khi gate Security (`sast`, `secrets`, `deps`) đỏ vì một finding mà bạn xác định là **chấp nhận được** (dương tính giả, hoặc rủi ro đã được duyệt), bỏ qua đúng finding đó bằng cơ chế của công cụ. Mọi dòng bỏ qua nằm **trong repo của bạn** nên hiện trong diff của PR để người review thấy. Đừng nới ngưỡng trong suite hay gỡ suite để "cho xanh".
+
+| Finding | Cách bỏ qua | Ví dụ |
+|---|---|---|
+| Semgrep (`sast`) | comment `# nosemgrep: <rule-id>` ở **chính dòng** bị báo (hoặc dòng ngay trên nó); ghi lý do ở một comment riêng liền trước | `# cmd là hằng do CI đặt, không nhận input` rồi `subprocess.run(cmd, shell=True)  # nosemgrep: python-subprocess-shell-true` |
+| gitleaks (`secrets`) | thêm **fingerprint** vào `.gitleaksignore` ở gốc repo (mỗi dòng một fingerprint, nên có comment `#` giải thích) | `# khoá giả trong tài liệu` rồi `docs/example.md:generic-api-key:12` |
+| Trivy (`deps`) | thêm mã CVE vào `.trivyignore` ở gốc repo, kèm lý do | `# chưa có bản vá; chỉ dùng ở dev, không lên production` rồi `CVE-2024-12345` |
+
+- Rule id, mã CVE và `file:dòng` có trong review Security của PR. Fingerprint của gitleaks (ở chế độ quét working tree có dạng `file:rule-id:dòng`) nằm trong `gitleaks.json` của artifact `qc-runs-*` (cùng `semgrep.json`, `trivy.json`).
+- Nếu là **secret thật**: đừng bỏ qua. Thu hồi/xoay secret ngay rồi xoá khỏi mã (xoá khỏi commit cuối là chưa đủ, secret vẫn nằm trong lịch sử git).
+- Bỏ qua là quyết định của người review PR, không phải của tác giả một mình. Ghi lý do đủ để người đọc sau này hiểu tại sao lúc đó chấp nhận.
+- `trivy.db_age_days` đỏ (báo cáo nói DB CVE quá 14 ngày) **không phải finding của bạn** và không bỏ qua được bằng cách trên: image qc-agent đang dùng đã cũ, hãy cập nhật digest `image:` trong `qc.yml` lên bản mới hơn.
+- Lỗi công cụ (`error`) hoặc công cụ thiếu (`skipped`) cũng làm gate đỏ nhưng là lỗi hạ tầng, không phải finding: báo cho phòng QC thay vì bỏ qua.
+
+### 4c. Nợ test (`coverage-debt`): không chặn, nhưng không được lờ
+
+Nếu policy của project bật `coverage-debt` trong `advisory_suites` **và** `advisory_yellow_suites`
+(mặc định của `noteboard`; xem `docs/architecture.md` §1.5), mỗi PR được dò bề mặt **mới thêm**
+(endpoint API, route UI, operation OpenAPI) mà **chưa có test nào chạm tới**. PR vẫn merge được —
+đây là nợ, không phải lỗi — nhưng bạn thấy ngay, không phải đoán:
+
+- Check Run: **⚪ `PASS hồi quy · N bề mặt mới chưa có test`** (kết luận `neutral`, không phải xanh
+  `success` trơn).
+- Comment dính có thêm mục **"⚠️ Nợ test mới phát sinh (Không chặn merge)"**, liệt kê từng bề mặt
+  (`kind` — `surface`).
+- Reusable workflow tự checkout `fetch-depth: 2` và đặt `QC_DIFF_BASE=HEAD^1` trên `pull_request` —
+  bạn không cần cấu hình gì để có bước này; workflow tái sử dụng phiên bản mới hơn tự có sẵn.
+
+**Bỏ qua một bề mặt có lý do** (ví dụ endpoint nội bộ không cần test, hoặc route đã có test ở nơi khác
+mà bộ dò không nhận ra): tạo `.qc-agent/coverage.yaml` ở gốc repo SUT.
+
+```yaml
+# .qc-agent/coverage.yaml — nằm trong repo của bạn nên mọi dòng bỏ qua hiện trong diff PR để người review thấy
+ignore:
+  - surface: "GET /internal/debug"
+    reason: chỉ dùng nội bộ, không thuộc hợp đồng public
+  - surface: "api_endpoint:POST /admin/*"     # tiền tố "<kind>:" tuỳ chọn, và glob (*) dùng được
+    reason: đã có test ở service khác, kiểm bằng contract test riêng
+
+test_globs:                                    # mặc định, chỉ khai khi thư mục test của bạn khác
+  - .qc-agent/**
+  - tests/**
+  - e2e/**
+  - midscene/**
+```
+
+- `ignore[].reason` **bắt buộc**, không được rỗng — đây là quyết định của người review, không phải
+  lối tắt để im lặng tắt cảnh báo.
+- `test_globs` là danh sách glob quyết định file nào được coi là "test" khi bộ dò kiểm "đã có test
+  chưa" (khớp tên đường dẫn theo mẫu, ví dụ `spec/**` cho repo dùng Playwright ở thư mục `spec/`).
+- Nợ **thuộc về repo**, không thuộc về một PR: nợ mở ở PR này mà không có test theo kịp thì vẫn nằm
+  trong sổ, không tự hết hạn. Nợ chỉ đóng khi **full-scan** (chạy `qc-agent run --mode manual`, hoặc
+  Mode 2 qua executor của dashboard) không còn thấy bề mặt đó thiếu test nữa.
+- Xem sổ nợ hiện có: `GET /api/v1/projects/<slug>/debt?open=true` (cần đăng nhập; API của dashboard,
+  không phải endpoint của SUT).
 
 ## 5. Kết quả ở đâu
 - **Comment dính** trên PR (một comment, cập nhật tại chỗ mỗi lần push): bảng task chặn merge, skipped/error, finding tham khảo.

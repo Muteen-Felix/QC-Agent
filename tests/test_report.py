@@ -121,3 +121,12 @@ def test_gate_detail_prefers_metrics_the_oracle_asserts_on():
     spec = {"oracle": {"kind": "threshold", "assertions": [{"metric": "http_req_duration.p95"}, {"metric": "http_req_failed.rate"}]}}
     assert _gate_detail(result, spec) == "http_req_duration.p95=5.5, http_req_failed.rate=0"
     assert _gate_detail(result, {"oracle": {"kind": "checks"}}) == "checks.fails=0, checks.passes=9"  # không có assertion: như trước
+
+
+def test_report_json_carries_real_lane_and_finding_ids_per_task_for_ingest():
+    """CI ingest/executor cần lane THẬT (không suy ra từ deterministic_view) và finding_id (dựng sổ nợ); chỉ id + tiêu đề, không evidence."""
+    _, data = render(context())
+    results = data["details"]["results"]
+    assert {tid: r["lane"] for tid, r in results.items()} == {"t-gate": "gate", "t-ai": "gate", "t-ui": "discovery"}
+    assert results["t-ai"]["findings"] == [{"finding_id": "f-ai", "title": "Giữ ý chính"}]
+    assert results["t-gate"]["findings"] == [] and set(results["t-ai"]) == {"status", "lane", "cost", "metrics", "findings"}

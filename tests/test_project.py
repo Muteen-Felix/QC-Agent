@@ -34,15 +34,18 @@ def build(tmp_path, sut, mode="pr", **kw):
 def test_reference_project_and_suites_load_and_build_both_modes():
     cfg = pj.load_project("noteboard", PROJECTS)
     suites = pj.load_suites(NOTEBOARD_SUT / cfg["suites_dir"])
-    assert sorted(suites) == ["ai-eval", "api-contract", "perf-full", "perf-smoke", "ui-explore"]
+    assert sorted(suites) == ["ai-eval", "api-contract", "coverage-debt", "perf-full", "perf-smoke", "ui-explore"]
     pr, meta = pj.build_plan(cfg, "pr", suites)
-    assert [t["task_id"] for t in pr["tasks"]] == ["t-001", "t-003", "t-101", "t-canary-01", "t-102"]
-    assert meta["on_skipped_gate_task"] == "fail" and set(meta["suite_sha256"]) == {"api-contract", "ai-eval", "ui-explore", "perf-smoke"}
+    assert [t["task_id"] for t in pr["tasks"]] == ["t-001", "t-003", "t-101", "t-canary-01", "t-102", "t-103"]
+    assert meta["on_skipped_gate_task"] == "fail"
+    assert set(meta["suite_sha256"]) == {"api-contract", "ai-eval", "ui-explore", "perf-smoke", "coverage-debt"}
+    assert meta["yellow_task_ids"] == ["t-103"]  # P2-8: coverage-debt bật advisory_yellow_suites ở noteboard.yaml
     manual, _ = pj.build_plan(cfg, "manual", suites)
     assert "t-002" in {t["task_id"] for t in manual["tasks"]}  # perf-full chỉ chạy thủ công
     assert "t-002" not in {t["task_id"] for t in pr["tasks"]}
+    assert "t-103" in {t["task_id"] for t in manual["tasks"]}
     lanes = {t["task_id"]: t["lane"] for t in pr["tasks"]}
-    assert lanes["t-102"] == "discovery" and meta["on_skipped_gate_task"] == "fail"  # perf-smoke trên PR: không bao giờ là gate
+    assert lanes["t-102"] == "discovery" and lanes["t-103"] == "discovery" and meta["on_skipped_gate_task"] == "fail"  # coverage-debt trên PR: không bao giờ là gate
     assert {t["task_id"]: t["lane"] for t in manual["tasks"]}["t-002"] == "gate"
 
 
@@ -319,3 +322,42 @@ def test_absent_advisory_suite_is_skipped_but_absent_blocking_suite_is_an_error(
     projects = write_project(tmp_path, slug="b", modes={"pr": {"blocking_suites": ["nope"]}})
     with pytest.raises(PlanError, match="cần suite không có"):
         pj.build_plan(pj.load_project("b", projects), "pr", suites)
+
+
+# ---- advisory_yellow_suites (nợ test → YELLOW) ----
+
+def test_advisory_yellow_suites_marks_only_those_tasks_in_plan_text(tmp_path, sut):
+    projects = write_project(tmp_path, modes={"pr": {"blocking_suites": ["core"], "advisory_suites": ["extra"], "advisory_yellow_suites": ["extra"]}})
+    cfg = pj.load_project("demo", projects)
+    suites = pj.load_suites(sut / ".qc-agent" / "suites")
+    plan, meta = pj.build_plan(cfg, "pr", suites)
+    extra_ids = [t["task_id"] for t in suites["extra"]["tasks"]]
+    assert plan["yellow_on_fail"] == extra_ids == meta["yellow_task_ids"]
+    assert "yellow_on_fail" in plan["text"]  # nằm trong plan text => hash vào plan_id, --rerender dựng lại đúng verdict
+
+
+def test_plan_text_unchanged_without_advisory_yellow_suites(tmp_path, sut):
+    plan, _ = build(tmp_path, sut)
+    assert plan["yellow_on_fail"] == [] and "yellow_on_fail" not in plan["text"]  # project cũ giữ nguyên plan_id
+
+
+def test_advisory_yellow_suites_must_be_subset_of_advisory(tmp_path):
+    projects = write_project(tmp_path, modes={"pr": {"blocking_suites": ["core"], "advisory_suites": ["extra"], "advisory_yellow_suites": ["core"]}})
+    with pytest.raises(PlanError, match="advisory_yellow_suites phải nằm trong advisory_suites"):
+        pj.load_project("demo", projects)
+
+
+def test_build_plan_rejects_yellow_outside_advisory_even_when_project_bypasses_load(tmp_path, sut):
+    projects = write_project(tmp_path, modes={"pr": {"blocking_suites": ["core"], "advisory_suites": ["extra"]}})
+    cfg = pj.load_project("demo", projects)
+    cfg["modes"]["pr"]["advisory_yellow_suites"] = ["core"]  # blocking, không phải advisory
+    with pytest.raises(PlanError, match="advisory_yellow_suites phải nằm trong advisory_suites"):
+        pj.build_plan(cfg, "pr", pj.load_suites(sut / ".qc-agent" / "suites"))
+
+
+def test_load_plan_rejects_unknown_yellow_task(tmp_path):
+    from qc_agent.core.plan import load_plan
+    path = tmp_path / "p.yaml"
+    path.write_text("name: x\nsut: {}\nyellow_on_fail: [nope]\ntasks:\n- {task_id: a}\n", encoding="utf-8")
+    with pytest.raises(PlanError, match="yellow_on_fail chứa task không có"):
+        load_plan(path)

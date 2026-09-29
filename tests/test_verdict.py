@@ -47,3 +47,36 @@ def test_skipped_gate_is_fail_ignores_discovery_and_clean_runs():
 def test_banner_lists_skipped_and_error():
     g = gate_verdict({"a": R(), "b": SKIP, "c": ERR}, {"a": G, "b": G, "c": G})
     assert {t for t, _ in g.banner} == {"b", "c"}
+
+
+DEBT = R("fail", "non_gating", False, "heuristic", "2 bề mặt mới chưa có test")
+
+
+def test_yellow_on_fail_debt_makes_yellow_not_fail():
+    g = gate_verdict({"a": R(), "d": DEBT}, {"a": G, "d": D}, yellow_on_fail={"d"})
+    assert (g.value, g.exit_code) == ("YELLOW", 0) and [t for t, _ in g.reasons] == ["d"]
+
+
+def test_yellow_on_fail_never_hides_a_gate_failure():
+    g = gate_verdict({"a": R("fail", "fail"), "d": DEBT}, {"a": G, "d": D}, yellow_on_fail={"d"})
+    assert (g.value, g.exit_code) == ("FAIL", 1)
+
+
+def test_yellow_on_fail_error_and_pass_do_not_turn_yellow():
+    g = gate_verdict({"a": R(), "d": ERR}, {"a": G, "d": D}, yellow_on_fail={"d"})
+    assert (g.value, g.exit_code) == ("PASS", 0) and [t for t, _ in g.banner] == ["d"]  # hạ tầng: PASS + banner, không đoán §1.1
+    assert gate_verdict({"a": R(), "d": R("pass", "non_gating", False, "heuristic")}, {"a": G, "d": D}, yellow_on_fail={"d"}).value == "PASS"
+
+
+def test_yellow_on_fail_is_opt_in_per_task():
+    """Discovery fail không nằm trong policy (vd. canary/ui-explore) vẫn PASS."""
+    assert gate_verdict({"a": R(), "d": DEBT, "m": DEBT}, {"a": G, "d": D, "m": D}, yellow_on_fail=set()).value == "PASS"
+    assert gate_verdict({"a": R(), "m": DEBT}, {"a": G, "m": D}, yellow_on_fail={"d"}).value == "PASS"
+    g = gate_verdict({"a": R(), "ui-explore": DEBT, "debt": DEBT}, {"a": G, "ui-explore": D, "debt": D}, yellow_on_fail={"debt"})
+    assert g.value == "YELLOW" and [t for t, _ in g.reasons] == ["debt"]  # ui-explore fail không góp vào YELLOW
+    assert gate_verdict({"a": R(), "ui-explore": DEBT}, {"a": G, "ui-explore": D}, yellow_on_fail={"debt"}).value == "PASS"
+
+
+def test_yellow_on_fail_ignored_for_gate_lane_task():
+    g = gate_verdict({"a": R("fail", "fail")}, {"a": G}, yellow_on_fail={"a"})
+    assert g.value == "FAIL"

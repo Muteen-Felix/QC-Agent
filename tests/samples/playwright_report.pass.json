@@ -1,0 +1,9 @@
+{
+  "suites": [{
+    "title": "tier2.spec.mjs",
+    "specs": [
+      {"title": "filter_applied", "tests": [{"results": [{"status": "passed"}]}]},
+      {"title": "report_downloaded", "tests": [{"results": [{"status": "passed"}]}]}
+    ]
+  }]
+}

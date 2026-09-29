@@ -1,0 +1,42 @@
+[
+  {
+    "RuleID": "gcp-api-key",
+    "Description": "Uncovered a GCP API key, which could lead to unauthorized access to Google Cloud services and data breaches.",
+    "StartLine": 2,
+    "EndLine": 2,
+    "StartColumn": 13,
+    "EndColumn": 52,
+    "Match": "REDACTED\"",
+    "Secret": "REDACTED",
+    "File": "apps/api-server/app/config.py",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 4.6506615,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "Fingerprint": "apps/api-server/app/config.py:gcp-api-key:2"
+  },
+  {
+    "RuleID": "slack-bot-token",
+    "Description": "Identified a Slack Bot token, which may compromise bot integrations and communication channel security.",
+    "StartLine": 2,
+    "EndLine": 2,
+    "StartColumn": 25,
+    "EndColumn": 80,
+    "Match": "REDACTED",
+    "Secret": "REDACTED",
+    "File": "scripts/deploy.sh",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 4.6806836,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "Fingerprint": "scripts/deploy.sh:slack-bot-token:2"
+  }
+]

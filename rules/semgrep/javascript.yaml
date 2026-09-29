@@ -1,0 +1,52 @@
+# Rule Semgrep của qc-agent cho JavaScript/TypeScript (kể cả mã extension). Xem python.yaml về cách ghim và mức nghiêm trọng.
+rules:
+  - id: js-eval-dynamic
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: eval / new Function với đối số không phải hằng chuỗi cho phép chạy mã tuỳ ý (và bị CSP của extension chặn). Dùng JSON.parse hoặc bỏ hẳn.
+    metadata: {category: security, cwe: ["CWE-95: Eval Injection"]}
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: new Function(...)
+      - pattern-not: eval("...")
+
+  - id: js-child-process-exec-dynamic
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: child_process.exec với lệnh không phải hằng chuỗi là chèn lệnh hệ điều hành nếu có dữ liệu từ ngoài; dùng execFile/spawn với danh sách đối số.
+    metadata: {category: security, cwe: ["CWE-78: OS Command Injection"]}
+    patterns:
+      - pattern-either:
+          - pattern: child_process.exec($CMD, ...)
+          - pattern: require("child_process").exec($CMD, ...)
+      - pattern-not: child_process.exec("...", ...)
+      - pattern-not: require("child_process").exec("...", ...)
+
+  - id: js-innerhtml-dynamic
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Gán innerHTML/outerHTML bằng giá trị không phải hằng chuỗi có thể gây XSS. Dùng textContent hoặc làm sạch bằng thư viện chuyên dụng.
+    metadata: {category: security, cwe: ["CWE-79: Cross-site Scripting"]}
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $X
+          - pattern: $EL.outerHTML = $X
+      - pattern-not: $EL.innerHTML = "..."
+      - pattern-not: $EL.outerHTML = "..."
+
+  - id: js-document-write
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: document.write chèn HTML thô vào trang (XSS nếu có dữ liệu từ ngoài). Dùng DOM API.
+    metadata: {category: security, cwe: ["CWE-79: Cross-site Scripting"]}
+    pattern-either:
+      - pattern: document.write(...)
+      - pattern: document.writeln(...)
+
+  - id: js-tls-reject-unauthorized-false
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: rejectUnauthorized false tắt kiểm tra chứng chỉ TLS. Bỏ tuỳ chọn này hoặc cấu hình CA đúng.
+    metadata: {category: security, cwe: ["CWE-295: Improper Certificate Validation"]}
+    pattern: "{..., rejectUnauthorized: false, ...}"

@@ -36,6 +36,7 @@ from qc_agent.core.project import ProjectResolver
 from qc_agent.core.evidence import sha256_file
 from qc_agent.jobs import repository as repo
 from qc_agent.jobs.db import make_engine, session_scope
+from qc_agent.jobs.debt_report import try_apply_report_debt
 from qc_agent.jobs.models import TERMINAL_STATUSES, Job, Project
 
 _LOG_TAIL = 2000
@@ -292,11 +293,20 @@ class Executor:
             code, report = outcome["code"], _read_json(run_dir / "report.json")
             if code in (0, 1) and isinstance(report, dict) and report.get("gate_verdict") in ("PASS", "YELLOW", "FAIL"):
                 verdict = report["gate_verdict"]
+                self._apply_debt(job.id, slug, report)  # trước _end: nếu executor chết giữa chừng, job được requeue và ghi lại (idempotent)
                 self._end(job.id, "failed" if verdict == "FAIL" else "succeeded", gate_verdict=verdict, exit_code=code,
                           run_id=str(job.id))
             else:  # exit 3 (lỗi plan/cấu hình/nội bộ) hoặc không có report: lỗi hệ thống, không phải kết quả gate
                 self._end(job.id, "failed", exit_code=code, run_id=str(job.id) if stored else None,
                           error=_tail(log_path) or f"qc-agent thoát với mã {code}")
+
+    def _apply_debt(self, job_id: uuid.UUID, slug: str, report: dict) -> None:
+        """Mode 2: run xong có report.json => ghi nợ test (full-scan mới đóng nợ). Không bao giờ làm đổi kết cục của job."""
+        try:
+            with session_scope(self.engine) as s:
+                try_apply_report_debt(s, slug, job_id, report)
+        except Exception as exc:  # noqa: BLE001 — mất kết nối DB lúc này cũng chỉ là mất phần ghi nợ
+            logging_setup.event(log, "debt.apply_failed", logging.ERROR, error_type=type(exc).__name__)
 
     def _end(self, job_id: uuid.UUID, status: str, **fields) -> None:
         try:

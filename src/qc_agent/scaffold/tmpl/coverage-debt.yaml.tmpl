@@ -1,0 +1,37 @@
+# qc-agent:generated — dò NỢ TEST: bề mặt MỚI thêm (endpoint API, route UI, operation OpenAPI) mà chưa test nào chạm tới.
+# Lane discovery: không bao giờ chặn merge. Policy bật nó bằng modes.<mode>.advisory_suites + advisory_yellow_suites
+# (fail => check ⚪ neutral + comment liệt kê). Cần checkout fetch-depth: 2; có QC_DIFF_BASE => chỉ xét bề mặt của PR, không có => quét toàn bộ.
+# Bỏ qua một bề mặt CÓ LÝ DO: .qc-agent/coverage.yaml -> ignore: [{surface, reason}] (hiện trong diff PR để người review thấy).
+suite: coverage-debt
+description: Nợ test - bề mặt mới chưa có test (mode pr, không chặn; nợ vào sổ test_debt)
+tasks:
+- task_id: t-103
+  capability: repo.coverage_debt
+  lane: discovery
+  intent: 'Nợ test: endpoint / route UI / contract mới thêm mà chưa có test nào chạm tới'
+  target:
+    kind: source_tree
+    base_url: ${env.APP_BASE_URL}
+  inputs: {}
+  oracle:
+    kind: threshold
+    assertions:
+    - metric: debt.new
+      op: ==
+      value: 0
+  expected_result_kind: candidate_finding
+  budget:
+    wallclock_s: 120
+    tokens: 0
+    usd: 0
+  determinism:
+    seed: null
+    replayable: true
+  evidence_required:
+  - raw_output
+  - stdout
+  retry:
+    max: 0
+    'on': []
+  prefer:
+  - coverage-debt

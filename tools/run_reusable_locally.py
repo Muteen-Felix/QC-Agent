@@ -52,13 +52,26 @@ class Context:
             root = root.get(part) if isinstance(root, dict) else None
         return root
 
+    def _atom(self, atom: str):
+        """Một vế: `A == 'x'` / `A != 'x'` (ra bool), chuỗi 'literal', hoặc đường dẫn chấm."""
+        comparison = re.fullmatch(r"(\S+)\s*(==|!=)\s*'([^']*)'", atom)
+        if comparison:
+            value = self.lookup(comparison.group(1))
+            equal = ("" if value is None else str(value).lower() if isinstance(value, bool) else str(value)) == comparison.group(3)
+            return equal == (comparison.group(2) == "==")
+        if atom.startswith("'") and atom.endswith("'"):
+            return atom[1:-1]
+        return self.lookup(atom)
+
     def evaluate(self, expression: str) -> str:
-        """Chỉ hỗ trợ: đường dẫn chấm, chuỗi 'literal', và toán tử || (lấy giá trị đầu tiên khác rỗng)."""
+        """Hỗ trợ: đường dẫn chấm, chuỗi 'literal', so sánh `==`/`!=` với literal, `&&` và `||` theo ngữ nghĩa của GitHub
+        (`a && b` cho b nếu a đúng, không thì a; `a || b` cho vế đầu tiên khác rỗng) => `github.event_name == 'x' && 'v' || ''` chạy đúng."""
         for operand in (o.strip() for o in expression.split("||")):
-            if operand.startswith("'") and operand.endswith("'"):
-                value = operand[1:-1]
-            else:
-                value = self.lookup(operand)
+            value = None
+            for atom in (a.strip() for a in operand.split("&&")):
+                value = self._atom(atom)
+                if value in (None, "", False):
+                    break  # vế đầu của && sai: cả toán hạng nhận giá trị sai đó
             if value not in (None, "", False):
                 return str(value).lower() if isinstance(value, bool) else str(value)
         return ""

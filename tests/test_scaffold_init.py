@@ -18,10 +18,18 @@ import yaml
 from qc_agent.core import project as pj
 from qc_agent.core.cli import main as cli_main
 from qc_agent.scaffold import init as init_mod
-from qc_agent.scaffold import openapi
+from qc_agent.scaffold import openapi, suites_integration, suites_security
 from qc_agent.scaffold import templates as t
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def lane_files() -> list[str]:
+    """File mà suites_security/suites_integration (Phase 1, mỗi làn một module) thêm vào kế hoạch `init`; lấy từ chính chúng nên thêm mẫu mới không phải sửa test này."""
+    labels: list[str] = []
+    for lane in (suites_security, suites_integration):
+        lane.add_suites(lambda rel, content: labels.append(rel), init_mod.Options(sut_root=SCAN_FIXTURE))
+    return labels
 VAHAN = ROOT / "tests" / "fixtures" / "openapi" / "vahan-rpa.json"
 NOTEBOARD = ROOT / "tests" / "fixtures" / "sut" / "noteboard"
 
@@ -177,9 +185,11 @@ def workflow_with(tmp_path):
 
 def test_vahan_fixture_generates_the_phase1_file_set_with_a_real_ui_dockerfile(tmp_path):
     plan, outcomes = run_init(tmp_path)
-    assert [o.label for o in outcomes] == [
+    labels = [o.label for o in outcomes]
+    assert [label for label in labels if label not in lane_files()] == [
         ".qc-agent/suites/api-contract.yaml", ".qc-agent/suites/perf-smoke.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/Dockerfile.ui",
         ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml", ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml"]
+    assert set(lane_files()) <= set(labels)      # suite Security/Integration được sinh cùng
     assert all(o.status == "created" for o in outcomes) and plan.slug == "vahan-rpa"
     dockerfile = read(tmp_path, ".qc-agent/Dockerfile.ui")
     assert "FROM node:22-alpine AS build" in dockerfile and "RUN npm ci" in dockerfile and "ARG VITE_API_URL" in dockerfile
@@ -287,14 +297,16 @@ def test_init_writes_only_inside_sut_root_and_leaves_no_temp_files(tmp_path):
 def test_todos_are_reported_with_their_location(tmp_path):
     _, outcomes = run_init(tmp_path)
     todos = {o.label: o.todos for o in outcomes if o.todos}
-    assert set(todos) == {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/midscene/explore.yaml", ".github/workflows/qc.yml"}
+    assert set(todos) == {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/midscene/explore.yaml",
+                          ".qc-agent/integration/tier1.spec.mjs", ".qc-agent/integration/tier2.spec.mjs", ".github/workflows/qc.yml"}
     assert all(entry.startswith("dòng ") for entries in todos.values() for entry in entries)
 
 
 def test_pins_given_leave_only_the_scanner_and_refine_todos(tmp_path):
     _, outcomes = run_init(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, openapi_source=str(VAHAN),
                            sut_env=["X=y"])
-    assert {o.label for o in outcomes if o.todos} == {".qc-agent/midscene/explore.yaml"}
+    assert {o.label for o in outcomes if o.todos} == {".qc-agent/midscene/explore.yaml", ".qc-agent/integration/tier1.spec.mjs",
+                                                       ".qc-agent/integration/tier2.spec.mjs"}
 
 
 def test_existing_files_are_never_overwritten_without_force(tmp_path):
@@ -311,7 +323,7 @@ def test_a_partial_rerun_only_creates_missing_files(tmp_path):
     run_init(tmp_path)
     (tmp_path / "sut" / ".qc-agent" / "perf" / "smoke.js").unlink()
     _, outcomes = run_init(tmp_path)
-    assert {o.label: o.status for o in outcomes}[".qc-agent/perf/smoke.js"] == "created" and [o.status for o in outcomes].count("kept") == 7
+    assert {o.label: o.status for o in outcomes}[".qc-agent/perf/smoke.js"] == "created" and [o.status for o in outcomes].count("kept") == 7 + len(lane_files())
 
 
 def test_dry_run_writes_nothing_and_shows_a_diff_when_forcing(tmp_path):
@@ -338,7 +350,7 @@ def test_generated_files_load_through_the_real_loaders_and_the_default_policy(tm
 def test_no_api_generates_only_ui_and_warns_it_is_not_eligible_for_pr_mode(tmp_path):
     plan, outcomes = run_init(tmp_path, no_api=True)
     assert {o.label for o in outcomes} == {".qc-agent/Dockerfile.ui", ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml",
-                                           ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml"}
+                                           ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml", *lane_files()}    # Security/Integration không phụ thuộc API
     assert any("không đủ điều kiện mode pr" in w for w in plan.warnings)
     assert "sut_health_path" not in workflow_with(tmp_path) and "sut_env" not in workflow_with(tmp_path)
 

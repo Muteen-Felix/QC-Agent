@@ -3,15 +3,17 @@ tranh nhau chỉ một bên thắng, không có cửa sổ đọc-rồi-ghi. Hà
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from qc_agent.jobs.models import JOB_SOURCES, TERMINAL_STATUSES, TRANSITIONS, Artifact, Job, JobTask, Project
+from qc_agent.jobs.models import (DEBT_KINDS, JOB_SOURCES, TERMINAL_STATUSES, TRANSITIONS, Artifact, DebtEntry, Job, JobTask,
+                                  Project)
 
 _UPDATABLE = {"gate_verdict", "exit_code", "run_id", "error", "heartbeat_at"}
 
@@ -227,3 +229,84 @@ def create_finished_job(session: Session, project_slug: str, *, external_id: str
     session.flush()
     session.refresh(job)
     return job, True
+
+
+# ---- sổ nợ test (test_debt) ----
+
+_DEBT_CHUNK = 500   # giữ số tham số bind mỗi câu lệnh nhỏ (giới hạn 65535 của giao thức PostgreSQL)
+
+
+@dataclass(frozen=True)
+class DebtDelta:
+    """Kết quả một lần `apply_debt`: các cặp (kind, surface) đã sắp xếp; `closed` kèm lý do."""
+    opened: tuple = ()      # mới mở lần này
+    refreshed: tuple = ()   # đang mở từ trước, thấy lại
+    closed: tuple = ()      # (kind, surface, closed_reason)
+
+
+def _debt_keys(items: Iterable, what: str) -> frozenset:
+    keys = set()
+    for item in items:
+        try:
+            kind, surface = item
+        except (TypeError, ValueError):
+            raise ValueError(f"{what}: mỗi phần tử phải là cặp (kind, surface), nhận {item!r}") from None
+        if not (isinstance(kind, str) and kind and len(kind) <= 32 and isinstance(surface, str) and surface and len(surface) <= 1024):
+            raise ValueError(f"{what}: kind (1..32 ký tự) và surface (1..1024 ký tự) phải là chuỗi không rỗng, nhận {item!r}"[:300])
+        keys.add((kind, surface))
+    return frozenset(keys)
+
+
+def apply_debt(session: Session, project_slug: str, *, job_id: uuid.UUID, findings: Iterable, full_scan: bool,
+               pr_url: str | None = None, ignored: Iterable = (), gone: Iterable = (), kinds: Iterable[str] = DEBT_KINDS) -> DebtDelta:
+    """Áp kết quả MỘT lần dò nợ vào sổ. `findings` = các cặp (kind, surface) chưa có test trong lần quét này.
+
+    Luôn: mở khoản mới (upsert nguyên tử theo dòng đang mở: chạy lại cùng job/finding không nhân đôi, chỉ làm mới last_seen_*).
+    Chỉ khi `full_scan` (quét toàn bộ, Mode 2): đóng các khoản đang mở thuộc `kinds` mà lần quét này KHÔNG còn thấy.
+    Diff-scan (full_scan=False) tuyệt đối không đóng gì: nó chỉ nhìn thấy phần thay đổi của PR, "vắng mặt" không có nghĩa là đã có test (D4).
+    Lý do đóng: `ignored` (đang bị coverage.yaml bỏ qua) > `gone` (bề mặt không còn trong code, nếu caller biết) > `covered`.
+    `kinds` giới hạn phạm vi được đóng: dòng của loại khác (Phase 3) dùng chung bảng không bao giờ bị full-scan này đóng oan.
+    Caller KHÔNG được gọi hàm này với kết quả `error`: lần quét lỗi không có quyền nói "hết nợ"."""
+    seen = _debt_keys(findings, "findings")
+    ignored_keys, gone_keys = _debt_keys(ignored, "ignored"), _debt_keys(gone, "gone")
+    scope = frozenset(kinds)
+    project = get_project(session, project_slug)
+    now = _now()
+
+    open_now = {(row.kind, row.surface) for row in session.execute(
+        select(DebtEntry.kind, DebtEntry.surface).where(DebtEntry.project_id == project.id, DebtEntry.closed_at.is_(None)))}
+
+    rows = sorted(seen)
+    for start in range(0, len(rows), _DEBT_CHUNK):
+        stmt = pg_insert(DebtEntry).values([
+            {"id": uuid.uuid4(), "project_id": project.id, "kind": kind, "surface": surface, "opened_at": now, "pr_url": pr_url,
+             "opened_job_id": job_id, "last_seen_job_id": job_id, "last_seen_at": now}
+            for kind, surface in rows[start:start + _DEBT_CHUNK]])
+        session.execute(stmt.on_conflict_do_update(
+            index_elements=[DebtEntry.project_id, DebtEntry.kind, DebtEntry.surface], index_where=DebtEntry.closed_at.is_(None),
+            set_={"last_seen_job_id": stmt.excluded.last_seen_job_id, "last_seen_at": stmt.excluded.last_seen_at}))
+
+    closed = []
+    if full_scan:
+        for key in sorted(k for k in open_now - seen if k[0] in scope):
+            closed.append((*key, "ignored" if key in ignored_keys else "surface_gone" if key in gone_keys else "covered"))
+        for reason in ("covered", "surface_gone", "ignored"):
+            pairs = [(kind, surface) for kind, surface, why in closed if why == reason]
+            for start in range(0, len(pairs), _DEBT_CHUNK):
+                session.execute(update(DebtEntry).where(
+                    DebtEntry.project_id == project.id, DebtEntry.closed_at.is_(None),
+                    tuple_(DebtEntry.kind, DebtEntry.surface).in_(pairs[start:start + _DEBT_CHUNK]),
+                ).values(closed_at=now, closed_reason=reason))
+    return DebtDelta(opened=tuple(sorted(seen - open_now)), refreshed=tuple(sorted(seen & open_now)), closed=tuple(closed))
+
+
+def list_debt(session: Session, project_slug: str, *, open_only: bool = True, kind: str | None = None,
+              limit: int | None = None) -> list[DebtEntry]:
+    project = get_project(session, project_slug)
+    stmt = select(DebtEntry).where(DebtEntry.project_id == project.id)
+    if open_only:
+        stmt = stmt.where(DebtEntry.closed_at.is_(None))
+    if kind is not None:
+        stmt = stmt.where(DebtEntry.kind == kind)
+    stmt = stmt.order_by(DebtEntry.kind, DebtEntry.surface, DebtEntry.opened_at)
+    return list(session.scalars(stmt.limit(limit) if limit is not None else stmt))

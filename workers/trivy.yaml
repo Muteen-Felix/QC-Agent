@@ -1,0 +1,14 @@
+name: trivy
+version_probe: "trivy --version"
+adapter: "qc_agent/adapters/trivy_adapter.py"
+lanes: [gate]
+capabilities:
+  - id: deps.vuln
+    oracle_kinds: [threshold]
+    verdict_sources: [deterministic_assert]
+    parallel_safe: true
+requires:
+  env: []
+  binaries: [trivy]
+data_egress: [source_code]     # đọc lockfile/manifest; DB CVE nướng sẵn trong image, chạy --skip-db-update --offline-scan nên không gọi mạng
+cost_profile: { tokens_per_run: 0, typical_wallclock_s: 30 }

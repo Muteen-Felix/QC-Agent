@@ -44,6 +44,13 @@ def generate(tmp_path, *, ui=True, pins=True, finish_flow=True, **over):
     init_mod.apply(init_mod.build(init_mod.Options(**opts)))
     if ui and finish_flow:
         (sut / ".qc-agent" / "midscene" / "explore.yaml").write_text(t.midscene_explore_flow(steps=[("aiTap", "tab Settings")]), encoding="utf-8")
+        for name in ("tier1.spec.mjs", "tier2.spec.mjs"):
+            path = sut / ".qc-agent" / "integration" / name
+            path.write_text("\n".join(line for line in path.read_text(encoding="utf-8").splitlines()
+                                      if "qc-agent:todo VERIFY:" not in line) + "\n", encoding="utf-8")
+        har = sut / ".qc-agent" / "har" / "vahan-b.har"
+        har.parent.mkdir(parents=True, exist_ok=True)
+        har.write_text('{"log":{"version":"1.2","creator":{"name":"test","version":"1"},"entries":[]}}\n', encoding="utf-8")
     return sut, policy_dir(tmp_path)
 
 
@@ -247,7 +254,7 @@ def test_passthrough_constant_matches_the_env_the_workflow_passes_to_the_gate():
     text = REUSABLE.read_text(encoding="utf-8")
     gate_run = yaml.safe_load(text)["jobs"]["gate"]["steps"]
     run = next(s["run"] for s in gate_run if s.get("id") == "gate")
-    passed = set(re.findall(r"-e ([A-Z][A-Z0-9_]*)(?=[ \\\n]|$)", run)) - {"HOME", "APP_BASE_URL", "APP_UI_URL", "QC_POLICY_REF"}
+    passed = set(re.findall(r"-e ([A-Z][A-Z0-9_]*)(?=[ \\\n]|$)", run)) - {"HOME", "APP_BASE_URL", "APP_UI_URL", "QC_POLICY_REF", "QC_DIFF_BASE"}  # biến hạ tầng do workflow đặt, suite không tham chiếu ${env.X}
     assert passed == set(v.PASSTHROUGH)
 
 
