@@ -13,8 +13,8 @@ PROJECTS = ROOT / "configs" / "projects"
 SLUGS = sorted(p.stem for p in PROJECTS.glob("*.yaml") if not p.stem.startswith("_"))
 
 
-def test_at_least_the_reference_and_vahan_projects_ship():
-    assert {"noteboard", "vahan-rpa"} <= set(SLUGS)
+def test_at_least_the_reference_project_ships():
+    assert {"noteboard"} <= set(SLUGS)
 
 
 @pytest.mark.parametrize("slug", SLUGS)
@@ -31,42 +31,15 @@ def test_all_shipped_projects_load_together_like_service_startup_does():
 def test_default_policy_ships_and_is_valid_on_its_own():
     default = PROJECTS / "_default.yaml"
     assert default.is_file() and t.TODO not in default.read_text(encoding="utf-8")
-    assert pj.load_project("some-new-repo", PROJECTS)["modes"]["pr"]["blocking_suites"] == ["api-contract"]
+    assert pj.load_project("some-new-repo", PROJECTS)["modes"]["pr"]["blocking_suites"] == ["api-contract", "sast", "secrets", "deps"]
     assert "_default" not in pj.list_projects(PROJECTS)
 
 
-_VAHAN_BEFORE_STEP_30 = {   # nội dung configs/projects/vahan-rpa.yaml ngay trước khi rút gọn thành đăng ký mỏng (P1)
-    "slug": "vahan-rpa", "name": "VAHAN Report Automation", "repo": "Muteen-Felix/vahan-rpa",
-    "modes": {"pr": {"blocking_suites": ["api-contract"], "advisory_suites": ["perf-smoke", "ui-explore"], "on_skipped_gate_task": "fail"},
-              "manual": {"suites": "*"}}}
-# nội dung ngay trước P2-8 (coverage-debt chưa bật): dùng để chứng minh P2-8 CHỈ thêm coverage-debt/advisory_yellow_suites,
-# không đụng gì khác của đăng ký mỏng (blocking_suites, on_skipped_gate_task, mode manual vẫn kế thừa nguyên từ _default.yaml)
-_VAHAN_BEFORE_P2_8 = _VAHAN_BEFORE_STEP_30
-
-
-def test_vahan_rpa_thin_registration_gives_the_identical_plan_as_before_reduction():
-    from tests.projkit import task
-    suites = {name: {"name": name, "sha256": "0" * 64, "tasks": [task(f"t-{name}", lane=lane)]}
-              for name, lane in (("api-contract", "gate"), ("perf-smoke", "discovery"), ("ui-explore", "discovery"), ("extra", "gate"))}
-    before = {**_VAHAN_BEFORE_STEP_30, "suites_dir": ".qc-agent/suites"}
-    after = pj.load_project("vahan-rpa", PROJECTS)
-    assert after != before  # P2-8 đã bật coverage-debt: KHÔNG còn giống đăng ký mỏng thuần từ P1
-    assert pj.build_plan(after, "pr", suites) != pj.build_plan(before, "pr", suites)  # advisory_yellow_suites: meta["yellow_task_ids"] khác
-    # mode manual: suites: "*" chọn theo suites TRUYỀN VÀO (không có coverage-debt ở đây), không đọc advisory_suites => plan vẫn giống hệt
-    assert pj.build_plan(after, "manual", suites) == pj.build_plan(before, "manual", suites)
-
-
-def test_vahan_rpa_p2_8_only_adds_coverage_debt_advisory_yellow_and_keeps_the_rest_inherited():
-    """P2-8: chỉ modes.pr.advisory_suites (+ coverage-debt) và advisory_yellow_suites là mới; blocking_suites/on_skipped_gate_task/manual
-    vẫn kế thừa nguyên từ _default.yaml (không bị khai lại ở vahan-rpa.yaml, deep_merge giữ nguyên)."""
-    after = pj.load_project("vahan-rpa", PROJECTS)
-    before = _VAHAN_BEFORE_P2_8
-    assert after["modes"]["pr"]["advisory_suites"] == [*before["modes"]["pr"]["advisory_suites"], "coverage-debt"]
-    assert after["modes"]["pr"]["advisory_yellow_suites"] == ["coverage-debt"]
-    for key in ("blocking_suites", "on_skipped_gate_task"):
-        assert after["modes"]["pr"][key] == before["modes"]["pr"][key]
-    assert after["modes"]["manual"] == before["modes"]["manual"]
-    before_full = {**before, "suites_dir": ".qc-agent/suites"}  # resolve_project tự điền mặc định này (không có trong _VAHAN_BEFORE_P2_8)
-    assert {k: v for k, v in after.items() if k != "modes"} == {k: v for k, v in before_full.items() if k != "modes"}
-    raw = (PROJECTS / "_default.yaml").read_text(encoding="utf-8")
-    assert "coverage-debt" not in raw and "advisory_yellow_suites" not in raw  # P2-8: KHÔNG đụng _default.yaml (yêu cầu đề bài)
+def test_vahan_rpa_is_unregistered_and_falls_back_to_the_default_policy():
+    """vahan-rpa.yaml đã bị xoá chủ đích (không còn đăng ký riêng): vahan-rpa giờ là repo CHƯA ĐĂNG KÝ như mọi repo mới,
+    dùng nguyên _default.yaml (không còn khai coverage-debt/advisory_yellow_suites riêng cho nó nữa)."""
+    assert not (PROJECTS / "vahan-rpa.yaml").exists()
+    cfg, info = pj.resolve_project("vahan-rpa", PROJECTS)
+    default_cfg, default_info = pj.resolve_project("some-other-unregistered-repo", PROJECTS)
+    assert info["source"] == "default"
+    assert {k: v for k, v in cfg.items() if k != "slug"} == {k: v for k, v in default_cfg.items() if k != "slug"}

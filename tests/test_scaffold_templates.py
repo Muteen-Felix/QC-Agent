@@ -30,6 +30,9 @@ def write_all(tmp_path, *, ui=True):
     suites = sut / ".qc-agent" / "suites"
     (suites / "api-contract.yaml").write_text(t.api_contract_suite(exclude=[("/api/jobs/{job_id}/upload-excel", "multipart upload")]), encoding="utf-8")
     (suites / "perf-smoke.yaml").write_text(t.perf_smoke_suite(), encoding="utf-8")
+    (suites / "sast.yaml").write_text(suites_security.sast_suite(), encoding="utf-8")
+    (suites / "secrets.yaml").write_text(suites_security.secrets_suite(), encoding="utf-8")
+    (suites / "deps.yaml").write_text(suites_security.deps_suite(), encoding="utf-8")
     (sut / ".qc-agent" / "perf" / "smoke.js").write_text(t.k6_smoke_script(paths=["/api/health", "/api/runners"]), encoding="utf-8")
     if ui:
         (suites / "ui-explore.yaml").write_text(t.ui_explore_suite(entry_path="/"), encoding="utf-8")
@@ -47,14 +50,15 @@ def test_generated_suites_and_project_load_and_build_both_modes(tmp_path):
     sut, projects = write_all(tmp_path)
     cfg = pj.load_project("myapp", projects)
     suites = pj.load_suites(sut / cfg["suites_dir"] if "suites_dir" in cfg else sut / ".qc-agent" / "suites")
-    assert sorted(suites) == ["api-contract", "perf-smoke", "ui-explore"]
+    assert sorted(suites) == ["api-contract", "deps", "perf-smoke", "sast", "secrets", "ui-explore"]
 
     pr, meta = pj.build_plan(cfg, "pr", suites)
     lanes = {task["task_id"]: task["lane"] for task in pr["tasks"]}
-    assert lanes == {"t-001": "gate", "t-102": "discovery", "t-101": "discovery", "t-canary-01": "discovery"}  # chỉ api-contract chặn merge
+    assert lanes == {"t-001": "gate", "t-010": "gate", "t-011": "gate", "t-012": "gate",
+                      "t-102": "discovery", "t-101": "discovery", "t-canary-01": "discovery"}  # api-contract/sast/secrets/deps chặn merge
     assert meta["on_skipped_gate_task"] == "fail"
     manual, _ = pj.build_plan(cfg, "manual", suites)
-    assert len(manual["tasks"]) == 4
+    assert len(manual["tasks"]) == 7
 
 
 def test_every_generated_task_resolves_to_a_contract_valid_spec(tmp_path, monkeypatch):
@@ -72,9 +76,10 @@ def test_every_generated_task_resolves_to_a_contract_valid_spec(tmp_path, monkey
 def test_ui_is_optional_project_without_ui_has_no_ui_suite(tmp_path):
     sut, projects = write_all(tmp_path, ui=False)
     cfg = pj.load_project("myapp", projects)
-    assert cfg["modes"]["pr"]["advisory_suites"] == ["perf-smoke", "ui-explore"]   # _default; suite ui-explore vắng mặt nên bị bỏ qua
+    assert cfg["modes"]["pr"]["advisory_suites"] == ["perf-smoke", "ui-explore", "coverage-debt"]   # _default; ui-explore/coverage-debt vắng mặt nên bị bỏ qua
     plan, meta = pj.build_plan(cfg, "pr", pj.load_suites(sut / ".qc-agent" / "suites"))
-    assert [task["task_id"] for task in plan["tasks"]] == ["t-001", "t-102"] and meta["absent_advisory_suites"] == ["ui-explore"]
+    assert [task["task_id"] for task in plan["tasks"]] == ["t-001", "t-010", "t-011", "t-012", "t-102"]
+    assert meta["absent_advisory_suites"] == ["ui-explore", "coverage-debt"]
 
 
 # ---------- adapter thật chấp nhận cái sinh ra ----------

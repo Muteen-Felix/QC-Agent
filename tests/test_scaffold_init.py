@@ -343,7 +343,8 @@ def test_generated_files_load_through_the_real_loaders_and_the_default_policy(tm
     cfg, info = pj.resolve_project("vahan-rpa-unregistered", ROOT / "configs" / "projects")   # repo chưa đăng ký => _default
     suites = pj.load_suites(tmp_path / "sut" / ".qc-agent" / "suites")
     plan, meta = pj.build_plan(cfg, "pr", suites)
-    assert {t_["task_id"]: t_["lane"] for t_ in plan["tasks"]} == {"t-001": "gate", "t-102": "discovery", "t-101": "discovery", "t-canary-01": "discovery"}
+    assert {t_["task_id"]: t_["lane"] for t_ in plan["tasks"]} == {"t-001": "gate", "t-010": "gate", "t-011": "gate", "t-012": "gate",
+                                                                    "t-102": "discovery", "t-101": "discovery", "t-canary-01": "discovery"}
     assert meta["on_skipped_gate_task"] == "fail" and info["source"] == "default"
 
 

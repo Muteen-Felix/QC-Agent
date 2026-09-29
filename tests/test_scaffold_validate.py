@@ -73,7 +73,8 @@ def test_a_completed_generated_setup_has_no_errors_or_warnings(tmp_path):
     report = check(tmp_path, sut, projects)
     assert not by_level(report, v.ERROR) and not by_level(report, v.WARN), messages(report) + messages(report, v.WARN)
     notes = messages(report, v.NOTE)
-    assert "MIDSCENE_MODEL_API_KEY" in notes and "t-101" in notes and len(by_level(report, v.NOTE)) == 1  # gộp thành MỘT ghi chú
+    assert "MIDSCENE_MODEL_API_KEY" in notes and "t-101" in notes and "coverage-debt" in notes and len(by_level(report, v.NOTE)) == 2
+    # 2 ghi chú: secret Midscene cho t-101/t-canary-01 (gộp), và suite advisory coverage-debt vắng mặt trong repo (_default chưa sinh sẵn suite này)
 
 
 def test_the_real_noteboard_reference_project_validates_clean(tmp_path):
@@ -263,7 +264,7 @@ def test_passthrough_constant_matches_the_env_the_workflow_passes_to_the_gate():
 def test_cli_validate_exit_codes_and_strict(tmp_path, capsys):
     sut, projects = generate(tmp_path)
     argv = ["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--workers-dir", str(ROOT / "workers")]
-    assert cli_main(argv) == 0 and "OK: 0 lỗi, 0 cảnh báo, 1 ghi chú" in capsys.readouterr().out
+    assert cli_main(argv) == 0 and "OK: 0 lỗi, 0 cảnh báo, 2 ghi chú" in capsys.readouterr().out
     (sut / ".github" / "workflows" / "qc.yml").unlink()
     assert cli_main(argv) == 0 and "1 cảnh báo" in capsys.readouterr().out
     assert cli_main(argv + ["--strict"]) == 3 and "FAIL" in capsys.readouterr().out  # --strict: cảnh báo thành lỗi

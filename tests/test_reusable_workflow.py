@@ -195,7 +195,7 @@ def _policy_copy(tmp_path, *, edit=None, drop=()):
     target = tmp_path / "policy"
     shutil.copytree(POLICY, target)
     for name in drop:
-        (target / name).unlink()
+        (target / name).unlink(missing_ok=True)
     if edit:
         for name, fn in edit.items():
             (target / name).write_text(fn((target / name).read_text(encoding="utf-8")), encoding="utf-8")
