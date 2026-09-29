@@ -1,0 +1,47 @@
+// qc-agent:generated — network guard cho integration tests. Không import Playwright trực tiếp trong spec.
+import { test as base, expect } from '@playwright/test';
+import fs from 'node:fs';
+
+const ALLOWED = new Set((process.env.QC_ALLOW_HOSTS || '').split(',').filter(Boolean));
+const HAR = process.env.QC_HAR_FILE || '';
+const B_HOST = process.env.QC_B_HOST || '';
+const EVENTS = process.env.QC_EVENTS_FILE || '';
+
+function mergeEvents(current) {
+  let previous = { blocked_hosts: [], har_missing: [] };
+  if (EVENTS && fs.existsSync(EVENTS)) {
+    try { previous = JSON.parse(fs.readFileSync(EVENTS, 'utf8')); } catch { /* adapter sẽ fail closed nếu file hỏng */ }
+  }
+  return {
+    blocked_hosts: [...new Set([...(previous.blocked_hosts || []), ...current.blocked_hosts])],
+    har_missing: [...new Set([...(previous.har_missing || []), ...current.har_missing])],
+  };
+}
+
+export const test = base.extend({
+  context: async ({ context }, use) => {
+    const events = { blocked_hosts: [], har_missing: [] };
+    await context.route('**/*', async route => {
+      const host = new URL(route.request().url()).hostname;
+      if (ALLOWED.has(host) || (B_HOST && host === B_HOST)) return route.fallback();
+      events.blocked_hosts.push(host);
+      return route.abort('blockedbyclient');
+    });
+    if (HAR) {
+      await context.routeFromHAR(HAR, {
+        update: false,
+        notFound: 'abort',
+        url: new RegExp(`^https?://${B_HOST.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?::[0-9]+)?/`),
+      });
+      context.on('requestfailed', request => {
+        const url = new URL(request.url());
+        if (url.hostname === B_HOST) events.har_missing.push(url.pathname);
+      });
+    }
+    await use(context);
+    if (EVENTS) fs.writeFileSync(EVENTS, JSON.stringify(mergeEvents(events)));
+  },
+  // Auto fixture ép cả test chỉ dùng APIRequestContext cũng khởi tạo guard và events.json.
+  qcNetworkGuard: [async ({ context }, use) => { await use(context); }, { auto: true }],
+});
+export { expect };

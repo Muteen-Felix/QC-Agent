@@ -143,6 +143,27 @@ Bước `Refine (onboarding suggestions)` nằm **sau `Start SUT`, trước `Run
 
 PR từ **fork** không nhận secret: task cần key sẽ `skipped`; project nên đặt `on_skipped_gate_task: fail` cho mode `pr` để gate không xanh giả.
 
+### Integration với hệ thống ngoài qua HAR
+
+Suite `integration` gồm Tier 1 (runner giả) và Tier 2 (phát lại trang ngoài từ HAR), đều có thể chặn merge. Repo cần hoàn tất `.qc-agent/integration/tier1.spec.mjs`, `tier2.spec.mjs`, đặt HAR đã lọc tại `.qc-agent/har/vahan-b.har` và thay `b_host` trong suite. `qc-agent validate` từ chối khung còn `qc-agent:todo VERIFY`.
+
+Ghi lại HAR bằng tài khoản thử nghiệm hoặc dữ liệu ẩn danh, rồi chạy:
+
+```bash
+python tools/har_scrub.py raw.har .qc-agent/har/vahan-b.har
+git grep -i -E "authorization|cookie|bearer|eyJ" .qc-agent/har/
+```
+
+Không commit `raw.har`. Sau scrub vẫn cần người thứ hai xem response body vì công cụ lọc credential, không bảo đảm xoá dữ liệu cá nhân.
+
+Tier 3 nằm trong suite `integration-live`, chỉ chạy manual:
+
+```bash
+qc-agent run --project <slug> --mode manual --suites integration-live --sut-root <repo>
+```
+
+Tier 3 fail là tín hiệu trang ngoài hoặc flow đã đổi: điều tra rồi ghi HAR mới. Nó là discovery, không chặn merge và không được thêm vào `advisory_suites` của mode `pr`.
+
 ## 4. Chặn merge
 Branch protection của repo SUT → *Require status checks* → chọn job `qc-agent / <project>` (chính job trong workflow). Job **xanh/đỏ theo exit code của gate**: `0` PASS, `1` FAIL, `3` lỗi cấu hình/hệ thống. Check Run, comment và lịch sử chỉ là phần báo cáo: lỗi ở đó không làm đổi kết quả.
 

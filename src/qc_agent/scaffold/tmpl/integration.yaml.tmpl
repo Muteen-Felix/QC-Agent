@@ -1,0 +1,33 @@
+suite: integration
+description: Tích hợp tất định — runner giả và trang B phát lại từ HAR (chặn merge)
+tasks:
+- task_id: t-020
+  capability: flow.integration
+  lane: gate
+  intent: 'Tầng 1: hợp đồng runner/job với runner giả'
+  target: {kind: http_service, base_url: "${env.APP_BASE_URL}"}
+  inputs: {spec_file: ".qc-agent/integration/tier1.spec.mjs"}
+  oracle: {kind: checks, required: [runner_registered, job_assigned, status_transitions, invalid_transition_rejected]}
+  expected_result_kind: verdict
+  budget: {wallclock_s: 300, tokens: 0, usd: 0}
+  determinism: {seed: 0, replayable: true}
+  evidence_required: [raw_output, stdout]
+  retry: {max: 1, 'on': [error]}
+  prefer: [playwright]
+- task_id: t-021
+  capability: flow.integration
+  lane: gate
+  intent: 'Tầng 2: chuỗi đầy đủ, trang B phát lại từ bản ghi'
+  target: {kind: web_app, base_url: "${env.APP_UI_URL}"}
+  inputs:
+    spec_file: ".qc-agent/integration/tier2.spec.mjs"
+    har: ".qc-agent/har/vahan-b.har"
+    b_host: {{b_host}}
+  oracle: {kind: checks, required: [filter_applied, report_downloaded, no_external_requests, har_covers_all_requests]}
+  expected_result_kind: verdict
+  budget: {wallclock_s: 600, tokens: 0, usd: 0}
+  determinism: {seed: 0, replayable: true}
+  evidence_required: [raw_output, stdout]
+  retry: {max: 1, 'on': [error]}
+  depends_on: [t-020]
+  prefer: [playwright]

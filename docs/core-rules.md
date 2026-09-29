@@ -61,6 +61,7 @@ Khâu Security (Làn A) — tên đã chốt, suite và test dựa vào chúng:
 
 ## Cấm
 
+- **Cấm gate PR chạm trang B thật**: Integration Tier 2 bắt buộc dùng HAR với `update:false`, `notFound:'abort'`; host ngoài allowlist phải bị chặn và làm check đỏ. Tier 3 chạm B thật chỉ chạy manual, một luồng, không retry và không gating.
 - **Cấm gọi LLM trong `core/`**: verdict phải tái lập được; LLM chỉ được nằm trong worker và chỉ cho finding không chặn gate.
 - **Cấm `if worker == ...` trong `core/`**: mọi khác biệt giữa worker phải nằm ở manifest, adapter hoặc oracle.
 - **Cấm thêm trường riêng của một worker vào schema**: một schema chung là thứ cho phép thêm worker mà không sửa `core/`.
