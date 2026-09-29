@@ -6,7 +6,9 @@ Ba bẫy đều kết thúc bằng AdapterParseError (status=error, gate đỏ n
   - thư mục rule rỗng/không tồn tại => 0 finding vì không có luật nào;
   - `paths.scanned` không phải danh sách => không biết đã quét gì. (Quét được 0 file thì vẫn là số đo hợp lệ `semgrep.files_scanned = 0`:
     suite chặn bằng `semgrep.files_scanned >= 1`, để "không quét gì" là một dòng YAML đọc được.)
-`--error=false`: exit code của semgrep chỉ còn nghĩa "công cụ hỏng", không phải "có finding".
+KHÔNG truyền `--error`: mặc định semgrep exit 0 dù có finding (đã kiểm bằng semgrep thật, xem ADR-002); truyền `--error` (hoặc `--error=false` — dạng
+`=false` không hợp lệ với flag boolean của semgrep, `option '--error' is a flag, it cannot take the argument 'false'`) sẽ làm exit code lẫn nghĩa
+"có finding" vào nghĩa "công cụ hỏng" mà adapter đang cần tách riêng ở `parse_output`.
 """
 from __future__ import annotations
 
@@ -43,7 +45,7 @@ class SemgrepAdapter(Adapter):
         excludes = sec.safe_patterns(inputs.get("exclude"), "inputs.exclude")
         out = (workdir / OUT_NAME).resolve()
         out.unlink(missing_ok=True)   # không đọc nhầm file của lần chạy trước
-        cmd = ["semgrep", "scan", "--json", f"--output={out}", "--metrics=off", "--disable-version-check", "--error=false", "--config", rules]
+        cmd = ["semgrep", "scan", "--json", f"--output={out}", "--metrics=off", "--disable-version-check", "--config", rules]
         cmd += [f"--exclude={pattern}" for pattern in excludes]
         return cmd + paths
 

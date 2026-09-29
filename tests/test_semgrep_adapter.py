@@ -42,8 +42,9 @@ def test_build_cmd_flags_and_output_path(tmp_path, spec, rules):
     cmd = SemgrepAdapter().build_cmd(spec, tmp_path)
     assert cmd[:3] == ["semgrep", "scan", "--json"]
     assert f"--output={(tmp_path / OUT_NAME).resolve()}" in cmd
-    for flag in ("--metrics=off", "--error=false", "--disable-version-check"):
+    for flag in ("--metrics=off", "--disable-version-check"):
         assert flag in cmd
+    assert "--error" not in cmd    # semgrep thật: `--error` là flag boolean, không nhận `=false` (ADR-002); không truyền cờ này = mặc định exit 0 dù có finding
     assert cmd[cmd.index("--config") + 1] == str(rules)
     assert "--exclude=node_modules" in cmd and "--exclude=tests" in cmd
     assert cmd[-1] == "."
