@@ -4,8 +4,8 @@
 # deep merge theo key, LIST THAY THẾ (không cộng dồn). modes.pr.blocking_suites không được rỗng.
 modes:
   pr:                                  # tự động, mỗi PR
-    blocking_suites: [api-contract]    # mọi task lane=gate: chặn merge
-    advisory_suites: [perf-smoke, ui-explore]  # mọi task lane=discovery: chỉ tham khảo, không chặn
+    blocking_suites: [api-contract, sast, secrets, deps]   # mọi task lane=gate: chặn merge
+    advisory_suites: [perf-smoke, ui-explore, coverage-debt]  # mọi task lane=discovery: chỉ tham khảo, không chặn
     on_skipped_gate_task: fail         # task chặn mà bị bỏ qua thì KHÔNG được xanh giả
   manual:                              # chạy tay trên web/API; lane giữ như suite khai báo
     suites: "*"
