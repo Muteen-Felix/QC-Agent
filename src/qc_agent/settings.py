@@ -13,6 +13,9 @@
   QC_MAX_INGEST_BYTES       kích thước tối đa một report CI đẩy lên (mặc định 5 MB)
   QC_WEB_DIR                thư mục giao diện tĩnh (mặc định `web/`, hoặc bản đóng gói trong wheel)
   QC_SCHEMAS_DIR   thư mục chứa task_spec.json / result.json / capabilities.json (mặc định như trên)
+  QC_GT_MODEL / QC_SELECTOR_MODEL  model cho GT generator (mặc định claude-sonnet-5) và Diff Agent (claude-haiku-4-5-20251001)
+  QC_LLM_TIMEOUT_S timeout một lời gọi Messages API, giây (mặc định 120)
+  ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL  KHÔNG nằm ở đây: llm/client.py đọc bằng os.environ lúc gọi (repr của pydantic có thể lộ khoá)
 
 Chạy từ source (thư mục có pyproject.toml + schemas/): gốc repo là project root.
 Chạy từ wheel: contract được đóng gói vào qc_agent/schemas và qc_agent/workers (hatch force-include), root = cwd.
@@ -49,6 +52,9 @@ class Settings(BaseSettings):
     max_open_jobs_per_project: int = 20
     max_job_timeout_s: float = 86400
     max_ingest_bytes: int = 5 * 1024 * 1024
+    gt_model: str = "claude-sonnet-5"
+    selector_model: str = "claude-haiku-4-5-20251001"
+    llm_timeout_s: float = 120.0
 
     @property
     def project_root(self) -> Path:

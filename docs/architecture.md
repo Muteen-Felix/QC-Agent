@@ -26,7 +26,7 @@
 | Worker `semgrep`, `gitleaks`, `trivy` | *Đã chạy* trong image; chưa có PR thật | §2.4 |
 | Worker `playwright` (integration `t-020…t-022`) | *Thiết kế* → T6 | §2.3 |
 | Service: API, executor, dashboard (Postgres) | *Đã chạy* | Bỏ phụ thuộc DB của luồng PR/manual: *Thiết kế — S3* |
-| `llm/client.py` (Messages API, egress, đếm token) | *Đang triển khai — S1* | |
+| `llm/client.py` (Messages API qua `httpx`, tool-use, egress trước khi gửi) | *Đang triển khai — S1* | Đã có mã + test bằng transport giả (S1-01); **chưa gọi API thật**. `count_tokens`, prompt caching, trần token: S4 |
 | Ground-Truth Engine: `groundtruth/`, schema TC, render, `qc-agent gt …` | *Đang triển khai — S1* | |
 | Worker `pytest` (`api.functional`, suite `gt-functional`) | *Đang triển khai — S1* | |
 | Workflow sinh GT + khoá `.qc-agent/**` (CODEOWNERS, branch protection) | *Đang triển khai — S1* | |

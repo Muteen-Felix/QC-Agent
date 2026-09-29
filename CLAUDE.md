@@ -23,6 +23,7 @@ pytest tests/test_engine.py::test_x  # one test
 - Onboarding a new SUT repo: one `docker run … init` command (`docs/onboarding.md`); reusable CI gate: `docs/usage-ci.md`; test the workflow locally with `tools/run_reusable_locally.py`.
 - Contract check: `python tools/freeze_contract.py --check` must exit 0.
 - Env config lives in `src/qc_agent/settings.py` (`QC_RUNS_DIR`, `QC_WORKERS_PATH`, `QC_SCHEMAS_DIR`, `QC_LOG_FORMAT`, …); see `.env.example`.
+- LLM env (`src/qc_agent/llm/client.py`): `ANTHROPIC_API_KEY` and optional `ANTHROPIC_BASE_URL` are read from `os.environ` at call time (never via `Settings`); `QC_GT_MODEL` (default `claude-sonnet-5`), `QC_SELECTOR_MODEL` (default `claude-haiku-4-5-20251001`), `QC_LLM_TIMEOUT_S`. Tests use `httpx.MockTransport`; never call the real API from tests.
 
 No linter/formatter is configured. Gate exit codes today: PASS 0 · YELLOW = `--yellow-exit` (default 0) · FAIL 1 · plan/system error 3. (S3 replaces the verdict with BLOCKED 1 · PASSED_WITH_WARNINGS = `--warn-exit` (default 0) · PASSED 0; not in code yet.)
 
