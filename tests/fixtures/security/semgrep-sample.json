@@ -1,77 +1,60 @@
 {
-  "version": "1.99.0",
+  "version": "1.178.0",
   "results": [
     {
-      "check_id": "qc-rules.python-subprocess-shell-true",
+      "check_id": "opt.qc-rules.semgrep.python-subprocess-shell-true",
       "path": "apps/api-server/app/api/jobs.py",
       "start": {
-        "line": 42,
-        "col": 5,
-        "offset": 1180
+        "line": 6,
+        "col": 12,
+        "offset": 175
       },
       "end": {
-        "line": 42,
-        "col": 47,
-        "offset": 1222
+        "line": 6,
+        "col": 43,
+        "offset": 206
       },
       "extra": {
-        "message": "subprocess được gọi với shell=True và lệnh nối từ input: nguy cơ chèn lệnh.",
-        "severity": "ERROR",
+        "message": "subprocess được gọi với shell=True và lệnh không phải hằng chuỗi. Nếu lệnh có dữ liệu từ ngoài thì đây là chèn lệnh hệ điều hành; hãy truyền danh sách đối số và bỏ shell=True.",
         "metadata": {
+          "category": "security",
           "cwe": [
-            "CWE-78"
-          ],
-          "category": "security"
+            "CWE-78: OS Command Injection"
+          ]
         },
-        "lines": "requires login",
+        "severity": "ERROR",
         "fingerprint": "requires login",
-        "is_ignored": false
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
       }
     },
     {
-      "check_id": "qc-rules.python-requests-no-timeout",
-      "path": "apps/api-server/app/services/runner.py",
+      "check_id": "opt.qc-rules.semgrep.python-pickle-load",
+      "path": "apps/api-server/app/config.py",
       "start": {
-        "line": 17,
-        "col": 9,
-        "offset": 402
+        "line": 7,
+        "col": 16,
+        "offset": 203
       },
       "end": {
-        "line": 17,
-        "col": 40,
-        "offset": 433
+        "line": 7,
+        "col": 35,
+        "offset": 222
       },
       "extra": {
-        "message": "requests không có timeout.",
-        "severity": "WARNING",
+        "message": "pickle.load/loads chạy mã tuỳ ý khi dữ liệu không đáng tin. Chỉ dùng với dữ liệu do chính hệ thống ghi; nếu không, dùng JSON.",
         "metadata": {
-          "category": "best-practice"
+          "category": "security",
+          "cwe": [
+            "CWE-502: Deserialization of Untrusted Data"
+          ]
         },
-        "lines": "requires login",
+        "severity": "WARNING",
         "fingerprint": "requires login",
-        "is_ignored": false
-      }
-    },
-    {
-      "check_id": "qc-rules.python-assert-used",
-      "path": "apps/api-server/app/main.py",
-      "start": {
-        "line": 9,
-        "col": 1,
-        "offset": 150
-      },
-      "end": {
-        "line": 9,
-        "col": 20,
-        "offset": 169
-      },
-      "extra": {
-        "message": "assert bị bỏ khi chạy -O.",
-        "severity": "INFO",
-        "metadata": {},
         "lines": "requires login",
-        "fingerprint": "requires login",
-        "is_ignored": false
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
       }
     }
   ],
@@ -79,20 +62,80 @@
   "paths": {
     "scanned": [
       "apps/api-server/app/api/jobs.py",
-      "apps/api-server/app/main.py",
-      "apps/api-server/app/services/runner.py"
+      "apps/api-server/app/config.py"
     ]
   },
   "time": {
     "rules": [],
-    "rules_parse_time": 0.02,
+    "rules_parse_time": 0.01848292350769043,
     "profiling_times": {
-      "config_time": 0.4,
-      "core_time": 1.2,
-      "ignores_time": 0.0,
-      "total_time": 1.7
-    }
+      "config_time": 0.1502838134765625,
+      "core_time": 0.8052153587341309,
+      "ignores_time": 0.00023627281188964844,
+      "total_time": 0.9672279357910156
+    },
+    "parsing_time": {
+      "total_time": 0.0,
+      "per_file_time": {
+        "mean": 0.0,
+        "std_dev": 0.0
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_files": []
+    },
+    "scanning_time": {
+      "total_time": 0.07466292381286621,
+      "per_file_time": {
+        "mean": 0.037331461906433105,
+        "std_dev": 1.2211799571559823e-08
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_files": []
+    },
+    "matching_time": {
+      "total_time": 0.0,
+      "per_file_and_rule_time": {
+        "mean": 0.0,
+        "std_dev": 0.0
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_rules_on_files": []
+    },
+    "tainting_time": {
+      "total_time": 0.0,
+      "per_def_and_rule_time": {
+        "mean": 0.0,
+        "std_dev": 0.0
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_rules_on_defs": []
+    },
+    "fixpoint_timeouts": [],
+    "prefiltering": {
+      "project_level_time": 0.0,
+      "file_level_time": 0.0,
+      "rules_with_project_prefilters_ratio": 0.0,
+      "rules_with_file_prefilters_ratio": 1.0,
+      "rules_selected_ratio": 0.14285714285714285,
+      "rules_matched_ratio": 0.14285714285714285
+    },
+    "targets": [],
+    "total_bytes": 0,
+    "max_memory_bytes": 102309568
   },
   "engine_requested": "OSS",
-  "skipped_rules": []
+  "skipped_rules": [],
+  "profiling_results": []
 }

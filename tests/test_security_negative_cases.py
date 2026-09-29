@@ -181,7 +181,7 @@ def test_semgrep_high_finding_fails_with_the_exact_location(tmp_path, monkeypatc
     result, task, _ = run_gate(tmp_path, monkeypatch, "semgrep", "sample")
     titles = [f["title"] for f in task["findings"]]
     assert task["status"] == "fail" and task["verdict"]["gating"] is True and result.exit_code == 1 and result.gate.value == "FAIL"
-    assert "qc-rules.python-subprocess-shell-true @ apps/api-server/app/api/jobs.py:42" in titles      # finding của công cụ: đúng path:dòng
+    assert "opt.qc-rules.semgrep.python-subprocess-shell-true @ apps/api-server/app/api/jobs.py:6" in titles      # finding của công cụ: đúng path:dòng
     assert "semgrep.high = 1 vi phạm == 0" in titles                                                     # finding của oracle: đúng ngưỡng của suite
     assert task["metrics"]["semgrep.high"] == 1 and task["verdict"]["value"] == "fail"
 
@@ -190,15 +190,15 @@ def test_gitleaks_finding_fails_with_the_exact_location(tmp_path, monkeypatch):
     result, task, _ = run_gate(tmp_path, monkeypatch, "gitleaks", "sample")
     titles = [f["title"] for f in task["findings"]]
     assert task["status"] == "fail" and result.exit_code == 1
-    assert "generic-api-key @ apps/api-server/app/config.py:12" in titles and "gitleaks.count = 2 vi phạm == 0" in titles
+    assert "gcp-api-key @ apps/api-server/app/config.py:2" in titles and "gitleaks.count = 2 vi phạm == 0" in titles
 
 
 def test_trivy_critical_finding_fails_and_names_the_lockfile(tmp_path, monkeypatch):
     result, task, _ = run_gate(tmp_path, monkeypatch, "trivy", "sample")
     titles = [f["title"] for f in task["findings"]]
     assert task["status"] == "fail" and result.exit_code == 1
-    assert "CVE-2022-0000 example-lib@1.0.0 @ package-lock.json" in titles
-    assert "trivy.critical = 1 vi phạm == 0" in titles and "trivy.high = 2 vi phạm == 0" in titles
+    assert "CVE-2021-44906 minimist@0.0.8 @ package-lock.json" in titles
+    assert "trivy.critical = 3 vi phạm == 0" in titles and "trivy.high = 2 vi phạm == 0" in titles
 
 
 # ---------- 6. gitleaks rò secret ----------

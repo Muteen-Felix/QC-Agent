@@ -94,11 +94,11 @@ def test_rules_dir_must_hold_rules(tmp_path, rules):
 
 def test_sample_counts_by_level_and_puts_the_location_in_the_title(tmp_path, spec):
     parsed = parse(tmp_path, spec, fixture_json("semgrep-sample.json"))
-    assert parsed.metrics == {"semgrep.critical": 0, "semgrep.high": 1, "semgrep.medium": 1, "semgrep.low": 1, "semgrep.total": 3, "semgrep.files_scanned": 3}
+    assert parsed.metrics == {"semgrep.critical": 0, "semgrep.high": 1, "semgrep.medium": 1, "semgrep.low": 0, "semgrep.total": 2, "semgrep.files_scanned": 2}
     by_title = {f["title"]: f for f in parsed.findings}
-    high = by_title["qc-rules.python-subprocess-shell-true @ apps/api-server/app/api/jobs.py:42"]
+    high = by_title["opt.qc-rules.semgrep.python-subprocess-shell-true @ apps/api-server/app/api/jobs.py:6"]
     assert high["severity_hint"] == "high" and high["detected_by"] == "semgrep" and high["verdict_source"] == "deterministic_assert" and high["confidence"] is None
-    assert {f["severity_hint"] for f in parsed.findings} == {"high", "medium", "low"}
+    assert {f["severity_hint"] for f in parsed.findings} == {"high", "medium"}
     assert parsed.tokens == 0 and parsed.usd == 0.0 and [k for k, _ in parsed.evidence_paths] == ["raw_output", "stdout"]
     assert f"PARSER_VERSION={PARSER_VERSION}" in parsed.adapter_notes
 
@@ -122,7 +122,7 @@ def test_critical_is_counted_separately_and_hinted_high(tmp_path, spec):
     data["results"][0]["extra"]["severity"] = "CRITICAL"
     parsed = parse(tmp_path, spec, data)
     assert parsed.metrics["semgrep.critical"] == 1 and parsed.metrics["semgrep.high"] == 0
-    assert next(f for f in parsed.findings if "jobs.py:42" in f["title"])["severity_hint"] == "high"     # schema không có `critical`
+    assert next(f for f in parsed.findings if "jobs.py:6" in f["title"])["severity_hint"] == "high"     # schema không có `critical`
     assert oracle.evaluate(spec["oracle"], parsed.metrics, {}).value == "fail"      # suite phải chặn cả critical: high == 0 một mình sẽ bỏ lọt
 
 
@@ -188,7 +188,7 @@ def test_finding_id_is_stable_unique_and_hashes_rule_plus_location(tmp_path, spe
     first = [f["finding_id"] for f in parse(tmp_path, spec, fixture_json("semgrep-sample.json")).findings]
     second = [f["finding_id"] for f in parse(tmp_path, spec, fixture_json("semgrep-sample.json")).findings]
     assert first == second and len(set(first)) == len(first)
-    expected = "f-semgrep-" + hashlib.sha1(b"qc-rules.python-subprocess-shell-true" + b"apps/api-server/app/api/jobs.py:42").hexdigest()[:12]
+    expected = "f-semgrep-" + hashlib.sha1(b"opt.qc-rules.semgrep.python-subprocess-shell-true" + b"apps/api-server/app/api/jobs.py:6").hexdigest()[:12]
     assert expected in first
 
 
@@ -199,7 +199,7 @@ def test_finding_id_is_independent_of_report_order_and_dedupes_same_line(tmp_pat
     data["results"].append(twin)
     ordered = lambda d: [(f["finding_id"], f["title"]) for f in parse(tmp_path, spec, d).findings]     # CÓ thứ tự: cắt 200 finding/comment PR phải tất định
     base = ordered(data)
-    assert len({i for i, _ in base}) == 4 and any(i.endswith("-2") for i, _ in base)
+    assert len({i for i, _ in base}) == 3 and any(i.endswith("-2") for i, _ in base)
     for seed in range(5):
         shuffled = copy.deepcopy(data)
         random.Random(seed).shuffle(shuffled["results"])
@@ -230,7 +230,7 @@ def test_full_run_fails_with_a_located_finding_and_a_contract_valid_result(tmp_p
     result = run_with_fake_tool(SemgrepAdapter(), spec, monkeypatch, tmp_path, report=fixture_text("semgrep-sample.json"))
     assert result["status"] == "fail" and result["verdict"]["gating"] is True and result["verdict"]["value"] == "fail"
     titles = [f["title"] for f in result["findings"]]
-    assert "qc-rules.python-subprocess-shell-true @ apps/api-server/app/api/jobs.py:42" in titles
+    assert "opt.qc-rules.semgrep.python-subprocess-shell-true @ apps/api-server/app/api/jobs.py:6" in titles
     assert any(t.startswith("semgrep.high = 1") for t in titles)      # finding của oracle
     assert result["metrics"]["semgrep.high"] == 1 and {e["kind"] for e in result["evidence"]} == {"raw_output", "stdout"}
 

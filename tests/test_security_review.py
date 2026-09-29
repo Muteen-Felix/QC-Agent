@@ -1,5 +1,6 @@
 """A-9: review Security gắn file:dòng — chỉ dòng trong diff mới inline, nội dung không tin cậy được làm sạch, không lộ mã/secret, không đăng lặp, lỗi API chỉ là cảnh báo."""
 import copy
+import dataclasses
 import hashlib
 import json
 from pathlib import Path
@@ -14,9 +15,9 @@ ROOT = Path(__file__).resolve().parent.parent
 CTX = {"repo": "o/r", "pr_number": 7, "sha": "abc1234def5678"}
 FILES = {"semgrep": "semgrep.json", "gitleaks": "gitleaks.json", "trivy": "trivy.json"}
 SNIPPET = "subprocess.run(cmd, shell=True)  # SNIPPET-MARKER"
-# `jobs.py`: dòng 40-43 nằm trong diff (dòng 42 bị semgrep báo); `config.py` có dòng 12 trong diff (gitleaks); lockfile cũng có dòng trong diff
-PATCH_JOBS = "@@ -40,3 +40,4 @@\n a\n b\n+c\n d\n"
-PATCH_CONFIG = "@@ -10,2 +10,4 @@\n x\n y\n+z\n+w\n"
+# `jobs.py`/`config.py`: dòng 1-10 nằm trong diff (đủ phủ jobs.py:6 của semgrep, config.py:7 của semgrep và config.py:2 của gitleaks); lockfile có dòng trong diff nhưng Trivy không bao giờ inline
+PATCH_JOBS = "@@ -1,10 +1,10 @@\n" + "".join(f" line{i}\n" for i in range(1, 11))
+PATCH_CONFIG = "@@ -1,10 +1,10 @@\n" + "".join(f" line{i}\n" for i in range(1, 11))
 PATCH_LOCK = "@@ -1,2 +1,3 @@\n {\n+ new\n }\n"
 
 
@@ -60,6 +61,7 @@ def md(text: str) -> str:
 
 
 def sample_gitleaks_in_diff():
+    """gcp-api-key (entry[0]) đã ở apps/api-server/app/config.py:2 trong bản ghi thật; hàm này giữ tên cũ để rõ ý định (đặt secret vào file có trong diff)."""
     data = fixture_json("gitleaks-sample.json")
     data[0]["File"] = "apps/api-server/app/config.py"
     return data
@@ -69,14 +71,14 @@ def sample_gitleaks_in_diff():
 
 def test_collect_reads_all_three_tools_sorted_by_severity(tmp_path):
     findings, notes = sr.collect(full_run(tmp_path))
-    assert notes == [] and [f.tool for f in findings].count("semgrep") == 3 and [f.tool for f in findings].count("gitleaks") == 2 and [f.tool for f in findings].count("trivy") == 6
+    assert notes == [] and [f.tool for f in findings].count("semgrep") == 2 and [f.tool for f in findings].count("gitleaks") == 2 and [f.tool for f in findings].count("trivy") == 9
     ranks = [sr._RANK[f.level] for f in findings]
     assert ranks == sorted(ranks)
-    high = next(f for f in findings if f.rule == "qc-rules.python-subprocess-shell-true")
-    assert (high.path, high.line, high.level, high.tool) == ("apps/api-server/app/api/jobs.py", 42, "high", "semgrep")
-    assert next(f for f in findings if f.rule == "CVE-2022-0000").level == "critical"        # review giữ mức thật (finding của result chỉ có high)
-    lodash = [f for f in findings if f.rule == "CVE-2021-23337"]
-    assert {f.path for f in lodash} == {"package-lock.json", "requirements.txt"} and lodash[0].fixed == "4.17.21" and lodash[0].line is None
+    high = next(f for f in findings if f.rule == "opt.qc-rules.semgrep.python-subprocess-shell-true")
+    assert (high.path, high.line, high.level, high.tool) == ("apps/api-server/app/api/jobs.py", 6, "high", "semgrep")
+    assert next(f for f in findings if f.rule == "CVE-2021-44906").level == "critical"        # review giữ mức thật (finding của result chỉ có high)
+    lodash_high = next(f for f in findings if f.rule == "CVE-2021-23337")
+    assert lodash_high.path == "package-lock.json" and lodash_high.fixed == "4.17.21" and lodash_high.line is None
 
 
 def test_only_finished_security_tasks_are_read(tmp_path):
@@ -121,12 +123,11 @@ def test_malformed_reports_become_notes_not_crashes(tmp_path):
 
 def test_only_lines_inside_the_diff_become_inline_comments(tmp_path):
     findings, _ = sr.collect(full_run(tmp_path, gitleaks=sample_gitleaks_in_diff()))
-    diff = {"apps/api-server/app/api/jobs.py": {40, 41, 42, 43}, "apps/api-server/app/config.py": {10, 11, 12, 13}, "package-lock.json": {1, 2, 3}}
+    diff = {"apps/api-server/app/api/jobs.py": set(range(1, 11)), "apps/api-server/app/config.py": set(range(1, 11)), "package-lock.json": {1, 2, 3}}
     comments, outside = sr.split_by_diff(findings, diff)
-    assert {(c["path"], c["line"]) for c in comments} == {("apps/api-server/app/api/jobs.py", 42), ("apps/api-server/app/config.py", 12)}
+    assert {(c["path"], c["line"]) for c in comments} == {("apps/api-server/app/api/jobs.py", 6), ("apps/api-server/app/config.py", 7), ("apps/api-server/app/config.py", 2)}
     assert all(c["side"] == "RIGHT" for c in comments)
-    assert {(f.tool, f.rule) for f in outside if f.tool == "semgrep"} == {("semgrep", "qc-rules.python-requests-no-timeout"), ("semgrep", "qc-rules.python-assert-used")}
-    assert sum(1 for f in outside if f.tool == "trivy") == 6 and not any(c["path"] == "package-lock.json" for c in comments)     # Trivy không bao giờ inline, kể cả lockfile có dòng trong diff
+    assert sum(1 for f in outside if f.tool == "trivy") == 9 and not any(c["path"] == "package-lock.json" for c in comments)     # Trivy không bao giờ inline, kể cả lockfile có dòng trong diff
     assert any(f.tool == "gitleaks" and f.path == "scripts/deploy.sh" for f in outside)                                                  # ngoài diff: chỉ vào thân
 
 
@@ -170,7 +171,7 @@ def test_no_code_snippet_and_no_secret_ever_reaches_the_review(tmp_path):
     for entry in gitleaks:
         entry.update(Description="DESC-MARKER", Message="MSG-MARKER", Author="AUTHOR-MARKER", Match="k = REDACTED SURROUNDING-CONTEXT-MARKER")
     findings, _ = sr.collect(full_run(tmp_path, semgrep=semgrep, gitleaks=gitleaks))
-    comments, outside = sr.split_by_diff(findings, {"apps/api-server/app/api/jobs.py": {42}, "apps/api-server/app/config.py": {12}})
+    comments, outside = sr.split_by_diff(findings, {"apps/api-server/app/api/jobs.py": {6}, "apps/api-server/app/config.py": {7, 2}})
     blob = json.dumps([comments, sr.render_body("d" * 64, findings, inline=len(comments), outside=outside, notes=[])], ensure_ascii=False)
     for marker in ("SNIPPET-MARKER", "subprocess.run", "FINGERPRINT-MARKER", "DESC-MARKER", "MSG-MARKER", "AUTHOR-MARKER", "SURROUNDING-CONTEXT-MARKER", "API_KEY", "AWS_ACCESS_KEY_ID"):
         assert marker not in blob, marker
@@ -178,12 +179,14 @@ def test_no_code_snippet_and_no_secret_ever_reaches_the_review(tmp_path):
 
 def test_body_lists_out_of_diff_findings_and_trivy_with_fix_versions(tmp_path):
     findings, _ = sr.collect(full_run(tmp_path))
-    comments, outside = sr.split_by_diff(findings, {"apps/api-server/app/api/jobs.py": {42}})
+    comments, outside = sr.split_by_diff(findings, {"apps/api-server/app/api/jobs.py": {6}})
+    # bản ghi thật không có CVE thiếu bản vá: ép MỘT CVE (bản sao, findings gốc không đổi) để kiểm nhánh "chưa có bản vá" của render_body
+    outside = [dataclasses.replace(f, fixed="") if f.rule == "CVE-2020-7598" else f for f in outside]
     body = sr.render_body("a" * 64, findings, inline=len(comments), outside=outside, notes=["một ghi chú"])
-    assert "1 finding gắn vào dòng của PR; 10 nằm ngoài diff" in body
-    assert "Semgrep: 3 (1 high, 1 medium, 1 low)" in body and "gitleaks: 2" in body and "Trivy: 6" in body
+    assert "1 finding gắn vào dòng của PR; 12 nằm ngoài diff" in body
+    assert "Semgrep: 2 (1 high, 1 medium)" in body and "gitleaks: 2" in body and "Trivy: 9 (3 critical, 2 high, 4 medium)" in body
     assert "Thư viện có lỗ hổng (Trivy)" in body and md("lodash@4.17.20") in body and md("4.17.21") in body and "chưa có bản vá" in body
-    assert md("qc-rules.python-requests-no-timeout") in body and md("apps/api-server/app/services/runner.py:17") in body
+    assert md("opt.qc-rules.semgrep.python-pickle-load") in body and md("apps/api-server/app/config.py:7") in body
     dynamic_code_spans = [span for span in body.split("`")[1::2] if span not in ("# nosemgrep: <rule>", ".gitleaksignore", ".trivyignore", "qc-runs-*")]
     assert dynamic_code_spans == []                    # nội dung động không nằm trong code span (dấu gạch chéo ngược của clean_md sẽ lộ ra)
     assert "qc-agent:security sha256=" + "a" * 64 in body and "một ghi chú" in body and len(body) < github.MAX_COMMENT
@@ -213,10 +216,11 @@ def test_digest_ignores_order_and_wording_but_tracks_findings():
 def test_review_is_created_once_with_inline_comments_and_not_reposted(tmp_path, gh):
     run = full_run(tmp_path, gitleaks=sample_gitleaks_in_diff())
     first = sr.post_security_review(run, env=env_for(gh), ctx=CTX)
-    assert first["review"] == "created" and first["comments"] == 2 and first["outside_diff"] == 9 and len(first["sha256"]) == 64
+    assert first["review"] == "created" and first["comments"] == 3 and first["outside_diff"] == 10 and len(first["sha256"]) == 64
     review = gh.reviews[0]
     assert review["commit_id"] == CTX["sha"] and review["event"] == "COMMENT"
-    assert {(c["path"], c["line"], c["side"]) for c in review["comments"]} == {("apps/api-server/app/api/jobs.py", 42, "RIGHT"), ("apps/api-server/app/config.py", 12, "RIGHT")}
+    assert {(c["path"], c["line"], c["side"]) for c in review["comments"]} == {("apps/api-server/app/api/jobs.py", 6, "RIGHT"),
+                                                                               ("apps/api-server/app/config.py", 7, "RIGHT"), ("apps/api-server/app/config.py", 2, "RIGHT")}
     assert f"<!-- qc-agent:security sha256={first['sha256']} -->" in review["body"]
     again = sr.post_security_review(run, env=env_for(gh), ctx=CTX)                    # push thêm commit mà finding không đổi
     assert again["review"].startswith("skipped: đã đăng") and len(gh.reviews) == 1
@@ -241,7 +245,7 @@ def test_findings_outside_the_diff_still_appear_in_the_body(tmp_path, gh):
     gh.pr_files = [{"filename": "README.md", "patch": None}]
     result = sr.post_security_review(full_run(tmp_path), env=env_for(gh), ctx=CTX)
     review = gh.reviews[0]
-    assert result["comments"] == 0 and review["comments"] == [] and md("apps/api-server/app/api/jobs.py:42") in review["body"] and md("CVE-2022-0000") in review["body"]
+    assert result["comments"] == 0 and review["comments"] == [] and md("apps/api-server/app/api/jobs.py:6") in review["body"] and md("CVE-2021-44906") in review["body"]
 
 
 def test_fork_pr_with_a_read_only_token_is_only_a_warning(tmp_path, gh):

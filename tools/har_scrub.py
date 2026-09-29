@@ -273,6 +273,9 @@ def _write_atomic(path: Path, text: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):    # Windows không có console UTF-8: print() tiếng Việt ném UnicodeEncodeError, script "thành công" báo exit 1
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(prog="har_scrub.py", description="Lọc credential khỏi HAR; fail closed nếu còn sót.")
     ap.add_argument("input", help="HAR thô")
     ap.add_argument("output", help="HAR đã lọc (chỉ được ghi khi find_leaks rỗng)")

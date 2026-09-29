@@ -16,7 +16,7 @@ from securitykit import FIX, completed, fixture_json, fixture_text, make_spec, r
 
 ASSERTIONS = [{"metric": "trivy.critical", "op": "==", "value": 0}, {"metric": "trivy.high", "op": "==", "value": 0},
               {"metric": "trivy.db_age_days", "op": "<=", "value": 14, "unit": "days"}]     # như tmpl/deps.yaml.tmpl
-NOW = datetime(2026, 9, 20, 9, 0, tzinfo=timezone.utc)      # DB fixture: UpdatedAt 2026-09-18T08:30 => 2 ngày 30 phút => làm tròn lên 3
+NOW = datetime(2026, 10, 1, 9, 0, tzinfo=timezone.utc)      # DB fixture thật: UpdatedAt 2026-09-28T13:05:44 => 2 ngày 19h54 => làm tròn lên 3
 
 
 @pytest.fixture
@@ -70,22 +70,33 @@ def test_bad_inputs_are_rejected(tmp_path, inputs):
 
 def test_sample_counts_by_level_and_measures_db_age(tmp_path, spec):
     parsed = parse(tmp_path, spec, fixture_json("trivy-sample.json"))
-    assert parsed.metrics == {"trivy.critical": 1, "trivy.high": 2, "trivy.medium": 1, "trivy.low": 1, "trivy.unknown": 1,
-                              "trivy.total": 6, "trivy.targets": 2, "trivy.db_age_days": 3}
+    assert parsed.metrics == {"trivy.critical": 3, "trivy.high": 2, "trivy.medium": 4, "trivy.low": 0, "trivy.unknown": 0,
+                              "trivy.total": 9, "trivy.targets": 2, "trivy.db_age_days": 3}
     hints = {f["title"]: f["severity_hint"] for f in parsed.findings}
-    assert hints["CVE-2022-0000 example-lib@1.0.0 @ package-lock.json"] == "high"      # CRITICAL -> high (schema không có critical)
-    assert hints["CVE-2021-23337 lodash@4.17.20 @ package-lock.json"] == "high"
-    assert hints["CVE-2022-1111 left-pad@1.3.0 @ package-lock.json"] == "medium"
-    assert hints["CVE-2022-2222 left-pad@1.3.0 @ package-lock.json"] == "low"
-    assert hints["CVE-2022-3333 mystery@0.1.0 @ package-lock.json"] is None             # UNKNOWN: không bịa mức
+    assert hints["CVE-2021-44906 minimist@0.0.8 @ package-lock.json"] == "high"      # CRITICAL -> high (schema không có critical)
+    assert hints["CVE-2020-14343 PyYAML@5.3 @ requirements.txt"] == "high"           # CRITICAL ở target thứ hai
+    assert hints["CVE-2021-23337 lodash@4.17.20 @ package-lock.json"] == "high"      # HIGH thật
+    assert hints["CVE-2020-28500 lodash@4.17.20 @ package-lock.json"] == "medium"
     assert all(f["detected_by"] == "trivy" and f["verdict_source"] == "deterministic_assert" for f in parsed.findings)
     assert parsed.tokens == 0 and [k for k, _ in parsed.evidence_paths] == ["raw_output", "stdout"]
     assert oracle.evaluate(spec["oracle"], parsed.metrics, {}).value == "fail"
 
 
+def test_low_and_unknown_severities_are_measured_and_hinted_correctly(tmp_path, spec):
+    """Bản ghi thật (lodash/minimist/PyYAML) không tự nhiên có CVE mức LOW/UNKNOWN: kiểm hai mức này bằng cách mutate một finding thật."""
+    data = fixture_json("trivy-sample.json")
+    data["Results"][0]["Vulnerabilities"][2]["Severity"] = "LOW"       # CVE-2020-28500 (lodash)
+    data["Results"][1]["Vulnerabilities"][0]["Severity"] = "UNKNOWN"   # CVE-2020-14343 (PyYAML)
+    parsed = parse(tmp_path, spec, data)
+    hints = {f["title"]: f["severity_hint"] for f in parsed.findings}
+    assert hints["CVE-2020-28500 lodash@4.17.20 @ package-lock.json"] == "low"
+    assert hints["CVE-2020-14343 PyYAML@5.3 @ requirements.txt"] is None             # UNKNOWN: không bịa mức
+    assert parsed.metrics["trivy.low"] == 1 and parsed.metrics["trivy.unknown"] == 1
+
+
 def test_clean_scan_of_real_lockfiles_is_zero_cve_and_green(tmp_path, spec):
     parsed = parse(tmp_path, spec, fixture_json("trivy-empty.json"))
-    assert parsed.findings == [] and parsed.metrics["trivy.total"] == 0 and parsed.metrics["trivy.targets"] == 2
+    assert parsed.findings == [] and parsed.metrics["trivy.total"] == 0 and parsed.metrics["trivy.targets"] == 1
     assert all(parsed.metrics[f"trivy.{lv}"] == 0 for lv in ("critical", "high", "medium", "low", "unknown"))
     assert oracle.evaluate(spec["oracle"], parsed.metrics, {}).value == "pass"
 
@@ -113,18 +124,18 @@ def test_missing_db_is_an_error(tmp_path, spec, cache):
 
 
 def test_db_timestamp_with_nanoseconds_and_offset_parses(tmp_path, spec, cache):
-    set_metadata(cache, {"UpdatedAt": "2026-09-20T02:00:00.123456789+07:00"})       # = 2026-09-19T19:00Z: 14 giờ trước NOW => làm tròn lên 1 ngày
+    set_metadata(cache, {"UpdatedAt": "2026-10-01T02:00:00.123456789+07:00"})       # = 2026-09-30T19:00Z: 14 giờ trước NOW => làm tròn lên 1 ngày
     assert parse(tmp_path, spec, fixture_json("trivy-empty.json")).metrics["trivy.db_age_days"] == 1
 
 
 # ---------- bẫy 2: DB cũ là phép đo hợp lệ, oracle phán ----------
 
 def test_stale_db_is_a_measurement_that_fails_the_oracle_not_an_error(tmp_path, spec, monkeypatch):
-    monkeypatch.setattr(trivy_adapter, "_now", lambda: datetime(2026, 10, 20, tzinfo=timezone.utc))      # DB ~32 ngày tuổi
+    monkeypatch.setattr(trivy_adapter, "_now", lambda: datetime(2026, 10, 20, tzinfo=timezone.utc))      # DB ~22 ngày tuổi (UpdatedAt thật: 2026-09-28)
     parsed = parse(tmp_path, spec, fixture_json("trivy-empty.json"))
-    assert parsed.metrics["trivy.db_age_days"] == 32 and parsed.metrics["trivy.total"] == 0      # không CVE, nhưng dữ liệu cũ
+    assert parsed.metrics["trivy.db_age_days"] == 22 and parsed.metrics["trivy.total"] == 0      # không CVE, nhưng dữ liệu cũ
     outcome = oracle.evaluate(spec["oracle"], parsed.metrics, {})
-    assert outcome.value == "fail" and any("trivy.db_age_days = 32" in f["title"] for f in outcome.findings)
+    assert outcome.value == "fail" and any("trivy.db_age_days = 22" in f["title"] for f in outcome.findings)
 
 
 @pytest.mark.parametrize("now, age, verdict", [(datetime(2026, 10, 2, 8, 30, tzinfo=timezone.utc), 14, "pass"),       # đúng 14 ngày: còn trong ngưỡng
@@ -184,7 +195,7 @@ def test_missing_truncated_or_nonobject_report_and_bad_exit_are_errors(tmp_path,
 def test_finding_id_is_stable_unique_and_distinguishes_lockfiles(tmp_path, spec):
     first = [f["finding_id"] for f in parse(tmp_path, spec, fixture_json("trivy-sample.json")).findings]
     second = [f["finding_id"] for f in parse(tmp_path, spec, fixture_json("trivy-sample.json")).findings]
-    assert first == second and len(set(first)) == 6      # cùng CVE-2021-23337 ở hai lockfile vẫn là hai finding khác nhau
+    assert first == second and len(set(first)) == 9
     assert "f-trivy-" + hashlib.sha1(b"CVE-2021-23337|lodash|4.17.20|package-lock.json").hexdigest()[:12] in first
 
 
@@ -204,7 +215,7 @@ def test_finding_id_ignores_report_order(tmp_path, spec):
 
 def test_full_run_fail_pass_and_stale_db(tmp_path, spec, monkeypatch):
     failed = run_with_fake_tool(TrivyAdapter(), spec, monkeypatch, tmp_path / "a", report=fixture_text("trivy-sample.json"))
-    assert failed["status"] == "fail" and failed["verdict"]["gating"] is True and failed["metrics"]["trivy.critical"] == 1
+    assert failed["status"] == "fail" and failed["verdict"]["gating"] is True and failed["metrics"]["trivy.critical"] == 3
     passed = run_with_fake_tool(TrivyAdapter(), spec, monkeypatch, tmp_path / "b", report=fixture_text("trivy-empty.json"))
     assert passed["status"] == "pass" and passed["metrics"]["trivy.db_age_days"] == 3
     monkeypatch.setattr(trivy_adapter, "_now", lambda: datetime(2027, 1, 1, tzinfo=timezone.utc))

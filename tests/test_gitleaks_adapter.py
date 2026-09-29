@@ -65,7 +65,7 @@ def test_bad_inputs_are_rejected(tmp_path, inputs):
 def test_sample_counts_and_locates_without_any_secret_field(tmp_path, spec):
     parsed = parse(tmp_path, spec, fixture_json("gitleaks-sample.json"))
     assert parsed.metrics == {"gitleaks.count": 2}                       # CHỈ một metric
-    assert sorted(f["title"] for f in parsed.findings) == ["aws-access-token @ scripts/deploy.sh:5", "generic-api-key @ apps/api-server/app/config.py:12"]
+    assert sorted(f["title"] for f in parsed.findings) == ["gcp-api-key @ apps/api-server/app/config.py:2", "slack-bot-token @ scripts/deploy.sh:2"]
     assert all(f["severity_hint"] == "high" and f["detected_by"] == "gitleaks" and f["verdict_source"] == "deterministic_assert" for f in parsed.findings)
     assert oracle.evaluate(spec["oracle"], parsed.metrics, {}).value == "fail"
 
@@ -166,7 +166,7 @@ def test_finding_id_is_stable_unique_and_hashes_rule_plus_location(tmp_path, spe
     first = [f["finding_id"] for f in parse(tmp_path, spec, fixture_json("gitleaks-sample.json")).findings]
     second = [f["finding_id"] for f in parse(tmp_path, spec, fixture_json("gitleaks-sample.json")).findings]
     assert first == second and len(set(first)) == 2
-    assert "f-gitleaks-" + hashlib.sha1(b"generic-api-keyapps/api-server/app/config.py:12").hexdigest()[:12] in first
+    assert "f-gitleaks-" + hashlib.sha1(b"gcp-api-keyapps/api-server/app/config.py:2").hexdigest()[:12] in first
 
 
 def test_finding_id_ignores_order_and_dedupes_same_line(tmp_path, spec):
@@ -186,7 +186,7 @@ def test_finding_id_ignores_order_and_dedupes_same_line(tmp_path, spec):
 def test_full_run_fail_and_pass(tmp_path, spec, monkeypatch):
     failed = run_with_fake_tool(GitleaksAdapter(), spec, monkeypatch, tmp_path / "a", report=fixture_text("gitleaks-sample.json"))
     assert failed["status"] == "fail" and failed["verdict"]["gating"] is True
-    assert any(f["title"] == "generic-api-key @ apps/api-server/app/config.py:12" for f in failed["findings"])
+    assert any(f["title"] == "gcp-api-key @ apps/api-server/app/config.py:2" for f in failed["findings"])
     passed = run_with_fake_tool(GitleaksAdapter(), spec, monkeypatch, tmp_path / "b", report=fixture_text("gitleaks-empty.json"))
     assert passed["status"] == "pass" and passed["findings"] == []
 
