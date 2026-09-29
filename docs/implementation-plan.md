@@ -85,7 +85,7 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
 
 ### Task con
 
-- [ ] **S1.0:** Viết lại `architecture.md`, `core-rules.md`, `CLAUDE.md` theo Phần 1. Làm trước để code và tài liệu không mâu thuẫn nhau.
+- [x] **S1.0:** Viết lại `architecture.md`, `core-rules.md`, `CLAUDE.md` theo Phần 1. Làm trước để code và tài liệu không mâu thuẫn nhau.
 - [ ] **S1.1 (`llm/client.py`):**
   - `temperature=0`, timeout lấy từ settings.
   - Ép output qua tool-use `input_schema`.
