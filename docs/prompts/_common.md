@@ -49,7 +49,9 @@ Các phiên làm việc không nhìn thấy nhau, nên mọi bước phải dùn
 | LLM client | `qc_agent.llm.client.call_tool(...) -> ToolCall` (`.data`, `.usage`, `.model`, `.stop_reason`, `.duration_s`) · `LLMError.kind ∈ {missing_key, egress_denied, timeout, unavailable, bad_request, bad_output, refused}` | S1-01 | S1-04, S2-04, S4-03 |
 | Env LLM | `ANTHROPIC_API_KEY` · `ANTHROPIC_BASE_URL` (tuỳ chọn, trỏ vào fake server khi test) · `QC_GT_MODEL=claude-sonnet-5` · `QC_SELECTOR_MODEL=claude-haiku-4-5-20251001` · `QC_LLM_TIMEOUT_S` | S1-01 | mọi bước có LLM |
 | Fake Anthropic | `tests/fakes.py: FakeAnthropic` (HTTP server, phát response từ fixture, đếm số lời gọi) | S1-06 | S1-08, S2-04/05/07, S4-02/05 |
-| GT catalog | `<sut>/.qc-agent/ground-truth/test-cases.yaml`, theo schema `schemas/ground_truth.json` | S1-02 / S1-05 | S1-06, S1-08 |
+| GT catalog | `<sut>/.qc-agent/ground-truth/test-cases.yaml`, theo schema `schemas/ground_truth.json` (gốc = catalog QA đọc/sửa; `$defs/emit_test_cases` = dạng LLM phát ra) | S1-02 / S1-05 | S1-06, S1-08 |
+| GT schema API | `qc_agent.groundtruth.schema`: `catalog_schema()`, `emit_schema()` (đã inline `$ref`), `validate_catalog(data) -> list[str]`, `validate_module_map(data)`. Lỗi chỉ có "đường/dẫn (từ-khoá)", không kèm giá trị | S1-02 | S1-04, S1-05, S1-06 |
+| PRD đã parse | `qc_agent.groundtruth.prd.parse_prd(path, *, openapi_source=None) -> ParsedPRD(prd_id, sha256, format, stories, endpoints, warnings, text)`; `GTInputError` → exit 3. `endpoints` = `scaffold.openapi.endpoints()` | S1-02 | S1-04, S1-06 |
 | GT tests | `<sut>/.qc-agent/ground-truth/tests_gt/` (`conftest.py` runtime + `test_<story>.py`) | S1-05 | worker `pytest` |
 | Module map | `<sut>/.qc-agent/ground-truth/module-map.yaml`, theo schema `schemas/module_map.json` | S1-05 | S2-02, S2-04 |
 | Suite GT | `<sut>/.qc-agent/suites/gt-functional.yaml` · task `t-030` · capability `api.functional` · worker `pytest` | S1-05 | S1-08 |

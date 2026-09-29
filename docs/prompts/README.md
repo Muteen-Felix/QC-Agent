@@ -104,6 +104,8 @@ Tìm ra khi đối chiếu plan với code và với API thật (tài liệu Cla
 7. **Diff của PR phải lấy từ merge-base** (`base...head`), không phải `base..head`; nếu không, diff sẽ lẫn commit mới của nhánh đích. Vì vậy bước Select cần `fetch-depth: 0`.
 8. **PR mở bằng `GITHUB_TOKEN` không kích hoạt workflow `pull_request`.** CI `gt validate` trên PR sinh GT chỉ chạy khi QA push commit (vẫn đúng quy trình, vì QA phải sửa `draft→approved`), hoặc khi dùng token của GitHub App/PAT. S1-07 ghi điều này vào tài liệu.
 9. **`count_tokens` cũng gửi nội dung ra ngoài**, nên phải ghi egress như một lời gọi LLM.
+10. **Strict mode không cho object mở**, nên catalog GT (map tự do cho `query`/`headers`/`path_params`/`capture`/`json`) không gửi thẳng cho LLM được. `schemas/ground_truth.json` có hai dạng: **catalog** (QA đọc/sửa YAML tự nhiên) và **emit** (`$defs/emit_test_cases`: map → mảng `{name, value}`, `json` → chuỗi JSON). S1-04 chuyển emit → catalog bằng code tất định. `client.wire_schema` từ chối object tự do thay vì âm thầm siết thành `{}`. Hình dạng `steps[]` (gói `request`/`expect` để `flow` dùng chung) vẫn như đề xuất của S1-02.
+11. **SUT sạch trả 500 với id toàn chữ số ≥ 20 ký tự** (`sqlite3` tràn số nguyên, `toyapp/app.py: _get`), dù BUG-1 tắt. PRD mẫu vì thế chỉ dùng id chữ dài hoặc id 17–19 chữ số. Đây là lỗi có sẵn của SUT tham chiếu, chưa sửa (ngoài phạm vi S1-02).
 
 ## Cần bạn quyết (prompt sẽ dừng lại hỏi đúng chỗ)
 

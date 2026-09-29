@@ -38,7 +38,7 @@ Runtime trong `conftest.py`:
 - Chạy từng bước bằng `httpx`:
   - dùng `APP_BASE_URL`; thiếu biến này thì gọi `pytest.exit(..., returncode=4)` để adapter tính là `error`, không phải `fail`;
   - timeout 10s mỗi request, không follow redirect.
-- Thay `{{var}}` chỉ trong path/query/json. **Không có `eval`.**
+- `request.path` là template OpenAPI (`/notes/{note_id}`): `{name}` được điền từ `path_params`, giá trị đã URL-quote. Thay `{{var}}` chỉ trong `path_params`, `query` và `json`. **Không có `eval`.** Vắng `json` = không gửi body.
 - Đánh giá assertion theo bộ đóng ở S1-02. Thông báo khi fail ngắn gọn: `tc_id`, bước, và kỳ vọng so với thực tế đã cắt ngắn.
 - Chỉ dùng `httpx`, `PyYAML`, `pytest`; cả ba đều có trong image.
 

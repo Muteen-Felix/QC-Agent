@@ -92,12 +92,12 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
   - Ghi `core/egress.record()` trước khi gửi (policy deny thì không gửi).
   - Trả usage (số token) cho caller.
   - Khi lỗi, exception không kèm nội dung response.
-- [ ] **S1.2 (`prd.py` parse PRD):**
+- [x] **S1.2 (`prd.py` parse PRD):**
   - Markdown: chia theo heading, nhận diện các khối "User Story" và "AC".
   - OpenAPI: lấy endpoint và ràng buộc bằng code tất định, dùng lại `scaffold/openapi.py`.
   - Text thô: fallback thành một khối duy nhất.
   - Tính `prd_sha256` để về sau cache.
-- [ ] **S1.3:** Viết `schemas/ground_truth.json`. Mỗi TC có `tc_id`, `ac_refs[]`, `kind` (`api_contract` | `api_functional` | `flow`), `status` (`draft` | `approved` | `rejected`), `request`, `expect`, `origin` (`llm` | `qa`).
+- [x] **S1.3:** Viết `schemas/ground_truth.json`. Mỗi TC có `tc_id`, `ac_refs[]`, `kind` (`api_contract` | `api_functional` | `flow`), `status` (`draft` | `approved` | `rejected`), `request`, `expect`, `origin` (`llm` | `qa`).
 - [ ] **S1.4 (`generate.py`):** Gửi PRD đã parse và danh sách endpoint, nhận TC JSON, validate theo schema. Nếu sai schema thì cho LLM sửa một lần, vẫn sai thì exit 3. Không có AC nào "mồ côi" (thiếu TC) mà không bị báo.
 - [ ] **S1.5 (`render.py`, tất định):**
   - Sinh `test-cases.yaml` (bản cho người đọc).

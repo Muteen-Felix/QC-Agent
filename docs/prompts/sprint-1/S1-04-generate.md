@@ -6,7 +6,7 @@
 ## Đọc trước
 
 - `docs/prompts/_common.md`; plan S1.4 và "Nguyên tắc thiết kế" của Sprint 1
-- `src/qc_agent/llm/client.py`, `schemas/ground_truth.json`, `src/qc_agent/groundtruth/prd.py`
+- `src/qc_agent/llm/client.py`, `schemas/ground_truth.json` (đọc kỹ `$defs/emit*` và `$comment`), `src/qc_agent/groundtruth/{prd.py, schema.py}`
 - `src/qc_agent/scaffold/suggest.py: build_prompt, parse_flows`: mẫu xử lý nhãn không tin cậy và ép vào lược đồ chặt
 
 ## Mục tiêu
@@ -29,16 +29,20 @@ LLM chỉ đề xuất *nội dung* TC. Code quyết định ID, thứ tự, tr�
      - Chỉ trả kết quả qua tool `emit_test_cases`.
 2. **`src/qc_agent/groundtruth/generate.py`**
    - `generate(prd: ParsedPRD, *, model, egress_dir, transport=None, policy=None) -> GenerateResult(catalog, usage, warnings, orphans)`
-   - **Tool `emit_test_cases`**: input schema = phần `test_cases` (bỏ `tc_id`, `status`, `origin`, `rejected_reason`, `notes`) cộng `uncovered_acs`. Gửi bản `wire_schema(...)`; `call_tool` validate bằng schema đầy đủ.
+   - **Tool `emit_test_cases`**: input schema = **`groundtruth.schema.emit_schema()`** (đã inline `$ref`, không có `tc_id`/`status`/`origin`/`rejected_reason`/`notes`, có `uncovered_acs`). Đưa thẳng vào `call_tool`; nó tự gửi bản `wire_schema(...)` và validate bằng schema đầy đủ. *Hiệu chỉnh (S1-02):* strict mode không cho object mở, nên LLM phát **dạng emit** (map → mảng `{name, value}`, `json` body → chuỗi JSON, mọi khoá đều có mặt), khác dạng **catalog** mà QA đọc (map YAML tự nhiên). Đừng tự lắp schema từ catalog: `wire_schema(catalog_schema())` ném `ValueError` có chủ đích.
+   - **Chuyển emit → catalog bằng code tất định** (hàm riêng, có test riêng): mảng `{name, value}` → map (tên trùng là lỗi TC); `json` chuỗi → `json.loads` (lỗi cú pháp là lỗi TC); bỏ khoá rỗng (`path_params`/`query`/`headers`/`capture` rỗng, `json` là `null`) để catalog gọn và băm ổn định. Kết quả phải qua `schema.validate_catalog`.
+   - `ParsedPRD` (S1-02) có `.text` (văn bản đã chuẩn hoá, đưa vào `<prd>`), `.stories`, `.endpoints` = `[{method, path, spec_path, parameters, body_required, responses}]`. `request.path` của TC là **template `path` của endpoint** (đã gồm tiền tố), `{name}` điền từ `path_params`.
    - Gọi `call_tool(purpose="gt-generate", data_categories=["prd_text", "api_spec"], max_tokens=16000, …)`. Giữ request non-streaming ~16k để tránh timeout HTTP.
    - **Vòng sửa đúng một lần** (plan): nếu `LLMError(kind="bad_output")`, gọi lại một lần. Lần này thêm vào `user` tóm tắt lỗi validate (đường dẫn trường + thông điệp, **không** nhắc lại nội dung PRD). Vẫn sai thì raise `GTError`, và CLI (S1-06) trả exit 3. Lần gọi thứ hai cũng ghi egress.
    - **Kiểm ngữ nghĩa từng TC**: nếu TC vi phạm thì **bỏ TC đó** và thêm warning, chứ không làm hỏng cả lần sinh. Các lỗi cần bắt:
      - `ac_refs` phải nằm trong tập AC đã parse;
      - `method + path template` phải có trong danh sách endpoint (khi có OpenAPI);
-     - biến `{{x}}` phải được `capture` ở một bước trước đó;
+     - biến `{{x}}` (trong `path_params`, `query`, `json`) phải được `capture` ở một bước trước đó;
+     - mỗi `{name}` trong `path` phải có trong `path_params`, và ngược lại;
+     - `json` phải là JSON hợp lệ (xem bước chuyển đổi ở trên);
      - `status` nằm trong khoảng 100–599;
      - kiểu `flow` phải có ≥ 2 bước.
-   - **`tc_id` do code tính**: `TC-<ac_refs[0]>-<sha1(canonical_json({kind, steps}))[:6]>`. Hai TC có cùng nội dung dưới cùng AC thì gộp làm một. Nhờ vậy `gt regen` (S1-06) merge được theo `tc_id` và không đẻ bản sao của TC đã duyệt.
+   - **`tc_id` do code tính**: `TC-<ac_refs[0]>-<sha1(canonical_json({kind, steps}))[:6]>` (với `steps` ở **dạng catalog** sau chuyển đổi, `sort_keys=True`, `ensure_ascii=False`). Hai TC có cùng nội dung dưới cùng AC thì gộp làm một. Nhờ vậy `gt regen` (S1-06) merge được theo `tc_id` và không đẻ bản sao của TC đã duyệt.
    - **Orphan**: AC không có TC và cũng không nằm trong `uncovered_acs` → đưa vào `orphans`. "Không AC nào mồ côi mà không bị báo" (plan).
    - **Catalog tất định**: mọi TC có `status: draft, origin: llm`; sắp xếp theo `(story, ac, tc_id)`. **Không** chứa token, thời gian hay usage (DoD đòi render hai lần ra byte giống hệt). `usage` trả riêng cho caller.
    - **Log**: event `gt.generate` gồm số story/AC/TC/orphan, số TC bị bỏ, 4 số token. Không có nội dung.
