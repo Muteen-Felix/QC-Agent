@@ -400,6 +400,24 @@ def test_wire_schema_rejects_open_objects():
         wire_schema({"type": "object", "additionalProperties": True})
 
 
+@pytest.mark.parametrize("free_form", [
+    {"type": "object"},                                           # map tự do trần: trước đây bị siết âm thầm thành "chỉ được {}"
+    {"type": ["object", "null"]},
+    {"type": "object", "patternProperties": {"^x": {"type": "string"}}},
+    {"type": "object", "properties": {"inner": {"type": "object"}}},   # tự do ở độ sâu bất kỳ
+    {"type": "array", "items": {"type": "object", "description": "một map"}},
+])
+def test_wire_schema_rejects_free_form_objects_instead_of_silently_closing_them(free_form):
+    with pytest.raises(ValueError):
+        wire_schema(free_form)
+
+
+def test_wire_schema_accepts_explicitly_closed_and_property_bearing_objects():
+    assert wire_schema({"type": "object", "additionalProperties": False}) == {"type": "object", "additionalProperties": False}
+    assert wire_schema({"type": "object", "properties": {}})["additionalProperties"] is False   # đóng rỗng có chủ đích
+    assert wire_schema({"properties": {"a": {"type": "string"}}})["additionalProperties"] is False
+
+
 # ---------------- sai cách dùng ----------------
 
 @pytest.mark.parametrize("override", [

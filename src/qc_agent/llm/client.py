@@ -110,8 +110,12 @@ def wire_schema(schema: dict) -> dict:
                 out[key] = walk(value)
         kind = out.get("type")
         if kind == "object" or (isinstance(kind, list) and "object" in kind) or "properties" in out:
-            if out.get("additionalProperties", False) is not False:
+            explicit = out.get("additionalProperties")
+            if explicit not in (None, False) or "patternProperties" in out:
                 raise ValueError("strict tool schema không hỗ trợ object mở: additionalProperties phải là false")
+            if "properties" not in out and explicit is None:
+                # `{"type": "object"}` trần là map tự do: siết thành additionalProperties=false sẽ âm thầm biến nó thành "chỉ được {}".
+                raise ValueError("strict tool schema không hỗ trợ object tự do (không khai properties); dùng mảng [{name, value}]")
             out["additionalProperties"] = False
         return out
 
