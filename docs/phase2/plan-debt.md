@@ -1,3 +1,6 @@
+> **Superseded** bởi [`docs/implementation-plan.md`](../implementation-plan.md) — S3 gỡ sổ nợ khỏi luồng; bảng `test_debt` và migration `0005` giữ nguyên.
+> `docs/architecture.md` (v2) không còn mô tả sổ nợ, nên các tham chiếu `architecture.md §1.4–§1.5, §5.4` bên dưới chỉ còn nghĩa lịch sử. Code của Phase 2 vẫn nằm trong repo cho tới S3.
+
 # Phase 2 — Sổ nợ test + khâu dò nợ
 
 Một người làm, 1 sprint (~8 ngày + 2 ngày đệm). Bối cảnh: [architecture.md §1.4–§1.5, §5.4](../architecture.md).
