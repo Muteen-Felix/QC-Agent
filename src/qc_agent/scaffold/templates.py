@@ -28,6 +28,7 @@ _URL_PATH = re.compile(r"/[A-Za-z0-9/._~{}-]*")
 _ROUTE_PATH = re.compile(r"/[A-Za-z0-9/._~-]*")  # đường dẫn thăm dò/nhúng vào scalar không quote: không cho `{}`
 _FILE = re.compile(r"[A-Za-z0-9._][A-Za-z0-9/._-]*")  # đường dẫn file tương đối trong repo SUT
 _DURATION = re.compile(r"[1-9][0-9]{0,3}[smh]")
+_GT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")   # cùng regex `$defs/id` của schemas/ground_truth.json
 _SHA = re.compile(r"[0-9a-f]{40}")
 _IMAGE = re.compile(r"[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}")
 _ENV_LINE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=[^\r\n]*")
@@ -131,6 +132,21 @@ def api_contract_suite(*, openapi_path: str = "/openapi.json", exclude: tuple = 
     note = f"    # {todo_mark('VERIFY', verify_openapi)}" if verify_openapi else ""
     return render("api-contract.yaml.tmpl", {"openapi_path": _need(_ROUTE_PATH, openapi_path, "openapi_path"), "exclude_block": block,
                                              "schema_note": note})
+
+
+def gt_functional_suite() -> str:
+    """Suite `gt-functional` (task t-030, worker pytest) của Ground-Truth (S1-05). Không có chỗ trống: nội dung cố định."""
+    return render("gt-functional.yaml.tmpl", {})
+
+
+def gt_conftest() -> str:
+    """Runtime của test Ground-Truth (conftest.py). Mã cố định; chuỗi trong catalog chỉ là dữ liệu nó đọc lúc chạy, không vào mã."""
+    return render("gt-conftest.py.tmpl", {})
+
+
+def gt_story_test(story_id: str) -> str:
+    """test_<story>.py: chỉ có STORY_ID. `story_id` là giá trị duy nhất từ PRD đi vào mã Python và phải khớp regex ID của schema."""
+    return render("gt-api-functional.py.tmpl", {"story_id": _q(_need(_GT_ID, story_id, "story_id"))})
 
 
 def perf_smoke_suite(*, script: str = ".qc-agent/perf/smoke.js", vus: int = 2, duration: str = "10s") -> str:

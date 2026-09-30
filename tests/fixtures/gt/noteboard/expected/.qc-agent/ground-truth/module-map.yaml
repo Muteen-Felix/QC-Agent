@@ -1,0 +1,12 @@
+# qc-agent:generated gt — module-map NHÁP (status: draft): ánh xạ đường dẫn mã nguồn -> module -> suite. Selector (S2) chỉ dùng để GỢI Ý thêm suite.
+# qc-agent:todo VERIFY: điền `paths` của từng module (glob tương đối gốc repo SUT, tới file khai báo route); scanner chưa biết file route của repo này, rồi đổi status thành approved
+version: 1
+status: draft
+modules:
+- name: "notes"
+  paths:
+  - "TODO-route-files-of-notes"
+  suites:
+  - api-contract
+  - gt-functional
+  source: openapi

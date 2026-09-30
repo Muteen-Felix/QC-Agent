@@ -61,7 +61,7 @@ Khâu Security (Làn A) — tên đã chốt, suite và test dựa vào chúng:
 
 Khâu Ground-Truth (S1) — `gt-functional` (`t-030`): worker `pytest` · `api.functional`, metric luôn đủ 5 khoá `pytest.tests/passed/failures/errors/skipped` (`skipped` gồm cả xfail).
 Suite chặn `pytest.failures == 0`, `pytest.errors == 0` và `pytest.tests >= 1` (để "gate rỗng" là `fail`, không phải xanh). Finding: `detected_by: "pytest:<tc_id>"`
-(quy ước `<tool>:<rule_id>`, `severity_hint: medium`). Thư mục test phải có `pytest.ini` riêng (S1-05 sinh), nếu không worker trả `error`: chặn cấu hình/`conftest.py` của repo SUT lọc bớt test làm gate xanh giả. Exit code của pytest: 0/1 → parse JUnit; 5 → metric 0; 2/3/4 và mọi mã khác → `error`.
+(quy ước `<tool>:<rule_id>`, `severity_hint: medium`). Thư mục test phải có `pytest.ini` riêng (`groundtruth/render.py` sinh), nếu không worker trả `error`: chặn cấu hình/`conftest.py` của repo SUT lọc bớt test làm gate xanh giả. Exit code của pytest: 0/1 → parse JUnit; 5 → metric 0; 2/3/4 và mọi mã khác → `error`.
 
 - **Hiện tại (đến hết S2):** `critical` vẫn chỉ có ở **metric**: `severity_hint` của finding không có `critical` nên nó ghi là `high`. Vì vậy suite phải chặn `*.critical` riêng, chỉ chặn `*.high` sẽ bỏ lọt. **S3.1 đổi:** `severity_hint` ∈ low/medium/critical (contract 2.0.0) và mọi chỗ đang phát `high` được sửa cùng một PR; metric `critical` và ghi chú này được rà lại ở đó.
 - Adapter **đếm**, ngưỡng nằm trong file suite (oracle `threshold`); adapter không có nhánh nào phán pass/fail. Vị trí `file:dòng` hiện đi vào `title` (`rule @ path:line`), chưa có trường `location` — **S3.1** thêm `findings[].location` (tuỳ chọn) trong cùng lần nâng contract.

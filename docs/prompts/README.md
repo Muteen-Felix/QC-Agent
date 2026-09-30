@@ -111,6 +111,13 @@ Tìm ra khi đối chiếu plan với code và với API thật (tài liệu Cla
     - **Timeout mặc định 300s** (`max(QC_LLM_TIMEOUT_S, 300)`): request non-streaming 16k token thì API im lặng tới khi xong, nên read-timeout 120s của client làm hỏng lần sinh hợp lệ. Truyền `timeout_s=` để đổi.
     - **`generate(..., source=None, timeout_s=None)`**: thêm `source` (chuỗi ghi vào `prd.source` của catalog, S1-06 truyền đường dẫn PRD; mặc định là `prd_id`) vì `ParsedPRD` không giữ đường dẫn.
     - **Sai kiểu lỗi**: mọi lỗi (thiếu khoá, egress, HTTP, `refused`, sai schema sau lần sửa, PRD không có AC) đều là `GTError(kind)` để CLI chỉ bắt một loại. Chỉ `bad_output` được sửa một lần. `usage` trả về là của lời gọi thành công; lời gọi hỏng đã nằm trong log `llm.call` của client.
+13. **`render` (S1-05) chốt những điểm prompt để ngỏ** (docstring `groundtruth/render.py` và mẫu `gt-conftest.py.tmpl`):
+    - **TC thuộc story nào**: theo `ac_refs[0]` (cùng AC quyết định `tc_id`). TC `approved` không gắn được vào story nào, hoặc story đó không có `test_<story>.py`, thì runtime **thoát mã 4** (`error`) thay vì lặng lẽ bỏ qua; catalog hỏng hoặc thiếu `APP_BASE_URL` cũng mã 4. Các kiểm này nằm ở `pytest_sessionstart`: `pytest.exit` trong lúc collect bị pytest tính là lỗi collect (mã 2).
+    - **Story không có TC approved** không sinh test nào (bị gỡ khỏi collection, không đếm là skipped). Nếu không, `pytest.tests >= 1` sẽ xanh với toàn skipped. Không có TC approved nào cả thì pytest thoát 5 và suite `fail`: gate rỗng không xanh.
+    - **Ngữ nghĩa assertion** (prompt chưa nêu): `eq`/`ne` so kiểu JSON (`true` ≠ `1`); `ne`, `contains`, `len_*`, `type` **yêu cầu path tồn tại** (thiếu path thì fail, không thành "khác nhau"); `exists` đếm cả `null`; `{{var}}` đứng nguyên một mình trong chuỗi JSON giữ kiểu của giá trị đã capture, còn lại nội suy thành chuỗi.
+    - **module-map**: `scan.py` không biết file khai báo route, nên `paths` là placeholder `TODO-route-files-of-<module>` kèm `qc-agent:todo VERIFY`; tên module lấy từ segment tĩnh đầu tiên của path trong catalog ∪ `Analysis.get_paths` (không có segment tĩnh thì `root`).
+    - **Thứ tự khoá tất định**: catalog, request và assertion xếp theo thứ tự cố định; map (`query`, `headers`, `path_params`, `capture`) và body `json` xếp theo khoá, để đầu ra không phụ thuộc thứ tự dict nhập vào. `render` giữ nguyên `status` của từng TC (để `gt regen` giữ được thứ QA đã duyệt); file `.py` không phụ thuộc status.
+    - **Regex `$` của schema** chấp nhận một `\n` ở cuối id (cách Python xử lý `$`). Không sửa schema ở đây; `render` chặn lại bằng `fullmatch` trước khi đưa `story_id` vào mã.
 
 ## Cần bạn quyết (prompt sẽ dừng lại hỏi đúng chỗ)
 
