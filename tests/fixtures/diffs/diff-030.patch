@@ -1,0 +1,8 @@
+diff --git a/tests/test_selector_30.py b/tests/test_selector_30.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/tests/test_selector_30.py
+@@ -0,0 +1,2 @@
++def test_selector_30():
++    assert True

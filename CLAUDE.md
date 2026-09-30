@@ -8,6 +8,8 @@ Docs and comments are in Vietnamese; match that when editing docs.
 
 ## Commands
 
+- Sprint 2 selection: `qc-agent select --project noteboard --mode pr --sut-root DIR --base SHA --head SHA --out selection.json` tạo phạm vi chạy PR. `qc-agent run --project noteboard --mode pr --trigger pr --selection selection.json` chạy phạm vi đã chọn và gộp floor. `--trigger manual --workers semgrep,gitleaks` chỉ chạy worker chỉ định. Không có `--trigger` giữ hành vi cũ.
+
 ```bash
 pip install uv && uv sync            # .venv + editable qc-agent from uv.lock (requirements.txt mentions in docs/core-rules.md are stale)
 npm ci                               # Midscene CLI + Playwright (needed for tests/test_web.py)

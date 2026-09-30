@@ -245,3 +245,10 @@ def pick(registry: dict[str, Worker], spec: dict, prefer: tuple[str, ...] | list
     rank = {name: index for index, name in enumerate(preferences)}
     ready.sort(key=lambda worker: (rank.get(worker.name, len(rank)), worker.name))
     return ready[0], ""
+
+
+def workers_for(registry: dict[str, Worker], capability: str, lane: str, oracle_kind: str) -> list[str]:
+    """Tra manifest, khong probe binary cua worker."""
+    return sorted(worker.name for worker in registry.values()
+                  if capability in worker.capabilities and lane in worker.lanes
+                  and oracle_kind in worker.capabilities[capability].get("oracle_kinds", []))

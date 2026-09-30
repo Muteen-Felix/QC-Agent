@@ -34,11 +34,11 @@ def build(tmp_path, sut, mode="pr", **kw):
 def test_reference_project_and_suites_load_and_build_both_modes():
     cfg = pj.load_project("noteboard", PROJECTS)
     suites = pj.load_suites(NOTEBOARD_SUT / cfg["suites_dir"])
-    assert sorted(suites) == ["ai-eval", "api-contract", "coverage-debt", "gt-functional", "perf-full", "perf-smoke", "ui-explore"]
+    assert sorted(suites) == ["ai-eval", "api-contract", "coverage-debt", "gt-functional", "perf-full", "perf-smoke", "sast", "secrets", "ui-explore"]
     pr, meta = pj.build_plan(cfg, "pr", suites)
-    assert [t["task_id"] for t in pr["tasks"]] == ["t-001", "t-003", "t-030", "t-101", "t-canary-01", "t-102", "t-103"]
+    assert [t["task_id"] for t in pr["tasks"]] == ["t-001", "t-003", "t-030", "t-010", "t-011", "t-101", "t-canary-01", "t-102", "t-103"]
     assert meta["on_skipped_gate_task"] == "fail"
-    assert set(meta["suite_sha256"]) == {"api-contract", "ai-eval", "gt-functional", "ui-explore", "perf-smoke", "coverage-debt"}
+    assert set(meta["suite_sha256"]) == {"api-contract", "ai-eval", "gt-functional", "sast", "secrets", "ui-explore", "perf-smoke", "coverage-debt"}
     assert meta["yellow_task_ids"] == ["t-103"]  # P2-8: coverage-debt bật advisory_yellow_suites ở noteboard.yaml
     manual, _ = pj.build_plan(cfg, "manual", suites)
     assert "t-002" in {t["task_id"] for t in manual["tasks"]}  # perf-full chỉ chạy thủ công
@@ -288,11 +288,13 @@ def test_expect_repo_blocks_registered_slug_from_another_repo_but_not_default(tm
         engine.run_project("brand-new", "pr", tmp_path / "runs", projects_dir=root, sut_root=tmp_path, expect_repo="org/whatever")
 
 
-def test_noteboard_resolves_to_exactly_its_own_file_plus_default_suites_dir():
-    """Gộp với _default không được đổi policy của project đã khai đủ."""
+def test_noteboard_inherits_default_selector_policy():
+    """Project override suite list, con floor va path rules ke thua tu default."""
     root = Path(__file__).resolve().parent.parent / "configs" / "projects"
     raw = yaml.safe_load((root / "noteboard.yaml").read_text(encoding="utf-8"))
-    assert pj.load_project("noteboard", root) == {**raw, "suites_dir": raw["suites_dir"]}
+    resolved = pj.load_project("noteboard", root)
+    assert resolved["modes"]["pr"]["blocking_suites"] == raw["modes"]["pr"]["blocking_suites"]
+    assert resolved["modes"]["pr"]["floor_workers"] == ["gitleaks", "semgrep"]
 
 
 def test_report_records_policy_source_and_ref(tmp_path, monkeypatch, sut):

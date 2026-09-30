@@ -12,6 +12,7 @@ Bản ghi KHÔNG chứa nội dung, đường dẫn, query hay thông tin đăng
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,6 +53,9 @@ def _host(spec: dict) -> str | None:
         return None
 
 
+_WRITE_LOCK = threading.Lock()
+
+
 def record(policy: EgressPolicy, run_dir: Path, spec: dict, worker, attempt: int) -> Decision:
     """Ghi một dòng vào run_dir/egress.jsonl rồi trả quyết định của policy. Lỗi ghi log không được làm hỏng run (chỉ mất bản ghi)."""
     event = {
@@ -68,8 +72,9 @@ def record(policy: EgressPolicy, run_dir: Path, spec: dict, worker, attempt: int
     decision = policy.decide(dict(event))
     event["decision"] = {"action": decision.action, "reason": decision.reason}
     try:
-        with (Path(run_dir) / LOG_NAME).open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+        with _WRITE_LOCK:
+            with (Path(run_dir) / LOG_NAME).open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, ensure_ascii=False) + "\n")
     except OSError:
         pass
     return decision

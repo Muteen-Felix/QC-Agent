@@ -1,0 +1,8 @@
+diff --git a/toyapp/selector_api_2.py b/toyapp/selector_api_2.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/toyapp/selector_api_2.py
+@@ -0,0 +1,2 @@
++def route_2(value):
++    return value.strip()

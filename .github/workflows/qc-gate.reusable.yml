@@ -27,7 +27,7 @@ env:
   # Repo chứa policy. HARD-CODE vì trong workflow_call `github.repository` là repo GỌI, không phải qc-agent. Fork/đổi tên repo thì sửa đúng chỗ này.
   QC_AGENT_REPO: Muteen-Felix/QC-Agent
 
-on:
+"on":
   workflow_call:
     inputs:
       project:
@@ -48,6 +48,10 @@ on:
       sut_dockerfile:
         type: string
         default: Dockerfile
+      workers:
+        description: "Danh sach worker cho workflow_dispatch manual"
+        type: string
+        default: ""
       sut_context:
         type: string
         default: "."
@@ -102,6 +106,7 @@ on:
       QC_API_TOKEN: { required: false }
       GHCR_PULL_TOKEN: { required: false }
       OPENAI_API_KEY: { required: false }
+      ANTHROPIC_API_KEY: { required: false }
       GEMINI_API_KEY: { required: false }
       MIDSCENE_MODEL_BASE_URL: { required: false }
       MIDSCENE_MODEL_API_KEY: { required: false }
@@ -139,7 +144,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-          fetch-depth: 2   # dò nợ test: trên pull_request HEAD là merge commit, HEAD^1 là nhánh đích => cần đúng 2 commit (mặc định 1 làm diff lỗi)
+          fetch-depth: 0   # Select can merge-base that is older than two commits.
 
       - name: Log in to GHCR
         if: startsWith(inputs.image, 'ghcr.io/')
@@ -302,9 +307,37 @@ jobs:
             ${{ runner.temp }}/refine/suggestions.json
           retention-days: 14
 
+      - name: Select (PR)
+        id: select
+        if: github.event_name == 'pull_request'
+        env:
+          IMAGE: ${{ inputs.image }}
+          PROJECT: ${{ inputs.project }}
+          MODE: ${{ inputs.mode }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set +e
+          mkdir -p runs
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e ANTHROPIC_API_KEY \
+            -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work "$IMAGE" \
+            select --project "$PROJECT" --mode "$MODE" --sut-root /work --projects-dir /policy \
+            --base "$BASE_SHA" --head "$HEAD_SHA" --out /work/runs/selection.json
+          code=$?
+          if [ "$code" -eq 0 ] && [ -f runs/selection.json ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
       - name: Run qc-agent gate
         id: gate
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKERS: ${{ inputs.workers }}
+          SELECT_OK: ${{ steps.select.outputs.ok }}
           IMAGE: ${{ inputs.image }}
           PROJECT: ${{ inputs.project }}
           MODE: ${{ inputs.mode }}
@@ -331,6 +364,21 @@ jobs:
           mkdir -p runs
           args=(run --project "$PROJECT" --mode "$MODE" --sut-root /work --runs-dir /work/runs --sut-ref "$SUT_REF"
                 --projects-dir /policy --expect-repo "$GITHUB_REPOSITORY")
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$SELECT_OK" = "true" ]; then
+              args+=(--trigger pr --selection /work/runs/selection.json)
+            else
+              echo "::warning::Select failed; gate runs full set"
+              args+=(--trigger pr)
+            fi
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$WORKERS" ]; then
+            if [[ ! "$WORKERS" =~ ^[a-z0-9][a-z0-9,_-]*$ ]]; then
+              echo "::error::workers khong hop le"
+              echo "exit_code=1" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+            args+=(--trigger manual --workers "$WORKERS")
+          fi
           if [ -n "$SUITES" ]; then args+=(--suites "$SUITES"); fi
           ui_args=(); if [ -n "${UI_URL:-}" ]; then ui_args=(-e APP_UI_URL="$UI_URL"); fi
           docker run --rm --network qc-net --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work \

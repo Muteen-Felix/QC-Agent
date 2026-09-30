@@ -1,0 +1,7 @@
+diff --git a/package-lock.json b/package-lock.json
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/package-lock.json
+@@ -0,0 +1,1 @@
++selector-lock-18
