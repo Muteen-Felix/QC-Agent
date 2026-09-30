@@ -319,7 +319,7 @@ def generate(prd: ParsedPRD, *, model: str, egress_dir: Path, transport: httpx.B
         except llm.LLMError as second:
             raise GTError(second.kind, f"{second} (sau 1 lần sửa)") from None
 
-    catalog, warnings, orphans, dropped, merged = _assemble(prd, call.data, model=model, version=version, source=source or prd.prd_id)
+    catalog, warnings, orphans, dropped, merged = _assemble(prd, call.data, model=call.model if call.fallback_from else model, version=version, source=source or prd.prd_id)
     problems = gt_schema.validate_catalog(catalog)
     if problems:   # lỗi lập trình (conversion sinh catalog sai schema), không phải lỗi của LLM
         raise GTError("bad_output", "catalog sinh ra vi phạm schema: " + "; ".join(problems[:3]))
