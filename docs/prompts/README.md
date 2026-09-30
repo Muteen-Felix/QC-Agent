@@ -118,6 +118,14 @@ Tìm ra khi đối chiếu plan với code và với API thật (tài liệu Cla
     - **module-map**: `scan.py` không biết file khai báo route, nên `paths` là placeholder `TODO-route-files-of-<module>` kèm `qc-agent:todo VERIFY`; tên module lấy từ segment tĩnh đầu tiên của path trong catalog ∪ `Analysis.get_paths` (không có segment tĩnh thì `root`).
     - **Thứ tự khoá tất định**: catalog, request và assertion xếp theo thứ tự cố định; map (`query`, `headers`, `path_params`, `capture`) và body `json` xếp theo khoá, để đầu ra không phụ thuộc thứ tự dict nhập vào. `render` giữ nguyên `status` của từng TC (để `gt regen` giữ được thứ QA đã duyệt); file `.py` không phụ thuộc status.
     - **Regex `$` của schema** chấp nhận một `\n` ở cuối id (cách Python xử lý `$`). Không sửa schema ở đây; `render` chặn lại bằng `fullmatch` trước khi đưa `story_id` vào mã.
+14. **`gt` CLI (S1-06) chốt những điểm prompt để ngỏ** (docstring `groundtruth/{cli,check,merge}.py`):
+    - **Ba mức của `gt validate`**: lỗi (exit 1) / cảnh báo (exit 0) / không phán được (exit 3). Hai luật của schema là "catalog `approved` thì mọi TC phải đã duyệt" và "`rejected` cần `rejected_reason`"; `validate` báo chúng bằng exit 1 (lỗi HITL) chứ không phải exit 3, nên kiểm schema chạy trên bản đã nới hai luật đó.
+    - **TC trỏ tới AC không có trong catalog**: lỗi nếu TC còn `draft`; **cảnh báo** nếu `approved`/`rejected` (đó là trường hợp PRD đã xoá AC, prompt yêu cầu exit 0). Hệ quả cần biết: TC `approved` có AC đầu tiên đã mất làm runtime `pytest` thoát mã 4 (gate `error`) cho tới khi QA sửa `ac_refs` hoặc chuyển `rejected`; cảnh báo nói rõ điều này.
+    - **`regen` chỉ sở hữu file máy sinh**: catalog và `tests_gt/*`. `module-map.yaml`, `gt-functional.yaml`, `api-contract.yaml` thuộc về người sau lần `generate` đầu nên không bị ghi đè. `test_<story>.py` do máy sinh mà story đã bị xoá khỏi PRD thì bị xoá (chỉ file có dấu `qc-agent:generated gt`); file lạ trong `tests_gt/` không bị xoá mà bị `validate` báo drift.
+    - **Comment YAML do QA viết trong `test-cases.yaml` không sống qua `regen`** (catalog được nạp rồi ghi lại); mọi TC thì giữ nguyên từng khoá/giá trị (test so bản `yaml.safe_dump` từng entry). QA nên ghi chú vào trường `notes` của TC.
+    - **Lý do `uncovered_acs` do người sửa thắng lý do mới của LLM**; AC chỉ còn TC `rejected` được tính là chưa có TC (cảnh báo mồ côi) vì loại một TC không làm AC hết cần kiểm.
+    - **Egress mặc định** ở `$QC_RUNS_DIR/gt` (tức `./runs/gt`), bị từ chối nếu nằm dưới `<sut>/.qc-agent/`. Workflow S1-07 nên truyền `--egress-dir` ra ngoài cây làm việc để `git add` không kéo nó vào PR.
+    - **Không có tuỳ chọn policy egress ở CLI**: `LogOnlyPolicy` là mặc định; test `deny` thay lớp này bằng monkeypatch. Cấu hình policy thật nằm ở S3/S4.
 
 ## Cần bạn quyết (prompt sẽ dừng lại hỏi đúng chỗ)
 

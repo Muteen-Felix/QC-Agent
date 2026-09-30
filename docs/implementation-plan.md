@@ -106,7 +106,7 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
   - Sinh `module-map.yaml` nháp (glob đường dẫn $\to$ module $\to$ suite).
   - Mọi thứ sinh ra mang `status: draft`.
 - [x] **S1.6 (Worker `pytest`):** Manifest + adapter chỉ override `build_cmd`/`parse_output`. Không sửa `core/`.
-- [ ] **S1.7 (CLI):** `qc-agent gt generate --prd … --sut-root …`, `gt validate`, `gt regen`. Khi PRD đổi, `gt regen` merge theo `tc_id`: không bao giờ ghi đè TC `approved` hoặc `origin: qa`.
+- [x] **S1.7 (CLI):** `qc-agent gt generate --prd … --sut-root …`, `gt validate`, `gt regen`. Khi PRD đổi, `gt regen` merge theo `tc_id`: không bao giờ ghi đè TC `approved` hoặc `origin: qa`.
 - [ ] **S1.8 (HITL):**
   - Workflow mở PR sinh GT.
   - QA đổi `draft` thành `approved` và thêm edge case (`origin: qa`).

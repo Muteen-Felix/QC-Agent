@@ -148,6 +148,18 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
         for line, text in _todo_lines(path):
             report.add(ERROR, f"{project['suites_dir']}/{path.name}:{line}", _todo_message(text))
 
+    if (sut_root / ".qc-agent" / "ground-truth").is_dir():   # Ground-Truth (S1-06): cùng cổng HITL với `qc-agent gt validate`; TC draft là lỗi
+        from qc_agent.groundtruth import check as gt_check   # import lười: chỉ khi repo có Ground-Truth
+        try:
+            checked = gt_check.check(sut_root)
+        except gt_check.GTCheckError as error:
+            report.add(ERROR, ".qc-agent/ground-truth", str(error))
+        else:
+            for where, message in checked.errors:
+                report.add(ERROR, where, message)
+            for where, message in checked.warnings:
+                report.add(WARN, where, message)
+
     try:
         workers = registry.load_many(workers_dirs or settings.get().workers_dirs)
     except registry.ManifestError as error:

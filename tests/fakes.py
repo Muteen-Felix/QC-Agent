@@ -1,8 +1,10 @@
-"""Máy chủ HTTP giả cho test tích hợp: GitHub API (check-runs, comment PR) và webhook. Ghi lại mọi request để kiểm chứng."""
+"""Máy chủ HTTP giả cho test tích hợp: GitHub API (check-runs, comment PR), webhook và Messages API của Anthropic (FakeAnthropic). Ghi lại mọi request để kiểm chứng."""
 import json
 import re
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from pathlib import Path
 
 
 class FakeGitHub:
@@ -125,6 +127,88 @@ class FakeWebhook:
     @property
     def url(self) -> str:
         return f"http://127.0.0.1:{self.server.server_port}/hook"
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+class FakeAnthropic:
+    """Máy chủ Messages API giả (`POST /v1/messages`) cho test tích hợp có LLM (S1-06; S1-08, S2, S4 dùng lại): CLI chạy qua `ANTHROPIC_BASE_URL=<url>`.
+
+    `script` là danh sách kết quả cho từng lời gọi, phát lần lượt (hết thì lặp lại phần tử cuối):
+      - dict      body JSON của response (vd nội dung `tests/fixtures/llm/*.json`) -> 200
+      - Path      file JSON chứa body đó -> 200
+      - int       mã lỗi (429 rate_limit_error, 529 overloaded_error, 500 api_error, ... ) với body lỗi đúng dạng của API
+      - "timeout" im lặng `hang_s` giây rồi đóng kết nối (client có timeout ngắn sẽ báo timeout)
+    Mỗi request được ghi vào `requests` ({"headers": {tên-thường: giá trị}, "body": JSON}); `count` là số lời gọi. Thiếu `x-api-key` (hoặc sai `key` nếu
+    có đặt) hoặc `anthropic-version` thì trả 401 như API thật (vẫn được ghi, `rejected=True`).
+    """
+    ERRORS = {429: "rate_limit_error", 529: "overloaded_error", 500: "api_error", 400: "invalid_request_error", 401: "authentication_error"}
+
+    def __init__(self, *script, key: str | None = None, hang_s: float = 5.0):
+        self.script = list(script) or [{}]
+        self.key = key
+        self.hang_s = hang_s
+        self.requests: list[dict] = []
+        self._lock = threading.Lock()
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _send(self, status, payload):
+                data = json.dumps(payload).encode("utf-8")
+                try:
+                    self.send_response(status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                except OSError:
+                    pass
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                try:
+                    body = json.loads(self.rfile.read(length)) if length else None
+                except ValueError:
+                    body = None
+                headers = {name.lower(): value for name, value in self.headers.items()}
+                with outer._lock:
+                    index = len(outer.requests)
+                    bad_auth = not headers.get("x-api-key") or not headers.get("anthropic-version") or (outer.key is not None and headers["x-api-key"] != outer.key)
+                    outer.requests.append({"headers": headers, "body": body, "path": self.path, "rejected": bad_auth})
+                    step = outer.script[min(index, len(outer.script) - 1)]
+                if self.path != "/v1/messages":
+                    return self._send(404, {"type": "error", "error": {"type": "not_found_error", "message": "no route"}})
+                if bad_auth:
+                    return self._send(401, {"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}})
+                if step == "timeout":
+                    time.sleep(outer.hang_s)
+                    self.close_connection = True
+                    return
+                if isinstance(step, int):
+                    return self._send(step, {"type": "error", "error": {"type": outer.ERRORS.get(step, "api_error"), "message": "fake error"}})
+                payload = json.loads(Path(step).read_text(encoding="utf-8")) if isinstance(step, Path) else step
+                return self._send(200, payload)
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_port}"
+
+    @property
+    def count(self) -> int:
+        return len(self.requests)
 
     def __enter__(self):
         self.thread.start()
