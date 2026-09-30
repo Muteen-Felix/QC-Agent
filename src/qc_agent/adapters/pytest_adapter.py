@@ -17,9 +17,10 @@ và PYTEST_ADDOPTS rỗng (không kế thừa cờ từ môi trường).
 
 GIỚI HẠN ĐÃ BIẾT (đã kiểm bằng thực nghiệm, S1-03): pytest tự đọc `pyproject.toml`/`pytest.ini` và `conftest.py` của repo SUT, mà các file đó nằm NGOÀI
 `.qc-agent/**` nên không bị CODEOWNERS khoá. Một PR thêm `addopts = "--deselect <test đang fail>"` hoặc một `conftest.py` gốc lọc bớt test thì gate ra
-XANH GIẢ (metric vẫn `pytest.tests >= 1`). argv của adapter cố định theo thiết kế nên không tự chặn được; cách chặn là đặt một `pytest.ini` NGAY TRONG
-thư mục test GT (`.qc-agent/ground-truth/tests_gt/`, do QA khoá): pytest lấy nó làm rootdir và confcutdir nên không đọc cấu hình/conftest của SUT.
-Việc sinh file đó thuộc S1-05; test `test_integration_a_pytest_ini_next_to_the_tests_shields_them_from_sut_config` giữ cách bố trí này.
+XANH GIẢ (metric vẫn `pytest.tests >= 1`). argv của adapter cố định theo thiết kế; cách chặn là đặt một `pytest.ini` NGAY TRONG thư mục test GT
+(`.qc-agent/ground-truth/tests_gt/`, do QA khoá): pytest lấy nó làm rootdir và confcutdir nên không đọc cấu hình/conftest của SUT. Việc SINH file đó thuộc S1-05,
+còn adapter ép nó FAIL-CLOSED: thư mục (hoặc thư mục chứa file/node id) trong `inputs.paths` mà thiếu `pytest.ini` thì `build_cmd` ném AdapterParseError => `error`,
+không bao giờ chạy để rồi ra xanh giả. Test `test_integration_a_pytest_ini_next_to_the_tests_shields_them_from_sut_config` giữ cách bố trí này.
 """
 from __future__ import annotations
 
@@ -93,6 +94,8 @@ class PytestAdapter(Adapter):
         if unknown:
             raise AdapterParseError(f"inputs không hỗ trợ: {unknown}; chỉ có {list(INPUT_KEYS)} (không có extra_args)")
         paths = sec.safe_relpaths(inputs.get("paths"), "inputs.paths", default=DEFAULT_PATHS) or list(DEFAULT_PATHS)
+        for index, entry in enumerate(paths):
+            self._require_isolating_ini(entry, f"inputs.paths[{index}]")
         junit = (workdir / JUNIT_NAME).resolve()
         junit.unlink(missing_ok=True)   # không đọc nhầm file của lần chạy trước
         cmd = [sys.executable, "-m", "pytest", *paths, "-q", "-p", "no:cacheprovider", "--junitxml", str(junit), "-o", "junit_family=xunit2"]
@@ -102,6 +105,15 @@ class PytestAdapter(Adapter):
                 raise AdapterParseError("inputs.markers chỉ được gồm chữ, số, '_', khoảng trắng và ngoặc đơn")
             cmd += ["-m", markers]   # MỘT argv, không qua shell
         return cmd
+
+    @staticmethod
+    def _require_isolating_ini(entry: str, what: str) -> None:
+        """Fail-closed: thư mục test phải có `pytest.ini` riêng (xem "GIỚI HẠN ĐÃ BIẾT"), nếu không cấu hình/conftest của repo SUT có thể lọc bớt test
+        và làm gate xanh giả. Entry có thể là thư mục, file hoặc node id (`file.py::test`). Đường dẫn chưa tồn tại thì bỏ qua: pytest tự trả exit 4 => `error`."""
+        target = Path(entry.split("::", 1)[0])
+        directory = target if target.is_dir() else target.parent if target.is_file() else None
+        if directory is not None and not (directory / "pytest.ini").is_file():
+            raise AdapterParseError(f"{what}: thiếu {directory.as_posix()}/pytest.ini — không có nó, pytest đọc cấu hình/conftest của repo SUT và gate có thể xanh giả")
 
     def parse_output(self, proc: subprocess.CompletedProcess, workdir: Path, spec: dict) -> ParsedOutput:
         log = proc.stdout or ""

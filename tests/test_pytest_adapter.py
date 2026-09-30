@@ -5,6 +5,7 @@ Các test tích hợp chạy pytest thật trong tmp_path (không mạng); các 
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -26,6 +27,7 @@ ASSERTIONS = [{"metric": "pytest.failures", "op": "==", "value": 0}, {"metric": 
               {"metric": "pytest.tests", "op": ">=", "value": 1}]   # như suite gt-functional (S1-05)
 KEYS = {"pytest.tests", "pytest.passed", "pytest.failures", "pytest.errors", "pytest.skipped"}
 MARK = "MARK-5e21ab"
+NEUTRAL_INI = "[pytest]\naddopts =\n"
 
 
 def make_spec(inputs=None, assertions=None, *, task_id="t-030", run_id="r-0001") -> dict:
@@ -356,14 +358,17 @@ def sut(tmp_path, monkeypatch):
     """Thư mục SUT giả trong tmp_path; pytest con chạy với cwd ở đây, nên không đọc cấu hình của repo này."""
     root = tmp_path / "sut"
     (root / GT_DIR).mkdir(parents=True)
+    (root / GT_DIR / "pytest.ini").write_text(NEUTRAL_INI, encoding="utf-8")   # S1-05 sinh file này; adapter từ chối thư mục thiếu nó
     monkeypatch.chdir(root)
     monkeypatch.setenv("QC_RUNS_DIR", str(tmp_path / "runs"))
     return root
 
 
-def write_tests(sut: Path, body: str, name="test_gt.py", where=GT_DIR) -> None:
+def write_tests(sut: Path, body: str, name="test_gt.py", where=GT_DIR, *, ini=True) -> None:
     (sut / where).mkdir(parents=True, exist_ok=True)
     (sut / where / name).write_text(body, encoding="utf-8")
+    if ini:
+        (sut / where / "pytest.ini").write_text(NEUTRAL_INI, encoding="utf-8")
 
 
 ONE_PASS_ONE_FAIL = "def test_ok():\n    assert 1 + 1 == 2\n\ndef test_bad():\n    assert 1 + 1 == 3, 'kỳ vọng 3'\n"
@@ -396,7 +401,7 @@ def test_integration_an_empty_test_directory_is_a_fail_not_a_green_gate(sut):
 
 
 def test_integration_missing_directory_broken_test_file_and_bad_marker_are_errors(sut):
-    (sut / GT_DIR).rmdir()
+    shutil.rmtree(sut / GT_DIR)
     assert PytestAdapter().run(make_spec())["status"] == "error"             # đường dẫn không tồn tại: exit 4
     write_tests(sut, "def test_a(:\n    pass\n")                              # lỗi cú pháp -> lỗi collect: exit 2
     broken = PytestAdapter().run(make_spec())
@@ -428,6 +433,30 @@ def test_integration_a_pytest_ini_next_to_the_tests_shields_them_from_sut_config
     (sut / GT_DIR / "pytest.ini").write_text("[pytest]\naddopts =\n", encoding="utf-8")
     result = PytestAdapter().run(make_spec())
     assert result["status"] == "fail" and result["metrics"]["pytest.tests"] == 2 and result["metrics"]["pytest.failures"] == 1, result["adapter_notes"]
+
+
+def test_a_test_directory_without_its_own_pytest_ini_is_refused_fail_closed(sut):
+    """Thiếu `pytest.ini` thì gate không được chạy rồi xanh giả: `error`, và không có gì được chạy."""
+    write_tests(sut, ONE_PASS_ONE_FAIL, ini=False)
+    (sut / GT_DIR / "pytest.ini").unlink()
+    (sut / "pyproject.toml").write_text(f'[tool.pytest.ini_options]\naddopts = "--deselect {GT_DIR}/test_gt.py::test_bad"\n', encoding="utf-8")
+    with pytest.raises(AdapterParseError, match="thiếu .*pytest.ini"):
+        PytestAdapter().build_cmd(make_spec(), sut)
+    result = PytestAdapter().run(make_spec())
+    assert result["status"] == "error" and "pytest.ini" in result["verdict"]["rationale"]
+    assert not (sut.parent / "runs" / "r-0001" / "t-030" / JUNIT_NAME).exists()    # pytest chưa bao giờ được gọi
+
+
+def test_pytest_ini_guard_covers_files_node_ids_multiple_paths_and_ignores_missing_paths(sut):
+    (sut / "a").mkdir()
+    (sut / "a" / "test_x.py").write_text("def test_a():\n    pass\n", encoding="utf-8")
+    for entry in ("a", "a/test_x.py", "a/test_x.py::test_a"):
+        with pytest.raises(AdapterParseError, match="pytest.ini"):
+            PytestAdapter().build_cmd(make_spec({"paths": [GT_DIR, entry]}), sut)      # một path thiếu là đủ để từ chối cả lệnh
+    (sut / "a" / "pytest.ini").write_text(NEUTRAL_INI, encoding="utf-8")
+    for entry in ("a", "a/test_x.py", "a/test_x.py::test_a"):
+        assert PytestAdapter().build_cmd(make_spec({"paths": [GT_DIR, entry]}), sut)[3:5] == [GT_DIR, entry]
+    assert PytestAdapter().build_cmd(make_spec({"paths": ["khong/ton/tai"]}), sut)[3] == "khong/ton/tai"   # để pytest trả exit 4 => error
 
 
 def test_integration_a_broken_task_input_is_an_error_result_not_a_crash(sut):

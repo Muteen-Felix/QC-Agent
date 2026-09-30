@@ -28,7 +28,7 @@
 | Service: API, executor, dashboard (Postgres) | *Đã chạy* | Bỏ phụ thuộc DB của luồng PR/manual: *Thiết kế — S3* |
 | `llm/client.py` (Messages API, egress, đếm token) | *Đang triển khai — S1* | |
 | Ground-Truth Engine: `groundtruth/`, schema TC, render, `qc-agent gt …` | *Đang triển khai — S1* | |
-| Worker `pytest` (`api.functional`, suite `gt-functional`) | *Đang triển khai — S1* | Worker + adapter + test đã có (S1-03). Chưa có: suite `gt-functional` và runtime test GT (S1-05). Cần `pytest.ini` trong `tests_gt/` để cấu hình của repo SUT không lách được gate — xem docstring `pytest_adapter.py` |
+| Worker `pytest` (`api.functional`, suite `gt-functional`) | *Đang triển khai — S1* | Worker + adapter + test đã có (S1-03). Chưa có: suite `gt-functional` và runtime test GT (S1-05). Worker từ chối (trả `error`) thư mục test thiếu `pytest.ini` để cấu hình của repo SUT không lách được gate; S1-05 sinh file đó — xem docstring `pytest_adapter.py` |
 | Workflow sinh GT + khoá `.qc-agent/**` (CODEOWNERS, branch protection) | *Đang triển khai — S1* | |
 | Trigger `manual` + trục `--trigger` | *Thiết kế — S2* | |
 | Selector: prune, path rules, Diff Agent, floor | *Thiết kế — S2* | |
