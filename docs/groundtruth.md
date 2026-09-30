@@ -33,7 +33,7 @@ Hai vòng khác nhau: vòng ngoài (đây) có LLM, sản phẩm là **file đi 
 
 ## 2. Lệnh
 
-Chạy từ gốc repo SUT (hoặc `docker run --rm -v "$PWD:/sut" <image> gt …`). Cần `ANTHROPIC_API_KEY`.
+Chạy từ gốc repo SUT (hoặc `docker run --rm -v "$PWD:/sut" <image> gt …`). Cần `ANTHROPIC_API_KEY`, hoặc `GEMINI_API_KEY` nếu đặt `QC_GT_MODEL=gemini-*` (provider chọn theo tiền tố model; chi tiết và cách đo trên SUT thật: [groundtruth-real-sut.md](groundtruth-real-sut.md)).
 
 ```bash
 qc-agent gt generate --prd docs/prd/noteboard.md --sut-root . --openapi openapi.json   # lần đầu
