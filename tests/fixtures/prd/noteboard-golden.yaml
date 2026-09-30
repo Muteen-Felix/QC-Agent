@@ -1,0 +1,49 @@
+# Golden của PRD noteboard (tests/fixtures/prd/noteboard-prd.md) cho tools/eval_groundtruth.py (S1-08).
+# labeled_by: nhãn `testable`/`kills` phải do QA gán (plan §3.4). Bản này do dev dựng để chạy được đo đạc: CẦN QA DUYỆT rồi đổi nhãn.
+labeled_by: "dev — CẦN QA DUYỆT"
+prd: noteboard
+
+# testable: AC kiểm được bằng lời gọi HTTP (false = giao diện/không kiểm được qua HTTP: nằm ngoài mẫu số của "AC coverage").
+# kills: các mutant (toyapp/app.py, QC_BUGS) mà việc kiểm AC này phải bắt được.
+acs:
+  AC-1.1: {testable: true, kills: [BUG-6]}
+  AC-1.2: {testable: true, kills: [BUG-10]}
+  AC-1.3: {testable: true, kills: [BUG-4]}
+  AC-1.4: {testable: true, kills: []}
+  AC-1.5: {testable: true, kills: [BUG-5]}
+  AC-1.6: {testable: true, kills: []}
+  AC-1.7: {testable: true, kills: []}
+  AC-1.8: {testable: false, kills: []}        # giao diện: nhập rồi bấm Thêm
+  AC-2.1: {testable: true, kills: [BUG-9]}
+  AC-2.2: {testable: true, kills: [BUG-13]}
+  AC-2.3: {testable: true, kills: []}
+  AC-2.4: {testable: true, kills: []}
+  AC-2.5: {testable: true, kills: [BUG-1]}
+  AC-2.6: {testable: true, kills: [BUG-1]}
+  AC-3.1: {testable: true, kills: []}
+  AC-3.2: {testable: true, kills: [BUG-8]}
+  AC-3.3: {testable: true, kills: [BUG-8]}
+  AC-3.4: {testable: true, kills: [BUG-7]}
+  AC-3.5: {testable: false, kills: []}        # giao diện: bấm Xoá (BUG-2 chỉ có ở frontend)
+  AC-4.1: {testable: true, kills: []}
+  AC-4.2: {testable: true, kills: []}
+  AC-4.3: {testable: true, kills: []}
+  AC-4.4: {testable: true, kills: [BUG-3]}
+  AC-4.5: {testable: true, kills: [BUG-11]}
+  AC-4.6: {testable: true, kills: [BUG-12]}
+
+# api_contract_catches: suite api-contract (Schemathesis: không 5xx + đúng schema) có bắt được không.
+# BUG-4…BUG-13 là mutant nghiệp vụ: false (đã kiểm bằng cách chạy api-contract với QC_BUGS=<k>, xem báo cáo S1-08).
+mutants:
+  BUG-1:  {acs: [AC-2.5, AC-2.6], api_contract_catches: true,  legacy: true, description: "GET /notes/{id} với id dài hơn 16 ký tự trả 500"}
+  BUG-3:  {acs: [AC-4.4],         api_contract_catches: false, legacy: true, description: "summarize body chứa [[long]] cho summary dài hơn body"}
+  BUG-4:  {acs: [AC-1.3],  api_contract_catches: false, description: "POST /notes nhận title rỗng (201 thay vì 422)"}
+  BUG-5:  {acs: [AC-1.5],  api_contract_catches: false, description: "title dài đúng 200 ký tự bị từ chối (giới hạn lệch 1: tối đa 199)"}
+  BUG-6:  {acs: [AC-1.1],  api_contract_catches: false, description: "POST /notes trả 200 thay vì 201"}
+  BUG-7:  {acs: [AC-3.4],  api_contract_catches: false, description: "DELETE id chưa từng có trả 204 thay vì 404"}
+  BUG-8:  {acs: [AC-3.2, AC-3.3], api_contract_catches: false, description: "DELETE trả 204 nhưng không xoá: GET sau đó vẫn 200, xoá lần hai vẫn 204"}
+  BUG-9:  {acs: [AC-2.1],  api_contract_catches: false, description: "GET /notes trả mảng rỗng dù đã có ghi chú"}
+  BUG-10: {acs: [AC-1.2],  api_contract_catches: false, description: "lưu title/body sau khi cắt khoảng trắng đầu/cuối"}
+  BUG-11: {acs: [AC-4.5],  api_contract_catches: false, description: "summarize id không tồn tại trả 200 với summary rỗng"}
+  BUG-12: {acs: [AC-4.6],  api_contract_catches: false, description: "summarize ghi đè body của ghi chú bằng bản tóm tắt"}
+  BUG-13: {acs: [AC-2.2],  api_contract_catches: false, description: "GET /notes/{id} trả nội dung của ghi chú đứng trước nó"}

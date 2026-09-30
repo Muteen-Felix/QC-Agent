@@ -436,7 +436,7 @@ def test_validate_touches_nothing(tmp_path, capsys, fake):
 
 def test_the_existing_qc_agent_validate_also_blocks_on_draft_ground_truth(tmp_path, capsys, fake):
     sut = tmp_path / "noteboard"
-    shutil.copytree(FIXTURES / "sut" / "noteboard", sut, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(FIXTURES / "sut" / "noteboard", sut, ignore=shutil.ignore_patterns("__pycache__", "ground-truth", "gt-functional.yaml", "CODEOWNERS"))   # bản sao KHÔNG có GT đã duyệt (S1-08) để generate chạy từ đầu
     (sut / "docs" / "prd").mkdir(parents=True)
     shutil.copy(PRD_FILE, sut / "docs" / "prd" / "noteboard-prd.md")
     assert gt(capsys, "generate", "--prd", sut / "docs/prd/noteboard-prd.md", "--sut-root", sut, "--openapi", OPENAPI, "--egress-dir", tmp_path / "e")[0] == 0

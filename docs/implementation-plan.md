@@ -116,7 +116,7 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
   - `init` sinh `CODEOWNERS` với `/.qc-agent/ @<qa-team>`.
   - `tools/protect_ground_truth.py` bật `require_code_owner_reviews`.
   - Viết hướng dẫn trong `docs/groundtruth.md`.
-- [ ] **S1.10 (`eval_groundtruth.py`):**
+- [x] **S1.10 (`eval_groundtruth.py`):**
   - Đo AC coverage so với golden.
   - Đo tỉ lệ TC chạy xanh trên toy app sạch (`QC_BUGS=none`).
   - Đo tỉ lệ bắt mutant.

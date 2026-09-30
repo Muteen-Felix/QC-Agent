@@ -1,0 +1,1128 @@
+# qc-agent:generated gt — test case Ground-Truth. prd.sha256=b8c3de58bf9f1cb826ef9e3c09d08d7d36df0fca7f75f3590a4d34d39de6057e prompt=gt-generate/1 model=claude-sonnet-5
+# Đây là thứ QA duyệt. Trạng thái từng test case (status):
+#   draft     LLM đề xuất, CHƯA chạy trong gate.
+#   approved  đã duyệt: gate chạy và chặn merge nếu fail.
+#   rejected  loại bỏ; BẮT BUỘC điền rejected_reason. Regen không sinh lại TC có cùng tc_id.
+# Thêm test case của QA: origin: qa, status: approved, tc_id dạng TC-<ac_id>-<mô-tả-ngắn>, ac_refs trỏ tới AC có trong `stories`.
+# Kiểu (kind): api_contract = 1 bước chỉ method+path; api_functional = 1 bước; flow = từ 2 bước, bước sau dùng giá trị `capture` của bước trước.
+# Xong việc: đổi `status` ngoài cùng thành approved (khi đó mọi TC phải là approved hoặc rejected).
+# Sửa file này KHÔNG cần render lại. Thư mục tests_gt/ là mã sinh máy: đừng sửa tay (`qc-agent gt validate` sẽ báo lệch).
+version: 1
+prd:
+  id: noteboard
+  sha256: b8c3de58bf9f1cb826ef9e3c09d08d7d36df0fca7f75f3590a4d34d39de6057e
+  source: noteboard-prd.md
+generated_by:
+  model: claude-sonnet-5
+  prompt_version: gt-generate/1
+status: approved
+stories:
+- story_id: US-1
+  title: Tạo ghi chú
+  acs:
+  - ac_id: AC-1.1
+    text: '`POST /notes` với JSON `{"title": "<chuỗi>", "body": "<chuỗi>"}` hợp lệ
+      trả 201. Response là JSON có `id` (số nguyên), `title` và `body` đúng bằng giá
+      trị đã gửi.'
+  - ac_id: AC-1.2
+    text: Server lưu `title` và `body` nguyên văn, kể cả tiếng Việt có dấu, emoji
+      và khoảng trắng đầu/cuối (không cắt khoảng trắng, không đổi chữ hoa/thường).
+      `GET /notes/{id}` ngay sau đó trả lại đúng nguyên văn.
+  - ac_id: AC-1.3
+    text: '`title` là chuỗi rỗng, hoặc thiếu trong request, thì trả 422.'
+  - ac_id: AC-1.4
+    text: '`body` là chuỗi rỗng, hoặc thiếu trong request, thì trả 422.'
+  - ac_id: AC-1.5
+    text: '`title` dài hơn 200 ký tự thì trả 422. `title` dài đúng 200 ký tự vẫn hợp
+      lệ (201).'
+  - ac_id: AC-1.6
+    text: '`body` dài hơn 5000 ký tự thì trả 422. `body` dài đúng 5000 ký tự vẫn hợp
+      lệ (201).'
+  - ac_id: AC-1.7
+    text: '`title` hoặc `body` không phải chuỗi (số, boolean, null, mảng, đối tượng)
+      thì trả 422.'
+  - ac_id: AC-1.8
+    text: Trên trang chủ, nhập tiêu đề và nội dung rồi bấm Thêm thì ghi chú mới hiện
+      ngay trong danh sách, không cần tải lại trang.
+- story_id: US-2
+  title: Xem ghi chú
+  acs:
+  - ac_id: AC-2.1
+    text: '`GET /notes` luôn trả 200 và một mảng JSON. Sau khi đã tạo ít nhất một
+      ghi chú, mảng có ít nhất 1 phần tử.'
+  - ac_id: AC-2.2
+    text: '`GET /notes/{id}` với `id` của ghi chú đang tồn tại trả 200. Response có
+      đúng `id`, `title` và `body` của ghi chú đó.'
+  - ac_id: AC-2.3
+    text: '`GET /notes/{id}` với `id` là số nhưng không có ghi chú tương ứng (ví dụ
+      `999999`) trả 404. Response là JSON có trường `detail`.'
+  - ac_id: AC-2.4
+    text: '`GET /notes/{id}` với `id` không phải số (ví dụ `abc`, `-1`) trả 404, không
+      phải 422 hay 5xx.'
+  - ac_id: AC-2.5
+    text: '`GET /notes/{id}` với `id` không phải số và rất dài (40 ký tự chữ) trả
+      404, không bao giờ trả 5xx.'
+  - ac_id: AC-2.6
+    text: '`GET /notes/{id}` với `id` gồm 17 chữ số (ví dụ `11111111111111111`) trả
+      404, không bao giờ trả 5xx.'
+- story_id: US-3
+  title: Xoá ghi chú
+  acs:
+  - ac_id: AC-3.1
+    text: '`DELETE /notes/{id}` với ghi chú đang tồn tại trả 204 và không có body.'
+  - ac_id: AC-3.2
+    text: Sau khi xoá, `GET /notes/{id}` của ghi chú đó trả 404.
+  - ac_id: AC-3.3
+    text: Xoá lần thứ hai cùng một `id` trả 404.
+  - ac_id: AC-3.4
+    text: '`DELETE /notes/{id}` với `id` chưa từng tồn tại (ví dụ `999999` hoặc `abc`)
+      trả 404.'
+  - ac_id: AC-3.5
+    text: Trên trang chủ, bấm Xoá cạnh một ghi chú thì ghi chú đó biến mất khỏi danh
+      sách ngay, không cần tải lại trang.
+- story_id: US-4
+  title: Tóm tắt ghi chú
+  acs:
+  - ac_id: AC-4.1
+    text: '`POST /notes/{id}/summarize` (không có body) với ghi chú đang tồn tại trả
+      200. Response là JSON có `summary` (chuỗi), `model` bằng `stub-rule-v1` và `prompt_hash`
+      gồm đúng 12 ký tự.'
+  - ac_id: AC-4.2
+    text: '`summary` là câu đầu tiên của `body`: phần đứng trước dấu chấm đầu tiên,
+      đã bỏ khoảng trắng đầu/cuối, không chứa dấu chấm. Ví dụ `body` là `Hôm nay trời
+      đẹp. Ngày mai mưa.` thì `summary` là `Hôm nay trời đẹp`.'
+  - ac_id: AC-4.3
+    text: Khi `body` không có dấu chấm, `summary` là `body` bỏ đi ký tự cuối cùng.
+      Ví dụ `body` là `abcdef` thì `summary` là `abcde`. Nói chung `summary` luôn
+      ngắn hơn `body` ít nhất 1 ký tự khi `body` dài từ 2 ký tự trở lên.
+  - ac_id: AC-4.4
+    text: '`body` chứa cụm `[[long]]` vẫn theo đúng AC-4.2, `summary` không bao giờ
+      dài hơn `body`. Ví dụ `body` là `Ghi chú [[long]]. Chi tiết.` thì `summary`
+      là `Ghi chú [[long]]`.'
+  - ac_id: AC-4.5
+    text: '`POST /notes/{id}/summarize` với `id` không tồn tại trả 404.'
+  - ac_id: AC-4.6
+    text: 'Tóm tắt không làm đổi ghi chú: sau khi gọi, `GET /notes/{id}` vẫn trả đúng
+      `title` và `body` cũ.'
+test_cases:
+- tc_id: TC-AC-1.1-120168
+  title: Tạo ghi chú hợp lệ trả 201 và đúng dữ liệu đã gửi
+  ac_refs:
+  - AC-1.1
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: 2 hộp sữa tươi
+        title: Mua sữa
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+      - path: $.title
+        op: eq
+        value: Mua sữa
+      - path: $.body
+        op: eq
+        value: 2 hộp sữa tươi
+- tc_id: TC-AC-1.2-c4db6c
+  title: Lưu nguyên văn tiếng Việt, emoji và khoảng trắng đầu/cuối
+  ac_refs:
+  - AC-1.2
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: ' Ngày mai: họp 9h. '
+        title: '  Kế hoạch 🚀  '
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.title
+        op: eq
+        value: '  Kế hoạch 🚀  '
+      - path: $.body
+        op: eq
+        value: ' Ngày mai: họp 9h. '
+- tc_id: TC-AC-1.3-1370b0
+  title: title rỗng trả 422
+  ac_refs:
+  - AC-1.3
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: nội dung
+        title: ''
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-1.3-b8508f
+  title: thiếu title trả 422
+  ac_refs:
+  - AC-1.3
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: nội dung
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-1.4-860305
+  title: thiếu body trả 422
+  ac_refs:
+  - AC-1.4
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        title: tiêu đề
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-1.4-cfe803
+  title: body rỗng trả 422
+  ac_refs:
+  - AC-1.4
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: ''
+        title: tiêu đề
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-1.5-257d53
+  title: title dài đúng 200 ký tự vẫn hợp lệ
+  ac_refs:
+  - AC-1.5
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: x
+        title: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+- tc_id: TC-AC-1.5-60c4b7
+  title: title dài 201 ký tự trả 422
+  ac_refs:
+  - AC-1.5
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: x
+        title: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-1.6-336296
+  title: body dài 5001 ký tự trả 422
+  ac_refs:
+  - AC-1.6
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        title: t
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-1.6-970076
+  title: body dài đúng 5000 ký tự vẫn hợp lệ
+  ac_refs:
+  - AC-1.6
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        title: t
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+- tc_id: TC-AC-1.7-0250d7
+  title: body là null trả 422
+  ac_refs:
+  - AC-1.7
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: null
+        title: t
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-1.7-a53dff
+  title: title là mảng trả 422
+  ac_refs:
+  - AC-1.7
+  kind: api_functional
+  status: rejected
+  origin: llm
+  rejected_reason: 'Cùng lớp tương đương với TC ''title là số'': không thêm giá trị
+    kiểm thử.'
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: x
+        title:
+        - a
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-1.7-ebbde4
+  title: title là số trả 422
+  ac_refs:
+  - AC-1.7
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: x
+        title: 123
+    expect:
+      status:
+      - 422
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-2.1-7919b9
+  title: GET /notes tồn tại và trả 200
+  ac_refs:
+  - AC-2.1
+  kind: api_contract
+  status: rejected
+  origin: llm
+  rejected_reason: Trùng với suite api-contract (Schemathesis đã kiểm endpoint tồn
+    tại và đúng schema).
+  steps:
+  - request:
+      method: GET
+      path: /notes
+    expect:
+      status:
+      - 200
+- tc_id: TC-AC-2.1-9ac21b
+  title: Danh sách có ít nhất 1 phần tử sau khi tạo ghi chú
+  ac_refs:
+  - AC-2.1
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: Chốt kế hoạch tuần. Gửi biên bản.
+        title: Họp nhóm
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: GET
+      path: /notes
+    expect:
+      status:
+      - 200
+      json:
+      - path: $
+        op: len_gte
+        value: 1
+- tc_id: TC-AC-2.1-fea905
+  title: Danh sách ghi chú luôn trả 200 và một mảng
+  ac_refs:
+  - AC-2.1
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: GET
+      path: /notes
+    expect:
+      status:
+      - 200
+      json:
+      - path: $
+        op: type
+        value: array
+- tc_id: TC-AC-2.2-e1dd57
+  title: Xem ghi chú đang tồn tại trả đúng id, title, body
+  ac_refs:
+  - AC-2.2
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: nội dung cũ
+        title: Đọc lại
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.id
+        op: exists
+      - path: $.title
+        op: eq
+        value: Đọc lại
+      - path: $.body
+        op: eq
+        value: nội dung cũ
+- tc_id: TC-AC-2.3-b612a4
+  title: Xem ghi chú không tồn tại trả 404 kèm detail
+  ac_refs:
+  - AC-2.3
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '999999'
+    expect:
+      status:
+      - 404
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-2.4-65a3f6
+  title: id là chữ trả 404
+  ac_refs:
+  - AC-2.4
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: abc
+    expect:
+      status:
+      - 404
+- tc_id: TC-AC-2.4-87df3f
+  title: id âm trả 404
+  ac_refs:
+  - AC-2.4
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '-1'
+    expect:
+      status:
+      - 404
+- tc_id: TC-AC-2.5-2aac40
+  title: id chữ rất dài không bao giờ trả 5xx
+  ac_refs:
+  - AC-2.5
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    expect:
+      status:
+      - 404
+- tc_id: TC-AC-2.6-f53bf6
+  title: id 17 chữ số trả 404
+  ac_refs:
+  - AC-2.6
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '11111111111111111'
+    expect:
+      status:
+      - 404
+- tc_id: TC-AC-3.1-557339
+  title: Xoá ghi chú đang tồn tại trả 204
+  ac_refs:
+  - AC-3.1
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: Chốt kế hoạch tuần. Gửi biên bản.
+        title: Họp nhóm
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: DELETE
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 204
+- tc_id: TC-AC-3.2-fceb24
+  title: Sau khi xoá, xem lại ghi chú trả 404
+  ac_refs:
+  - AC-3.2
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: Chốt kế hoạch tuần. Gửi biên bản.
+        title: Họp nhóm
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: DELETE
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 204
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 404
+- tc_id: TC-AC-3.3-15e6db
+  title: Xoá lần hai cùng một id trả 404
+  ac_refs:
+  - AC-3.3
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: Chốt kế hoạch tuần. Gửi biên bản.
+        title: Họp nhóm
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: DELETE
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 204
+  - request:
+      method: DELETE
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 404
+- tc_id: TC-AC-3.4-678f90
+  title: Xoá id không phải số trả 404
+  ac_refs:
+  - AC-3.4
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: DELETE
+      path: /notes/{note_id}
+      path_params:
+        note_id: abc
+    expect:
+      status:
+      - 404
+- tc_id: TC-AC-3.4-95a2ee
+  title: Xoá id chưa từng tồn tại trả 404
+  ac_refs:
+  - AC-3.4
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: DELETE
+      path: /notes/{note_id}
+      path_params:
+        note_id: '999999'
+    expect:
+      status:
+      - 404
+- tc_id: TC-AC-4.1-22ecf4
+  title: Tóm tắt ghi chú trả đủ summary, model và prompt_hash
+  ac_refs:
+  - AC-4.1
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: Chốt kế hoạch tuần. Gửi biên bản.
+        title: Họp nhóm
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: POST
+      path: /notes/{note_id}/summarize
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.summary
+        op: type
+        value: string
+      - path: $.model
+        op: eq
+        value: stub-rule-v1
+      - path: $.prompt_hash
+        op: len_eq
+        value: 12
+- tc_id: TC-AC-4.2-5662ac
+  title: summary là câu đầu tiên của body
+  ac_refs:
+  - AC-4.2
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: Hôm nay trời đẹp. Ngày mai mưa.
+        title: Tóm tắt
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: POST
+      path: /notes/{note_id}/summarize
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.summary
+        op: eq
+        value: Hôm nay trời đẹp
+- tc_id: TC-AC-4.3-46bd26
+  title: body không có dấu chấm thì summary bỏ ký tự cuối
+  ac_refs:
+  - AC-4.3
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: abcdef
+        title: Tóm tắt
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: POST
+      path: /notes/{note_id}/summarize
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.summary
+        op: eq
+        value: abcde
+- tc_id: TC-AC-4.4-347645
+  title: body chứa [[long]] vẫn theo quy tắc câu đầu
+  ac_refs:
+  - AC-4.4
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: Ghi chú [[long]]. Chi tiết.
+        title: Tóm tắt
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: POST
+      path: /notes/{note_id}/summarize
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.summary
+        op: eq
+        value: Ghi chú [[long]]
+- tc_id: TC-AC-4.5-ffd780
+  title: Tóm tắt ghi chú không tồn tại trả 404
+  ac_refs:
+  - AC-4.5
+  kind: api_functional
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes/{note_id}/summarize
+      path_params:
+        note_id: '999999'
+    expect:
+      status:
+      - 404
+      json:
+      - path: $.detail
+        op: exists
+- tc_id: TC-AC-4.6-663028
+  title: Tóm tắt không làm đổi ghi chú
+  ac_refs:
+  - AC-4.6
+  kind: flow
+  status: approved
+  origin: llm
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: Câu một. Câu hai.
+        title: Giữ nguyên
+    expect:
+      status:
+      - 201
+      json:
+      - path: $.id
+        op: type
+        value: integer
+    capture:
+      note_id: $.id
+  - request:
+      method: POST
+      path: /notes/{note_id}/summarize
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.title
+        op: eq
+        value: Giữ nguyên
+      - path: $.body
+        op: eq
+        value: Câu một. Câu hai.
+- tc_id: TC-AC-1.5-qa-title-200-unicode
+  title: title đúng 200 ký tự unicode (emoji) vẫn hợp lệ
+  ac_refs:
+  - AC-1.5
+  kind: flow
+  status: approved
+  origin: qa
+  notes: 'QA: biên độ dài theo ký tự Unicode (mỗi emoji là 1 ký tự).'
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: biên độ dài tính theo ký tự, không theo byte
+        title: 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀
+    expect:
+      status:
+      - 201
+    capture:
+      note_id: $.id
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.title
+        op: len_eq
+        value: 200
+- tc_id: TC-AC-3.3-qa-delete-twice-keeps-others
+  title: xoá hai lần một id không ảnh hưởng ghi chú khác
+  ac_refs:
+  - AC-3.3
+  kind: flow
+  status: approved
+  origin: qa
+  notes: 'QA: xoá lần hai phải 404 và không xoá nhầm ghi chú khác.'
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: nội dung giữ lại
+        title: giữ lại
+    expect:
+      status:
+      - 201
+    capture:
+      keep_id: $.id
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: nội dung bị xoá
+        title: bị xoá
+    expect:
+      status:
+      - 201
+    capture:
+      gone_id: $.id
+  - request:
+      method: DELETE
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{gone_id}}'
+    expect:
+      status:
+      - 204
+  - request:
+      method: DELETE
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{gone_id}}'
+    expect:
+      status:
+      - 404
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{keep_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.title
+        op: eq
+        value: giữ lại
+- tc_id: TC-AC-2.2-qa-two-notes-own-content
+  title: hai ghi chú, mỗi ghi chú trả đúng nội dung của nó
+  ac_refs:
+  - AC-2.2
+  kind: flow
+  status: approved
+  origin: qa
+  notes: 'QA: kiểm cả hai id, để không bỏ sót lỗi trả nhầm ghi chú.'
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: nội dung bản A
+        title: bản A
+    expect:
+      status:
+      - 201
+    capture:
+      a_id: $.id
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: nội dung bản B
+        title: bản B
+    expect:
+      status:
+      - 201
+    capture:
+      b_id: $.id
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{a_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.title
+        op: eq
+        value: bản A
+      - path: $.body
+        op: eq
+        value: nội dung bản A
+  - request:
+      method: GET
+      path: /notes/{note_id}
+      path_params:
+        note_id: '{{b_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.title
+        op: eq
+        value: bản B
+      - path: $.body
+        op: eq
+        value: nội dung bản B
+- tc_id: TC-AC-4.3-qa-summary-of-two-chars
+  title: 'body 2 ký tự không dấu chấm: summary ngắn hơn body 1 ký tự'
+  ac_refs:
+  - AC-4.3
+  kind: flow
+  status: approved
+  origin: qa
+  notes: 'QA: biên nhỏ nhất của AC-4.3 (body dài đúng 2 ký tự).'
+  steps:
+  - request:
+      method: POST
+      path: /notes
+      json:
+        body: xy
+        title: ngắn
+    expect:
+      status:
+      - 201
+    capture:
+      note_id: $.id
+  - request:
+      method: POST
+      path: /notes/{note_id}/summarize
+      path_params:
+        note_id: '{{note_id}}'
+    expect:
+      status:
+      - 200
+      json:
+      - path: $.summary
+        op: eq
+        value: x
+uncovered_acs:
+- ac_id: AC-1.8
+  reason: Kiểm tra giao diện trang chủ (nhập liệu và bấm Thêm), không kiểm được chỉ
+    bằng lời gọi HTTP.
+- ac_id: AC-3.5
+  reason: 'Giao diện: bấm Xoá trên trang chủ (BUG-2 chỉ có ở frontend), không kiểm
+    được bằng HTTP.'
