@@ -2296,15 +2296,11 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pytest" },
     { name = "pyyaml" },
     { name = "schemathesis" },
     { name = "sqlalchemy" },
     { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
 ]
 
 [package.metadata]
@@ -2320,14 +2316,12 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.6" },
     { name = "pydantic", specifier = "==2.13.5" },
     { name = "pydantic-settings", specifier = "==2.15.0" },
+    { name = "pytest", specifier = "==9.1.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "schemathesis", specifier = "==4.27.5" },
     { name = "sqlalchemy", specifier = "==2.0.54" },
     { name = "uvicorn", specifier = "==0.53.0" },
 ]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = "==9.1.1" }]
 
 [[package]]
 name = "questionary"

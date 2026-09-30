@@ -27,6 +27,7 @@ Test được **điều khiển bằng dữ liệu**: file `.py` là template c�
 | File | Nội dung |
 |---|---|
 | `.qc-agent/ground-truth/test-cases.yaml` | Catalog. Đầu file có comment hướng dẫn QA (ý nghĩa status, cách thêm `origin: qa`, `rejected_reason` bắt buộc). Đầu file cũng ghi `qc-agent:generated gt` |
+| `.qc-agent/ground-truth/tests_gt/pytest.ini` | **Bắt buộc** (phát hiện ở S1-03). Nội dung `[pytest]` + `addopts =`. Nằm trong thư mục QA khoá nên pytest lấy nó làm rootdir và confcutdir: không đọc `pyproject.toml`/`conftest.py` của repo SUT, những file mà một PR có thể dùng để `--deselect` test GT đang fail và làm gate xanh giả (xem README, "Phát hiện từ S1-03") |
 | `.qc-agent/ground-truth/tests_gt/conftest.py` | **Runtime**, từ template `gt-conftest.py.tmpl`, chi tiết ở dưới |
 | `.qc-agent/ground-truth/tests_gt/test_<story>.py` | Từ template `gt-api-functional.py.tmpl` (plan). Chỉ có `STORY_ID = "US-1"` và một test được parametrize qua fixture/hook của conftest. `<story>` là slug `[a-z0-9_]` sinh từ `story_id`, **không** lấy từ title |
 | `.qc-agent/suites/gt-functional.yaml` | task `t-030` · capability `api.functional` · lane `gate` · `prefer: [pytest]` · `inputs.paths: [.qc-agent/ground-truth/tests_gt]` · oracle `threshold`: `pytest.failures == 0`, `pytest.errors == 0`, `pytest.tests >= 1` · `target.base_url: ${env.APP_BASE_URL}` · `retry: {max: 1, "on": [error]}` |
@@ -57,6 +58,8 @@ Runtime trong `conftest.py`:
 ## Test bắt buộc: `tests/test_gt_render.py`
 
 - **Golden**: render catalog lấy từ fixture S1-04 (qua `generate` với `MockTransport`), rồi so **từng byte** với `tests/fixtures/gt/noteboard/expected/**`. Render hai lần phải giống hệt nhau.
+- **Chống lách cấu hình SUT**: trong `sut_root` đặt `pyproject.toml` có `addopts = "--deselect <nodeid của một TC approved đang fail>"` và một `conftest.py` gốc lọc bớt test. Chạy `PytestAdapter().run(spec)` trên thư mục vừa render: TC đang fail **vẫn phải fail** (`status=fail`). Xoá `tests_gt/pytest.ini` khỏi bản render thì test này phải đỏ.
+- Chỉ dùng `httpx`, `PyYAML`, `pytest` trong conftest runtime: worker chạy pytest với `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, nên không được dựa vào plugin nào.
 - **Chống chèn code**: story title và TC title chứa `"); import os; os.system("x") #`, `{{`, `</script>`, xuống dòng. Không file `.py` nào chứa các chuỗi đó, và tên file vẫn là slug hợp lệ.
 - Suite sinh ra qua được `core/plan.resolve` (schema task hợp lệ, capability có trong `capabilities.json`).
 - Suite `api-contract` có sẵn → không bị ghi đè.
