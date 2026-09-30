@@ -1,0 +1,16 @@
+name: pytest
+# `python -m pytest`: adapter cũng chạy đúng `sys.executable -m pytest`, nên probe kiểm cùng một thứ. `python` phải là interpreter có pytest:
+# trong image là /opt/venv/bin/python (PATH), ở máy dev là .venv đã kích hoạt. pytest in phiên bản ra stdout (exit 0).
+version_probe: "python -m pytest --version"
+adapter: "qc_agent/adapters/pytest_adapter.py"
+lanes: [gate]
+capabilities:
+  - id: api.functional
+    oracle_kinds: [threshold]
+    verdict_sources: [deterministic_assert]
+    parallel_safe: true        # chỉ gọi HTTP tới SUT (mỗi TC tự tạo dữ liệu của nó): chạy song song với worker khác được
+requires:
+  env: []
+  binaries: [python]
+data_egress: []                # như schemathesis/k6: chỉ nói chuyện với SUT ở target.base_url, không gửi gì tới bên thứ ba
+cost_profile: { tokens_per_run: 0, typical_wallclock_s: 30 }

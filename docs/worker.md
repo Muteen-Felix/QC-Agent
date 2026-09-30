@@ -74,7 +74,7 @@ qua capability nào, và chặn hay chỉ tư vấn.** Bảng chi tiết (input/
 | Khâu | Worker (manifest) | Capability | Suite ví dụ | Lane | Chặn merge? | Trạng thái |
 |---|---|---|---|---|---|---|
 | Functional | `schemathesis` | `api.property` | `api-contract` | gate | có (từ S3: finding Critical/Medium) | *Đã chạy* |
-| Functional | `pytest` | `api.functional` | `gt-functional` | gate | có, chỉ TC `approved` (từ S3: finding Critical/Medium) | *Đang triển khai — S1* |
+| Functional | `pytest` | `api.functional` | `gt-functional` | gate | có, chỉ TC `approved` (từ S3: finding Critical/Medium) | *Đang triển khai — S1* (worker + adapter đã có, S1-03; suite `gt-functional` và runtime test: S1-05) |
 | Functional | `midscene-cli` | `ui.explore` | `ui-explore` | discovery | không (từ S3: tối đa Low) | *Đã chạy* |
 | Performance | `k6` | `http.load` | `perf-smoke` (PR) · `perf-full` (manual) | discovery (PR) / gate (manual) | chỉ ở Mode 2 (từ S3: Critical/Medium ở gate; discovery tối đa Low) | *Đã chạy* |
 | Integration | `playwright` | `flow.integration` | `t-020` (runner giả) · `t-021` (HAR B) · `t-022` (B thật) | gate (t-020, t-021) / discovery (t-022) | có, trừ t-022 (từ S3: t-022 tối đa Low) | *Thiết kế* → T6 |

@@ -137,6 +137,13 @@ Rủi ro còn lại do quyết định #1 (floor chỉ gồm secrets + sast): tr
 
 S1-00 ghi rủi ro này vào `architecture.md`.
 
+## Phát hiện từ S1-03 (worker `pytest`, đã kiểm bằng thực nghiệm)
+
+- **Cấu hình pytest của repo SUT có thể làm gate xanh giả.** `addopts = "--deselect <test đang fail>"` trong `pyproject.toml`, hoặc một `conftest.py` ở gốc repo lọc bớt test, làm test GT đang fail biến mất mà `pytest.tests >= 1` vẫn đạt. Hai file đó nằm ngoài `.qc-agent/**` nên CODEOWNERS không khoá. argv của worker cố định theo plan, nên **S1-05 phải sinh `tests_gt/pytest.ini`** (`[pytest]`, `addopts =`): nó nằm trong thư mục QA khoá và khiến pytest coi thư mục đó là rootdir và confcutdir, nên không đọc cấu hình hay conftest của SUT. `gt validate` (S1-06) bắt việc xoá hoặc sửa file này vì nó thuộc nhóm file sinh ra được so lại. Adapter còn **ép fail-closed**: thư mục trong `inputs.paths` thiếu `pytest.ini` thì `build_cmd` ném lỗi và task ra `error`, không bao giờ chạy để rồi xanh giả (quyết định: chọn lớp này thay cho `-c`/`--confcutdir`/`--rootdir` vì không đổi argv của plan). Test `test_integration_a_pytest_ini_next_to_the_tests_shields_them_from_sut_config` giữ cách bố trí này.
+- **Tắt autoload plugin là bắt buộc, không chỉ đề phòng.** Venv của image có 9 plugin `pytest11` (gồm `pytest-rerunfailures`, `xdist`, `deepeval`, `schemathesis`). Nạp hết làm pytest con chậm ~5 lần (4,6 giây so với 0,9 giây cho một test) và `rerunfailures` có thể chạy lại test fail, trái luật "không retry `fail`". Adapter đặt `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` và `PYTEST_ADDOPTS` rỗng; conftest runtime của S1-05 chỉ được dùng `httpx`, `PyYAML`, `pytest`.
+- **Lỗi collect (import hỏng, cú pháp sai) làm pytest thoát với exit 2, không phải 1**, và dừng cả phiên. Theo plan, exit 2 là `error` (gate đỏ nhãn hạ tầng), nên một file test GT hỏng không bao giờ ra `pass` hay `fail` giả.
+- **Một test fail kèm lỗi teardown sinh hai `<testcase>` cùng tên** trong JUnit (một `failure`, một `error`); `xfail` được ghi là `<skipped>`. Adapter đếm theo phần tử `<testcase>` và cho `finding_id` hậu tố `-2` khi trùng.
+
 ## Chuẩn bị bên ngoài (plan §3), dùng ở đâu
 
 | Thứ cần chuẩn bị | Bước dùng tới |

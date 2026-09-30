@@ -2,6 +2,7 @@
   "_note": "Từ vựng capability (file DỮ LIỆU, không thuộc contract đóng băng). Thêm capability mới = thêm một dòng ở đây.",
   "capabilities": {
     "api.property":  "API property-based / contract  (oracle: checks)",
+    "api.functional": "Test chức năng API sinh từ ground-truth (pytest + JUnit)  (oracle: threshold)",
     "http.load":     "Load test, ngưỡng do plan khai  (oracle: threshold)",
     "llmapp.eval":   "Eval AI app: metric tất định + advisory judge  (oracle: checks)",
     "ui.explore":    "Khám phá UI, discovery lane  (oracle: implicit_signals)",
