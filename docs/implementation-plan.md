@@ -122,12 +122,12 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
   - Đo tỉ lệ bắt mutant.
 
 ### DoD Sprint 1
-- [ ] Với fake LLM, `gt generate` trên PRD mẫu cho ra đúng bộ file golden. Chạy lại 2 lần cho ra byte giống hệt nhau.
-- [ ] Với LLM thật (median của 3 lần chạy): AC coverage $\ge 90\%$, và $\ge 90\%$ TC sinh ra chạy xanh trên toy app sạch.
-- [ ] Sau khi QA duyệt: suite bắt được $\ge 9/10$ mutant (`BUG-4…BUG-13`) và vẫn bắt được `BUG-1`.
-- [ ] `gt regen` sau khi sửa PRD giữ nguyên 100% TC `approved` và `origin: qa` (có test).
-- [ ] `gt validate` exit 1 khi còn draft. Qua fake GitHub, xác nhận script protect bật đúng `require_code_owner_reviews`. Kiểm tay một lần trên repo thật: tài khoản không phải QA push vào `.qc-agent/` thì bị từ chối.
-- [ ] Egress bị deny thì không có HTTP call nào. `egress.jsonl` có dòng ghi lại. Log không chứa nội dung PRD.
+- [x] Với fake LLM, `gt generate` trên PRD mẫu cho ra đúng bộ file golden. Chạy lại 2 lần cho ra byte giống hệt nhau.
+- [ ] Với LLM thật (median của 3 lần chạy): AC coverage $\ge 90\%$, và $\ge 90\%$ TC sinh ra chạy xanh trên toy app sạch. **PENDING (chưa tick):** cần chạy `tools/eval_gt_sut.py --llm real --runs 3 --yes` trên SUT thật với Gemini (tốn quota, gửi PRD ra ngoài: chờ người dùng chạy và xác nhận).
+- [x] Sau khi QA duyệt: suite bắt được $\ge 9/10$ mutant (`BUG-4…BUG-13`) và vẫn bắt được `BUG-1`.
+- [x] `gt regen` sau khi sửa PRD giữ nguyên 100% TC `approved` và `origin: qa` (có test).
+- [ ] `gt validate` exit 1 khi còn draft. Qua fake GitHub, xác nhận script protect bật đúng `require_code_owner_reviews`. Kiểm tay một lần trên repo thật: tài khoản không phải QA push vào `.qc-agent/` thì bị từ chối. **PENDING (chưa tick):** đã có bằng chứng cho `gt validate` exit 1 (`test_gt_cli.py`) và script protect qua fake GitHub (`test_protect_ground_truth.py`); còn thiếu kiểm tay trên repo thật (cần repo, secret và branch protection do người dùng cấu hình; dự kiến S4-06).
+- [x] Egress bị deny thì không có HTTP call nào. `egress.jsonl` có dòng ghi lại. Log không chứa nội dung PRD.
 - [ ] *Ngoài phạm vi:* assertion đọc thẳng DB của SUT chỉ làm dạng hộp đen (gọi API rồi đọc lại qua API).
 
 ---
