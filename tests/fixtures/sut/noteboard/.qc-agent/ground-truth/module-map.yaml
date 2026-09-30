@@ -1,0 +1,11 @@
+# qc-agent:generated gt — module-map đã duyệt (QA điền paths). Selector (S2) chỉ dùng để GỢI Ý thêm suite.
+version: 1
+status: approved
+modules:
+- name: "notes"
+  paths:
+  - "toyapp/**"
+  suites:
+  - api-contract
+  - gt-functional
+  source: qa

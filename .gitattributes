@@ -5,3 +5,7 @@
 *.md text eol=lf
 docker/* text eol=lf
 Dockerfile text eol=lf
+
+# golden của Ground-Truth (S1-05) so từng byte: không để git đổi xuống dòng
+tests/fixtures/gt/** text eol=lf
+*.ini text eol=lf

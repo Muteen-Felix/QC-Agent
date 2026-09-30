@@ -40,6 +40,9 @@ def main(argv: list[str]) -> int:
         if argv and argv[0] == "validate":  # kiểm cấu hình project offline
             from qc_agent.scaffold.validate import main as validate_main
             return validate_main(argv[1:])
+        if argv and argv[0] == "gt":  # Ground-Truth: generate | validate | regen (import lười: gate/manual không kéo LLM vào tiến trình)
+            from qc_agent.groundtruth.cli import main as gt_main
+            return gt_main(argv[1:])
         if argv and argv[0] == "doctor":  # probe mọi worker (binary/env/version), không chạy gate
             from qc_agent.core.doctor import main as doctor_main
             return doctor_main(argv[1:])

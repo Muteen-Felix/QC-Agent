@@ -1,0 +1,9 @@
+# qc-agent:begin codeowners
+# Vùng do `qc-agent init` quản lý: chạy lại chỉ cập nhật giữa hai dấu này, không đụng phần còn lại của file. Quy tắc CUỐI CÙNG khớp đường dẫn thắng,
+# nên giữ vùng này ở cuối file. Chỉ QA duyệt được thay đổi Ground-Truth, workflow sinh GT và chính CODEOWNERS (cần thêm branch protection:
+# `python tools/protect_ground_truth.py --repo OWNER/REPO`, xem docs/groundtruth.md).
+{{todo_line}}
+/.qc-agent/ {{qa_team}}
+/.github/CODEOWNERS {{qa_team}}
+/.github/workflows/qc-*.yml {{qa_team}}
+# qc-agent:end

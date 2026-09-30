@@ -1,0 +1,38 @@
+# qc-agent:generated — sinh Ground-Truth (test case từ PRD) và mở PR cho QA duyệt. Ghim @<commit SHA> (không @main) và image theo digest.
+# Luồng, bẫy (GITHUB_TOKEN không kích hoạt workflow pull_request) và cách bật khoá QA: docs/groundtruth.md trong repo qc-agent.
+# Secret cần ở repo này: MỘT trong hai khoá LLM để sinh test case (PRD được gửi tới nhà cung cấp LLM đã chọn): ANTHROPIC_API_KEY (mặc định) hoặc GEMINI_API_KEY
+# (khi bỏ comment `model: gemini-...` ở khối with bên dưới). Tuỳ chọn: qc_bot_token (GitHub App/PAT để PR mở ra kích hoạt check).
+name: qc-groundtruth
+on:
+  push:
+    branches: [main]
+    paths:
+      - {{prd_glob}}
+  workflow_dispatch:
+    inputs:
+      prd_path:
+        description: "PRD cần sinh Ground-Truth (đường dẫn tương đối, hoặc glob)"
+        required: true
+        default: {{prd_glob}}
+  pull_request:
+    paths:
+      - ".qc-agent/**"
+
+jobs:
+  groundtruth:
+    permissions:               # quyền TỐI THIỂU: job validate trong workflow tái sử dụng tự hạ xuống chỉ-đọc
+      contents: write          # đẩy nhánh qc-agent/gt/<prd-id>
+      pull-requests: write     # mở PR
+      packages: read           # kéo image từ GHCR
+    uses: {{qc_repo}}/.github/workflows/qc-groundtruth.reusable.yml@{{qc_ref}}
+    with:
+      project: {{project}}
+      image: {{image}}
+      prd_path: ${{ inputs.prd_path || {{prd_glob_expr}} }}
+{{openapi_line}}
+      # Dùng Gemini thay Claude: bỏ comment các dòng dưới và đặt secret GEMINI_API_KEY. Chỉ khoá của nhà cung cấp được chọn đi vào container.
+      # model: gemini-3.6-flash
+      # llm_min_interval_s: "12"                              # giãn cách giữa hai request (≈ 5 RPM, free tier)
+      # llm_max_retries: "5"                                  # thử lại (exponential backoff) khi 429/5xx
+      # llm_fallback_models: "gemini-3.8-flash,gemini-2.5-flash"   # model dự phòng khi 404/hết quota
+    secrets: inherit

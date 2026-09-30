@@ -1,0 +1,351 @@
+# Workflow TÁI SỬ DỤNG: sinh Ground-Truth (test case từ PRD) và mở PR cho QA duyệt; kiểm cổng HITL `gt validate` trên PR đó. Repo SUT gọi qua qc-groundtruth.yml
+# (do `qc-agent init` sinh); hướng dẫn đầy đủ ở docs/groundtruth.md.
+#
+#   BA push PRD lên main  ->  job select/generate: gt generate|regen  ->  PR `qc-agent/gt/<prd-id>`  ->  QA sửa draft->approved, thêm edge case
+#   ->  job validate (gt validate) xanh  ->  QA (code owner) duyệt  ->  merge. Người không phải QA không merge được thay đổi nào vào `.qc-agent/**`
+#   (CODEOWNERS + branch protection: tools/protect_ground_truth.py).
+#
+# AN TOÀN (cùng quy ước với qc-gate.reusable.yml): input và bí mật chỉ đi qua `env:` của step, KHÔNG nội suy ${{ }} vào script; mọi action ghim commit SHA;
+# image qc-agent ghim theo digest (trừ khi allow_unpinned_image); container không chạy root. PRD là dữ liệu KHÔNG TIN CẬY: chỉ được đọc và gửi cho LLM,
+# không bao giờ vào lệnh shell; tên nhánh chỉ lấy từ `prd_id` đã qua regex ^[a-z0-9][a-z0-9-]{0,63}$ (do `gt info` tính, không do người gõ).
+# Chỉ commit thư mục `.qc-agent/` (+ PRD từ nhánh gốc); egress.jsonl và summary.json là ARTIFACT, không bao giờ được commit. Không bao giờ force-push:
+# nhánh bot đã có thì bản sinh mới được xếp lên trên (commit thường), nên công sức QA đã sửa trên nhánh đó không bị ghi đè.
+#
+# BẪY: (1) PR/commit tạo bằng GITHUB_TOKEN KHÔNG kích hoạt workflow `pull_request`, nên job validate chỉ chạy khi QA push commit lên PR (vẫn đúng quy trình: QA phải
+# sửa draft nên sẽ push). Muốn check chạy ngay khi PR mở thì truyền secret qc_bot_token (GitHub App/PAT). (2) Repo phải bật Settings > Actions > General >
+# "Allow GitHub Actions to create and approve pull requests". (3) PR từ fork không có secret: generate chỉ chạy trên push/workflow_dispatch của chính repo.
+# (4) Nhà cung cấp LLM theo tiền tố input `model`: `gemini-*` cần secret GEMINI_API_KEY, còn lại (mặc định claude-sonnet-5) cần ANTHROPIC_API_KEY. Gemini free tier có
+# RPM thấp: đặt llm_min_interval_s/llm_max_retries/llm_fallback_models; timeout_minutes mặc định 20 đủ cho backoff 5 lần trên vài model. Image ghim digest PHẢI được build
+# từ mã có provider Gemini, nếu không `gemini-*` bị coi là model Claude.
+name: qc-groundtruth (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "slug project (chỉ dùng đặt tên job và nhóm concurrency)"
+        required: true
+        type: string
+      image:
+        description: "image qc-agent, GHIM THEO DIGEST: ghcr.io/muteen-felix/qc-agent@sha256:..."
+        required: true
+        type: string
+      prd_path:
+        description: "PRD (đường dẫn tương đối) hoặc glob git (vd. docs/prd/**). Trên push: chỉ các PRD vừa đổi khớp glob; trên dispatch: mọi file khớp"
+        required: true
+        type: string
+      openapi:
+        description: "OpenAPI của SUT (file trong repo hoặc URL http(s)): danh sách endpoint cho LLM và cho suite api-contract (tuỳ chọn)"
+        type: string
+        default: ""
+      base_branch:
+        type: string
+        default: main
+      model:
+        description: "ghi đè QC_GT_MODEL (tuỳ chọn)"
+        type: string
+        default: ""
+      allow_unpinned_image:
+        description: "cho phép image không ghim digest (KHÔNG khuyến nghị)"
+        type: boolean
+        default: false
+      timeout_minutes:
+        type: number
+        default: 20
+      llm_min_interval_s:
+        description: "CHỈ Gemini: giãn cách tối thiểu (giây) giữa hai request, chống 429 ở free tier (12 ≈ 5 RPM). Rỗng = mặc định của image (0 = tắt)"
+        type: string
+        default: ""
+      llm_max_retries:
+        description: "CHỈ Gemini: số lần thử lại khi 429/5xx/lỗi mạng (exponential backoff). Rỗng = mặc định của image (5)"
+        type: string
+        default: ""
+      llm_fallback_models:
+        description: "CHỈ Gemini: model dự phòng cách nhau dấu phẩy (tối đa 5), vd. gemini-3.8-flash,gemini-2.5-flash. Rỗng = không có"
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY: { required: false }   # cần khi model là Claude (mặc định); thiếu thì job generate dừng với thông báo rõ (không có gì rời máy)
+      GEMINI_API_KEY: { required: false }      # cần khi model bắt đầu bằng `gemini-` (input `model`); chỉ khoá của ĐÚNG nhà cung cấp được đưa vào container
+      qc_bot_token: { required: false }        # GitHub App/PAT: PR do nó mở sẽ kích hoạt workflow pull_request; không có thì dùng GITHUB_TOKEN
+      GHCR_PULL_TOKEN: { required: false }
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    name: qc-groundtruth / chọn PRD (${{ inputs.project }})
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+      count: ${{ steps.pick.outputs.count }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Select PRD files
+        id: pick
+        env:
+          PRD_PATH: ${{ inputs.prd_path }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$BASE_BRANCH" =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || [ "$GITHUB_REF_NAME" != "$BASE_BRANCH" ]; then
+            echo "::error::generate chỉ chạy trên nhánh gốc '$BASE_BRANCH' (đang ở '$GITHUB_REF_NAME')"; exit 1
+          fi
+          if ! [[ "$PRD_PATH" =~ ^[A-Za-z0-9_][A-Za-z0-9._*/-]{0,200}$ ]] || [[ "$PRD_PATH" == *..* ]]; then
+            echo "::error::prd_path phải là đường dẫn tương đối (hoặc glob) không có '..'"; exit 1
+          fi
+          spec=":(glob)$PRD_PATH"
+          if [ "$EVENT_NAME" = push ] && ! [[ "$BEFORE" =~ ^0+$ ]] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            mapfile -t found < <(git diff --name-only --diff-filter=AM "$BEFORE" "$SHA" -- "$spec")
+          else
+            mapfile -t found < <(git ls-files -- "$spec")   # dispatch, hoặc push đầu tiên của nhánh: mọi PRD khớp
+          fi
+          files=()
+          for file in "${found[@]}"; do
+            if [ -z "$file" ]; then continue; fi
+            if ! [[ "$file" =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]{0,200}\.(md|markdown|txt|json|ya?ml)$ ]] || [[ "$file" == *..* ]]; then
+              echo "::warning::bỏ qua tệp không phải PRD hợp lệ (tên hoặc đuôi lạ)"; continue
+            fi
+            files+=("$file")
+          done
+          if [ "${#files[@]}" -gt 5 ]; then echo "::error::quá 5 PRD trong một lần (${#files[@]}): chia nhỏ hoặc dùng workflow_dispatch với đường dẫn cụ thể"; exit 1; fi
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "count=0" >> "$GITHUB_OUTPUT"; echo 'matrix={"prd":[]}' >> "$GITHUB_OUTPUT"
+            echo "không có PRD nào cần sinh Ground-Truth"; exit 0
+          fi
+          echo "count=${#files[@]}" >> "$GITHUB_OUTPUT"
+          matrix=$(python3 -c 'import json, sys; print(json.dumps({"prd": sys.argv[1:]}, separators=(",", ":")))' "${files[@]}")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  generate:
+    name: qc-groundtruth / sinh GT (${{ inputs.project }})
+    needs: select
+    if: needs.select.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: write         # đẩy nhánh qc-agent/gt/<prd-id>
+      pull-requests: write    # mở PR / comment
+      packages: read
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    concurrency:
+      group: qc-groundtruth-${{ inputs.project }}-${{ matrix.prd }}
+      cancel-in-progress: false   # hai lần chạy không được đẩy chồng lên cùng một nhánh bot
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false   # push dùng token qua biến môi trường của step, không để trong .git/config (thư mục được mount vào container)
+          fetch-depth: 0
+
+      - name: Log in to GHCR
+        if: startsWith(inputs.image, 'ghcr.io/')
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Pull qc-agent image
+        env:
+          IMAGE: ${{ inputs.image }}
+          ALLOW_UNPINNED: ${{ inputs.allow_unpinned_image }}
+        run: |
+          set -euo pipefail
+          case "$IMAGE" in
+            *@sha256:*) ;;
+            *) if [ "$ALLOW_UNPINNED" != "true" ]; then
+                 echo "::error::image phải ghim theo digest (name@sha256:...), nhận: $IMAGE"; exit 1
+               fi
+               echo "::warning::image không ghim theo digest: $IMAGE" ;;
+          esac
+          docker pull "$IMAGE"
+
+      - name: Resolve PRD
+        id: resolve
+        env:
+          IMAGE: ${{ inputs.image }}
+          PRD: ${{ matrix.prd }}
+          OPENAPI: ${{ inputs.openapi }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PRD" =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]{0,200}$ ]] || [[ "$PRD" == *..* ]]; then echo "::error::đường dẫn PRD không hợp lệ"; exit 1; fi
+          if ! [[ "$BASE_BRANCH" =~ ^[A-Za-z0-9._/-]{1,100}$ ]]; then echo "::error::base_branch không hợp lệ"; exit 1; fi
+          if [ -n "$OPENAPI" ] && { ! [[ "$OPENAPI" =~ ^(https?://[^[:space:]]{1,300}|[A-Za-z0-9_][A-Za-z0-9._/-]{0,200})$ ]] || [[ "$OPENAPI" == *..* ]]; }; then
+            echo "::error::openapi phải là đường dẫn tương đối hoặc URL http(s)"; exit 1
+          fi
+          [ -f "$PRD" ] || { echo "::error::không thấy PRD trong repo"; exit 1; }
+          oa=(); if [ -n "$OPENAPI" ]; then oa=(--openapi "$OPENAPI"); fi
+          info=$(docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work:ro" -w /work "$IMAGE" gt info --prd "$PRD" "${oa[@]}")
+          id=$(printf '%s' "$info" | python3 -c 'import json, sys; print(json.load(sys.stdin)["prd_id"])')
+          if ! [[ "$id" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]]; then echo "::error::prd-id không hợp lệ (cần ^[a-z0-9][a-z0-9-]{0,63}$)"; exit 1; fi
+          echo "prd_id=$id" >> "$GITHUB_OUTPUT"
+          echo "branch=qc-agent/gt/$id" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare bot branch
+        id: branch
+        env:
+          BRANCH: ${{ steps.resolve.outputs.branch }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          PRD: ${{ matrix.prd }}
+          GIT_TOKEN: ${{ secrets.qc_bot_token || github.token }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$BRANCH" =~ ^qc-agent/gt/[a-z0-9][a-z0-9-]{0,63}$ ]]; then echo "::error::tên nhánh bot không hợp lệ"; exit 1; fi
+          git config user.name "qc-agent[bot]"
+          git config user.email "qc-agent-bot@users.noreply.github.com"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.${GITHUB_SERVER_URL}/.extraheader"
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GIT_TOKEN" | base64 -w0)"; export GIT_CONFIG_VALUE_0
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            # Nhánh bot đã có (QA có thể đã sửa trên đó): xếp lên trên nó để `gt regen` merge được, và lấy PRD mới nhất từ nhánh gốc. Không force-push.
+            git fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            git checkout "origin/$BASE_BRANCH" -- "$PRD"
+            echo "existing=true" >> "$GITHUB_OUTPUT"
+          else
+            git checkout -B "$BRANCH"
+            echo "existing=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate Ground-Truth
+        env:
+          IMAGE: ${{ inputs.image }}
+          PRD: ${{ matrix.prd }}
+          OPENAPI: ${{ inputs.openapi }}
+          MODEL: ${{ inputs.model }}
+          LLM_MIN_INTERVAL_S: ${{ inputs.llm_min_interval_s }}
+          LLM_MAX_RETRIES: ${{ inputs.llm_max_retries }}
+          LLM_FALLBACK_MODELS: ${{ inputs.llm_fallback_models }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "$MODEL" ] && ! [[ "$MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$ ]]; then echo "::error::model không hợp lệ"; exit 1; fi
+          if [ -n "$LLM_MIN_INTERVAL_S" ] && ! [[ "$LLM_MIN_INTERVAL_S" =~ ^[0-9]{1,4}(\.[0-9]{1,3})?$ ]]; then echo "::error::llm_min_interval_s không hợp lệ"; exit 1; fi
+          if [ -n "$LLM_MAX_RETRIES" ] && ! [[ "$LLM_MAX_RETRIES" =~ ^[0-9]{1,2}$ ]]; then echo "::error::llm_max_retries không hợp lệ"; exit 1; fi
+          if [ -n "$LLM_FALLBACK_MODELS" ] && ! [[ "$LLM_FALLBACK_MODELS" =~ ^gemini-[A-Za-z0-9._-]{1,64}(,gemini-[A-Za-z0-9._-]{1,64}){0,4}$ ]]; then echo "::error::llm_fallback_models không hợp lệ"; exit 1; fi
+          # Chọn khoá theo model (rỗng = mặc định của image: claude-sonnet-5, khoá test bằng settings.gt_model). Chỉ MỘT khoá đi vào container.
+          model="${MODEL:-claude-sonnet-5}"
+          case "$model" in gemini-*) key_var=GEMINI_API_KEY ;; *) key_var=ANTHROPIC_API_KEY ;; esac
+          if [ -z "${!key_var:-}" ]; then echo "::error::thiếu secret $key_var cho model $model (chưa gửi gì ra ngoài)"; exit 1; fi
+          key_args=(-e "$key_var")
+          llm_args=()
+          if [ -n "$LLM_MIN_INTERVAL_S" ]; then llm_args+=(-e "QC_LLM_MIN_INTERVAL_S=$LLM_MIN_INTERVAL_S"); fi
+          if [ -n "$LLM_MAX_RETRIES" ]; then llm_args+=(-e "QC_LLM_MAX_RETRIES=$LLM_MAX_RETRIES"); fi
+          if [ -n "$LLM_FALLBACK_MODELS" ]; then llm_args+=(-e "QC_LLM_FALLBACK_MODELS=$LLM_FALLBACK_MODELS"); fi
+          # egress.jsonl + summary.json nằm NGOÀI workspace ($RUNNER_TEMP): không bao giờ lọt vào commit
+          egress="$RUNNER_TEMP/gt-egress"; rm -rf "$egress"; mkdir -p "$egress"; chmod 777 "$egress"
+          cmd=generate; if [ -f .qc-agent/ground-truth/test-cases.yaml ]; then cmd=regen; fi
+          oa=(); if [ -n "$OPENAPI" ]; then oa=(--openapi "$OPENAPI"); fi
+          model_args=(); if [ -n "$MODEL" ]; then model_args=(-e "QC_GT_MODEL=$MODEL"); fi
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$egress:/egress" -w /work \
+            "${key_args[@]}" "${llm_args[@]}" "${model_args[@]}" \
+            "$IMAGE" gt "$cmd" --prd "$PRD" --sut-root /work "${oa[@]}" --egress-dir /egress --summary-json /egress/summary.json
+
+      - name: Commit and push to the bot branch
+        id: push
+        env:
+          BRANCH: ${{ steps.resolve.outputs.branch }}
+          PRD_ID: ${{ steps.resolve.outputs.prd_id }}
+          GIT_TOKEN: ${{ secrets.qc_bot_token || github.token }}
+        run: |
+          set -euo pipefail
+          git add -A -- .qc-agent            # chỉ vùng Ground-Truth; runs/, egress, summary không nằm trong workspace
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"; echo "Ground-Truth không đổi: không có gì để commit"; exit 0
+          fi
+          git commit -q -m "chore(gt): cập nhật Ground-Truth cho ${PRD_ID} (qc-agent bot)"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.${GITHUB_SERVER_URL}/.extraheader"
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GIT_TOKEN" | base64 -w0)"; export GIT_CONFIG_VALUE_0
+          git push origin "HEAD:refs/heads/$BRANCH"     # KHÔNG --force: nhánh bot đã được xếp lên trên ở bước Prepare
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the pull request
+        if: steps.push.outputs.changed == 'true'
+        env:
+          IMAGE: ${{ inputs.image }}
+          BRANCH: ${{ steps.resolve.outputs.branch }}
+          PRD_ID: ${{ steps.resolve.outputs.prd_id }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          GH_TOKEN: ${{ secrets.qc_bot_token || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          body="$RUNNER_TEMP/pr-body.md"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$RUNNER_TEMP/gt-egress:/egress:ro" \
+            --entrypoint python "$IMAGE" -m qc_agent.groundtruth.pr_body /egress/summary.json > "$body"
+          number=$(gh pr list --head "$BRANCH" --base "$BASE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            gh pr create --head "$BRANCH" --base "$BASE_BRANCH" --title "Ground-Truth: ${PRD_ID}" --body-file "$body"
+          else
+            gh pr comment "$number" --body-file "$body"   # PR đã có (QA đang sửa): không ghi đè phần mô tả của họ
+          fi
+
+      - name: Upload egress log and summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qc-groundtruth-${{ steps.resolve.outputs.prd_id || 'unknown' }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gt-egress/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  validate:
+    name: qc-groundtruth / gt validate (${{ inputs.project }})
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read          # chỉ đọc, không secret nào của LLM
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        if: startsWith(inputs.image, 'ghcr.io/')
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Pull qc-agent image
+        env:
+          IMAGE: ${{ inputs.image }}
+          ALLOW_UNPINNED: ${{ inputs.allow_unpinned_image }}
+        run: |
+          set -euo pipefail
+          case "$IMAGE" in
+            *@sha256:*) ;;
+            *) if [ "$ALLOW_UNPINNED" != "true" ]; then
+                 echo "::error::image phải ghim theo digest (name@sha256:...), nhận: $IMAGE"; exit 1
+               fi
+               echo "::warning::image không ghim theo digest: $IMAGE" ;;
+          esac
+          docker pull "$IMAGE"
+
+      - name: Run gt validate
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+          if [ ! -d .qc-agent/ground-truth ]; then echo "không có .qc-agent/ground-truth trong PR này: không có gì để kiểm"; exit 0; fi
+          # Workspace mount CHỈ-ĐỌC, không mạng: `gt validate` đọc catalog/tests_gt rồi render lại trong bộ nhớ để phát hiện drift
+          docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work:ro" -w /work "$IMAGE" gt validate --sut-root /work

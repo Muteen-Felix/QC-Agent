@@ -29,6 +29,8 @@ EXPLORE_FLOW = ".qc-agent/midscene/explore.yaml"
 CANARY_FLOW = ".qc-agent/midscene/canary.yaml"
 UI_DOCKERFILE = ".qc-agent/Dockerfile.ui"
 WORKFLOW = ".github/workflows/qc.yml"
+GT_WORKFLOW = ".github/workflows/qc-groundtruth.yml"
+CODEOWNERS_CANDIDATES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")   # thứ tự ưu tiên của GitHub
 DEFAULT_SUT_MOUNT = "/sut"   # `docker run -v "$PWD:/sut" <image> init` chạy nguyên văn
 
 
@@ -57,6 +59,8 @@ class Options:
     ui_health_path: str | None = None
     ui_build_args: list[str] = field(default_factory=list)
     ui_entry_path: str = "/"
+    qa_team: str | None = None        # @org/team (hoặc @user) duyệt Ground-Truth: vào CODEOWNERS; thiếu => giữ chỗ + TODO
+    prd_glob: str = t.DEFAULT_PRD_GLOB   # PRD nào kích hoạt workflow sinh Ground-Truth
     suggest_ui: bool = False          # LLM gợi ý flow explore từ nhãn của UI đang chạy (gửi nhãn ra nhà cung cấp LLM)
     ui_urls: list[str] = field(default_factory=list)
     force: bool = False               # build() cần biết để không gọi LLM khi file sẽ không được ghi
@@ -68,6 +72,7 @@ class Planned:
     path: Path        # tuyệt đối
     label: str        # hiển thị (tương đối repo SUT)
     content: str
+    managed: bool = False   # file chung với người (CODEOWNERS): `content` là bản ĐÃ GỘP, nên ghi khi khác bản cũ mà không cần --force
 
 
 @dataclass
@@ -170,6 +175,13 @@ def build(opts: Options) -> Plan:
         health = found.health_path.value if not opts.no_api and found.health_path.value != scan.DEFAULT_HEALTH else None
         if health and _verify(found.health_path):
             marks["sut_health_path"] = _verify(found.health_path)
+        add(GT_WORKFLOW, t.groundtruth_workflow(project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image,
+                                                prd_glob=opts.prd_glob, openapi=_repo_file(root, opts.openapi_source)))
+        owners = next((rel for rel in CODEOWNERS_CANDIDATES if (root / rel).is_file()), CODEOWNERS_CANDIDATES[0])
+        old_owners = (root / owners).read_text(encoding="utf-8") if (root / owners).is_file() else None
+        plan.files.append(Planned(root / owners, owners, t.merge_codeowners(old_owners, opts.qa_team), managed=True))
+        if not opts.qa_team:
+            plan.warnings.append("thiếu --qa-team: CODEOWNERS dùng owner giữ chỗ kèm qc-agent:todo (`qc-agent validate` sẽ từ chối cho tới khi thay bằng team QA thật)")
         add(WORKFLOW, t.qc_workflow(
             project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image, sut_dockerfile=dockerfile, sut_context=opts.sut_context or context,
             sut_port=port, sut_health_path=health, sut_env=sut_env, ui_dockerfile=ui_dockerfile, ui_context=ui_context, ui_port=ui_port,
@@ -177,6 +189,17 @@ def build(opts: Options) -> Plan:
     except (t.TemplateError, openapi.OpenApiError) as error:
         raise InitError(str(error)) from None
     return plan
+
+
+def _repo_file(root: Path, source: str | None) -> str | None:
+    """`--openapi` là file nằm TRONG repo SUT => đường dẫn tương đối (CI của repo đọc được); URL hoặc file ngoài repo => None."""
+    if not source or urlsplit(source).scheme in ("http", "https"):
+        return None
+    try:
+        rel = Path(source).resolve().relative_to(root.resolve()).as_posix()
+    except (ValueError, OSError):
+        return None
+    return rel if (root / rel).is_file() else None
 
 
 def _image_sha() -> str | None:
@@ -252,6 +275,13 @@ def apply(plan: Plan, *, force: bool = False, dry_run: bool = False) -> list[Out
             raise InitError(f"{planned.label} là thư mục, không phải file")
         old = planned.path.read_text(encoding="utf-8") if exists and planned.path.is_file() else None
         same = old == planned.content
+        if planned.managed and exists and not force:   # gộp vào file có sẵn: chỉ ghi khi bản gộp khác bản cũ
+            status = ("would-keep" if same else "would-update") if dry_run else ("kept" if same else "updated")
+            diff = "".join(difflib.unified_diff(old.splitlines(True), planned.content.splitlines(True), f"a/{planned.label}", f"b/{planned.label}")) if dry_run and not same else ""
+            if not dry_run and not same:
+                _write(planned.path, planned.content, plan.root, owner)
+            outcomes.append(Outcome(planned.label, status, diff, _todos(planned.content) if not same else []))
+            continue
         if exists and not force:
             status = "would-keep" if dry_run else "kept"
         else:
@@ -323,6 +353,8 @@ def _parser() -> argparse.ArgumentParser:
                                                               "gửi nhãn ra nhà cung cấp LLM, ghi log egress; kết quả vẫn phải duyệt (dấu qc-agent:todo)")
     ap.add_argument("--ui-url", action="append", default=[], metavar="URL", help="URL của UI đang chạy để đọc nhãn (lặp được, tối đa 5; cần --suggest-ui)")
     ap.add_argument("--refine", action="store_true", help="Pha 2 (chạy trên CI): điền vùng REFINE từ OpenAPI sống, ghi refine.patch + suggestions.json; dùng `init --refine --help`")
+    ap.add_argument("--qa-team", metavar="@ORG/TEAM", help="team (hoặc @user) QA duyệt Ground-Truth: ghi vào CODEOWNERS (thiếu => giữ chỗ + TODO)")
+    ap.add_argument("--prd-glob", default=t.DEFAULT_PRD_GLOB, metavar="GLOB", help="PRD nào kích hoạt workflow sinh Ground-Truth (mặc định %(default)s)")
     ap.add_argument("--force", action="store_true", help="ghi đè file đã có")
     ap.add_argument("--dry-run", action="store_true", help="chỉ in kế hoạch (kèm diff khi ghi đè), không ghi gì")
     return ap
@@ -347,7 +379,8 @@ def main(argv: list[str]) -> int:
             sut_dockerfile=args.sut_dockerfile, sut_context=args.sut_context, sut_port=args.sut_port, sut_health_path=args.health_path,
             sut_env=args.sut_env, ui_dockerfile=args.ui_dockerfile, ui_context=args.ui_context, ui_port=args.ui_port,
             ui_health_path=args.ui_health_path, ui_build_args=args.ui_build_arg, ui_entry_path=args.ui_entry_path,
-            suggest_ui=args.suggest_ui, ui_urls=args.ui_url, force=args.force, dry_run=args.dry_run)
+            suggest_ui=args.suggest_ui, ui_urls=args.ui_url, qa_team=args.qa_team, prd_glob=args.prd_glob,
+            force=args.force, dry_run=args.dry_run)
         plan = build(opts)
         outcomes = apply(plan, force=args.force, dry_run=args.dry_run)
     except SystemExit as exit_:

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qc-agent.local/schemas/module_map.json",
+  "$comment": "Schema DỮ LIỆU (S1-02), KHÔNG thuộc contract đóng băng: không nằm trong schemas/CONTRACT.lock. File module-map.yaml ánh xạ đường dẫn mã nguồn -> module -> suite; S1 sinh bản nháp, QA duyệt, S2 (selector/rules.py) đọc để GỢI Ý worker (chỉ thêm, không bớt).",
+  "title": "QC-Agent module map (module-map.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "status", "modules"],
+  "properties": {
+    "version": {"const": 1},
+    "status": {"enum": ["draft", "approved"]},
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "paths", "suites", "source"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$", "maxLength": 40},
+          "paths": {
+            "description": "Glob POSIX tương đối gốc repo SUT, hỗ trợ **. Không tuyệt đối, không '..'.",
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "pattern": "^[^ /][^ ]*$", "not": {"pattern": "(^|/)\\.\\.(/|$)"}}
+          },
+          "suites": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"}
+          },
+          "source": {"enum": ["openapi", "scan", "qa"]}
+        }
+      }
+    }
+  }
+}

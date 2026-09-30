@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qc-agent.local/schemas/ground_truth.json",
+  "$comment": "Schema DỮ LIỆU của Ground-Truth (S1-02), KHÔNG thuộc contract đóng băng: không nằm trong schemas/CONTRACT.lock nên đổi không qua quy trình SemVer của contract, nhưng phải giữ tương thích với src/qc_agent/groundtruth/. Gốc của file này là CATALOG (test-cases.yaml): QA đọc/sửa trực tiếp nên request dùng map tự do (query, headers, path_params, capture, json). $defs/emit_test_cases là dạng LLM phát ra qua tool-use: strict mode của API không cho object mở, if/then hay đệ quy, nên map thành mảng {name, value} và json body thành chuỗi JSON; S1-04 chuyển emit -> catalog bằng code tất định. Regex trong schema giữ đơn giản (không lookaround, backreference, \\b, lượng từ có cận) để strict mode chấp nhận; chưa kiểm với API thật cho tới S1-08. Không có trường nào chứa code hay biểu thức.",
+  "title": "QC-Agent Ground-Truth catalog (test-cases.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "prd", "generated_by", "status", "stories", "test_cases", "uncovered_acs"],
+  "properties": {
+    "version": {"const": 1},
+    "prd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sha256", "source"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 63},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "source": {"type": "string", "minLength": 1}
+      }
+    },
+    "generated_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "prompt_version"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "prompt_version": {"type": "string", "pattern": "^[a-z0-9-]+/[0-9]+$"}
+      }
+    },
+    "status": {"enum": ["draft", "approved"]},
+    "stories": {"type": "array", "items": {"$ref": "#/$defs/story"}},
+    "test_cases": {"type": "array", "items": {"$ref": "#/$defs/testCase"}},
+    "uncovered_acs": {"type": "array", "items": {"$ref": "#/$defs/uncovered"}}
+  },
+  "if": {"properties": {"status": {"const": "approved"}}, "required": ["status"]},
+  "then": {
+    "properties": {"test_cases": {"items": {"properties": {"status": {"enum": ["approved", "rejected"]}}}}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 64},
+    "scalar": {"anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}, {"type": "null"}]},
+    "nonNullScalar": {"anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]},
+    "method": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]},
+    "httpStatus": {"type": "integer", "minimum": 100, "maximum": 599},
+    "path": {"type": "string", "pattern": "^/[A-Za-z0-9_./{}~%:@!$&'()*+,;=-]*$", "maxLength": 300},
+    "jsonpath": {"type": "string", "pattern": "^\\$(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$", "maxLength": 200},
+    "varName": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 40},
+    "paramName": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "maxLength": 64},
+    "queryName": {"type": "string", "pattern": "^[A-Za-z0-9_.\\[\\]-]+$", "maxLength": 64},
+    "headerName": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$", "maxLength": 64},
+
+    "assertion": {
+      "description": "Bộ assertion ĐÓNG. path là tập con JSONPath ($, .key, [n]). contains: chuỗi con (nếu giá trị là chuỗi) hoặc phần tử scalar (nếu là mảng). len_*: độ dài chuỗi hoặc mảng.",
+      "anyOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["path", "op", "value"],
+          "properties": {"path": {"$ref": "#/$defs/jsonpath"}, "op": {"enum": ["eq", "ne", "contains"]}, "value": {"$ref": "#/$defs/scalar"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["path", "op"],
+          "properties": {"path": {"$ref": "#/$defs/jsonpath"}, "op": {"enum": ["exists", "absent"]}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["path", "op", "value"],
+          "properties": {
+            "path": {"$ref": "#/$defs/jsonpath"}, "op": {"const": "type"},
+            "value": {"enum": ["string", "number", "integer", "boolean", "null", "object", "array"]}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["path", "op", "value"],
+          "properties": {"path": {"$ref": "#/$defs/jsonpath"}, "op": {"enum": ["len_eq", "len_gte"]}, "value": {"type": "integer", "minimum": 0}}
+        }
+      ]
+    },
+
+    "request": {
+      "description": "path là template của OpenAPI ('/notes/{note_id}'); {name} được điền từ path_params. {{var}} (biến do bước trước capture) chỉ được dùng trong path_params, query và json. Vắng 'json' = không gửi body.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "path"],
+      "properties": {
+        "method": {"$ref": "#/$defs/method"},
+        "path": {"$ref": "#/$defs/path"},
+        "path_params": {"type": "object", "propertyNames": {"$ref": "#/$defs/paramName"}, "additionalProperties": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+        "query": {"type": "object", "propertyNames": {"$ref": "#/$defs/queryName"}, "additionalProperties": {"$ref": "#/$defs/nonNullScalar"}},
+        "headers": {"type": "object", "propertyNames": {"$ref": "#/$defs/headerName"}, "additionalProperties": {"type": "string"}},
+        "json": {"description": "Body JSON bất kỳ (dữ liệu, không phải code)."}
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/httpStatus"}},
+        "json": {"type": "array", "items": {"$ref": "#/$defs/assertion"}}
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "expect"],
+      "properties": {
+        "request": {"$ref": "#/$defs/request"},
+        "expect": {"$ref": "#/$defs/expect"},
+        "capture": {"type": "object", "propertyNames": {"$ref": "#/$defs/varName"}, "additionalProperties": {"$ref": "#/$defs/jsonpath"}}
+      }
+    },
+
+    "testCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tc_id", "title", "ac_refs", "kind", "status", "origin", "steps"],
+      "properties": {
+        "tc_id": {"type": "string", "pattern": "^TC-[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 80},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "ac_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "kind": {"enum": ["api_contract", "api_functional", "flow"]},
+        "status": {"enum": ["draft", "approved", "rejected"]},
+        "origin": {"enum": ["llm", "qa"]},
+        "rejected_reason": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "notes": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "steps": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/step"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "rejected"}}, "required": ["status"]},
+          "then": {"required": ["rejected_reason"], "properties": {"rejected_reason": {"type": "string", "minLength": 1}}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "api_functional"}}, "required": ["kind"]},
+          "then": {"properties": {"steps": {"maxItems": 1}}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "flow"}}, "required": ["kind"]},
+          "then": {"properties": {"steps": {"minItems": 2}}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "api_contract"}}, "required": ["kind"]},
+          "then": {
+            "properties": {
+              "steps": {
+                "maxItems": 1,
+                "items": {
+                  "properties": {
+                    "request": {"not": {"anyOf": [{"required": ["json"]}, {"required": ["query"]}, {"required": ["headers"]}]}},
+                    "expect": {"properties": {"json": {"maxItems": 0}}},
+                    "capture": {"maxProperties": 0}
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "ac": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ac_id", "text"],
+      "properties": {"ac_id": {"$ref": "#/$defs/id"}, "text": {"type": "string", "minLength": 1}}
+    },
+    "story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["story_id", "title", "acs"],
+      "properties": {
+        "story_id": {"$ref": "#/$defs/id"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "acs": {"type": "array", "items": {"$ref": "#/$defs/ac"}}
+      }
+    },
+    "uncovered": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ac_id", "reason"],
+      "properties": {"ac_id": {"$ref": "#/$defs/id"}, "reason": {"type": "string", "minLength": 1}}
+    },
+
+    "emitPathParam": {
+      "type": "object", "additionalProperties": false, "required": ["name", "value"],
+      "properties": {"name": {"$ref": "#/$defs/paramName"}, "value": {"anyOf": [{"type": "string"}, {"type": "integer"}]}}
+    },
+    "emitQuery": {
+      "type": "object", "additionalProperties": false, "required": ["name", "value"],
+      "properties": {"name": {"$ref": "#/$defs/queryName"}, "value": {"$ref": "#/$defs/nonNullScalar"}}
+    },
+    "emitHeader": {
+      "type": "object", "additionalProperties": false, "required": ["name", "value"],
+      "properties": {"name": {"$ref": "#/$defs/headerName"}, "value": {"type": "string"}}
+    },
+    "emitCapture": {
+      "type": "object", "additionalProperties": false, "required": ["name", "path"],
+      "properties": {"name": {"$ref": "#/$defs/varName"}, "path": {"$ref": "#/$defs/jsonpath"}}
+    },
+    "emitRequest": {
+      "description": "Một request HTTP. path là template của endpoint ('/notes/{note_id}'), {name} điền từ path_params. json là CHUỖI JSON của body (null nếu không gửi body). Luôn có đủ mọi khoá; không có thì để [] hoặc null. Biến {{tên}} do bước trước capture chỉ dùng trong path_params, query và json.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "path", "path_params", "query", "headers", "json"],
+      "properties": {
+        "method": {"$ref": "#/$defs/method"},
+        "path": {"$ref": "#/$defs/path"},
+        "path_params": {"type": "array", "items": {"$ref": "#/$defs/emitPathParam"}},
+        "query": {"type": "array", "items": {"$ref": "#/$defs/emitQuery"}},
+        "headers": {"type": "array", "items": {"$ref": "#/$defs/emitHeader"}},
+        "json": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+      }
+    },
+    "emitExpect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "json"],
+      "properties": {
+        "status": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/httpStatus"}},
+        "json": {"type": "array", "items": {"$ref": "#/$defs/assertion"}}
+      }
+    },
+    "emitStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "expect", "capture"],
+      "properties": {
+        "request": {"$ref": "#/$defs/emitRequest"},
+        "expect": {"$ref": "#/$defs/emitExpect"},
+        "capture": {"type": "array", "items": {"$ref": "#/$defs/emitCapture"}}
+      }
+    },
+    "emitTestCase": {
+      "description": "Một test case: kiểm đúng một hành vi của PRD, tự tạo dữ liệu nó cần và không phụ thuộc test khác. kind=api_functional: đúng 1 bước; flow: từ 2 bước; api_contract: 1 bước chỉ có method và path.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "ac_refs", "kind", "steps"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "ac_refs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/id"}},
+        "kind": {"enum": ["api_contract", "api_functional", "flow"]},
+        "steps": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/emitStep"}}
+      }
+    },
+    "emit_test_cases": {
+      "description": "Các test case sinh ra cho PRD, và những AC không thể kiểm bằng HTTP kèm lý do.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["test_cases", "uncovered_acs"],
+      "properties": {
+        "test_cases": {"type": "array", "items": {"$ref": "#/$defs/emitTestCase"}},
+        "uncovered_acs": {"type": "array", "items": {"$ref": "#/$defs/uncovered"}}
+      }
+    }
+  }
+}

@@ -152,3 +152,51 @@ def analyze(spec: dict) -> Analysis:
     if not result.get_paths:
         result.warnings.append("không có endpoint GET nào không cần tham số/xác thực: bỏ perf-smoke")
     return result
+
+
+def _response_key(code: str) -> tuple[int, int, str]:
+    return (0, int(code), "") if code.isdigit() else (1, 0, code)  # mã số trước ("200" < "422"), "default"... sau
+
+
+def endpoints(spec: dict) -> list[dict]:
+    """Danh sách endpoint TẤT ĐỊNH cho Ground-Truth (S1): mỗi phần tử
+    `{method, path, spec_path, parameters, body_required, responses}`.
+
+    `path` là đường dẫn client thực sự gửi (đã gồm tiền tố servers/basePath), `spec_path` là khoá trong `paths`. `parameters` chỉ gồm tham số
+    BẮT BUỘC (`required` hoặc `in: path`) dạng `{name, in}`, đã xếp; `body_required` lấy từ requestBody / tham số `in: body` (Swagger 2);
+    `responses` là mã khai báo, số trước rồi `default`. Không đoán: `$ref` không giải được thì bỏ qua tham số đó.
+    """
+    prefix = analyze(spec).prefix
+    order = {method: index for index, method in enumerate(("get", "post", "put", "patch", "delete", "head", "options"))}
+    found: list[dict] = []
+    for spec_path, item in spec["paths"].items():
+        if not isinstance(spec_path, str) or not spec_path.startswith("/") or not isinstance(item, dict):
+            continue
+        for method in METHODS:
+            op = item.get(method)
+            if not isinstance(op, dict):
+                continue
+            required: dict[tuple[str, str], dict] = {}
+            body_required = False
+            for raw in [*(item.get("parameters") or []), *(op.get("parameters") or [])]:
+                parameter = _deref(spec, raw)
+                if not isinstance(parameter, dict) or not isinstance(parameter.get("name"), str):
+                    continue
+                location = str(parameter.get("in") or "")
+                if location == "body":
+                    body_required = body_required or bool(parameter.get("required"))
+                elif parameter.get("required") or location == "path":
+                    required[(location, parameter["name"])] = {"name": parameter["name"], "in": location}
+            body = _deref(spec, op.get("requestBody"))
+            if isinstance(body, dict) and body.get("required"):
+                body_required = True
+            responses = op.get("responses") if isinstance(op.get("responses"), dict) else {}
+            found.append({
+                "method": method.upper(),
+                "path": prefix + spec_path,
+                "spec_path": spec_path,
+                "parameters": [required[key] for key in sorted(required)],
+                "body_required": body_required,
+                "responses": sorted((str(code) for code in responses), key=_response_key),
+            })
+    return sorted(found, key=lambda e: (e["path"], order[e["method"].lower()]))

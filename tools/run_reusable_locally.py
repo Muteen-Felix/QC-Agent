@@ -1,4 +1,4 @@
-"""Chạy các bước SHELL của .github/workflows/qc-gate.reusable.yml trên Docker cục bộ, để kiểm thử workflow mà không cần GitHub.
+"""Chạy các bước SHELL của .github/workflows/qc-gate.reusable.yml (hoặc job khác của workflow tái sử dụng: `--workflow ... --job validate`) trên Docker cục bộ, để kiểm thử workflow mà không cần GitHub.
 
 Không mô phỏng toàn bộ GitHub Actions: chỉ các bước `run:` (bỏ `uses:` như checkout/login/upload-artifact), suy giá trị `${{ }}` từ
 inputs/secrets/github/steps giả, ghi/đọc $GITHUB_OUTPUT, và bắt chước quy tắc `if: always()` (sau khi một bước lỗi, chỉ chạy các bước always()).
@@ -32,7 +32,11 @@ _EXPR = re.compile(r"\$\{\{\s*(.+?)\s*\}\}")
 
 def find_bash() -> str:
     if os.name == "nt":
-        for candidate in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"):
+        candidates = [r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"]
+        git = shutil.which("git")
+        if git:   # Git cài theo người dùng (%LOCALAPPDATA%\Programs\Git): bash nằm cạnh; bash.exe trong WindowsApps là WSL, không dùng được
+            candidates.append(str(Path(git).resolve().parent.parent / "bin" / "bash.exe"))
+        for candidate in candidates:
             if Path(candidate).is_file():
                 return candidate
     found = shutil.which("bash")
@@ -107,7 +111,7 @@ def _posix(path) -> str:
 
 
 def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: dict, *, skip=("Pull qc-agent image",), echo=print,
-                 policy_dir=None, step_env=None, runner_temp=None) -> dict:
+                 policy_dir=None, step_env=None, runner_temp=None, job: str = "gate") -> dict:
     data = yaml.safe_load(Path(workflow_path).read_text(encoding="utf-8"))
     declared = data[True if True in data else "on"]["workflow_call"]["inputs"]
     merged = {name: spec.get("default") for name, spec in declared.items()}
@@ -117,7 +121,7 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
         raise SystemExit(f"thiếu input bắt buộc: {', '.join(missing)}")
     ctx = Context(merged, secrets, github)
     workflow_env = {k: str(v) for k, v in (data.get("env") or {}).items()}
-    steps = data["jobs"]["gate"]["steps"]
+    steps = data["jobs"][job]["steps"]
     bash, failed, results = find_bash(), False, {}
     with tempfile.TemporaryDirectory() as tmp:
         output_file = Path(tmp) / "github_output"
@@ -173,6 +177,7 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--workflow", default=str(DEFAULT_WORKFLOW))
+    ap.add_argument("--job", default="gate", help="job của workflow cần chạy (mặc định gate; qc-groundtruth.reusable.yml có validate)")
     ap.add_argument("--workspace", required=True, help="thư mục repo SUT (có Dockerfile và .qc-agent/suites)")
     ap.add_argument("--input", action="append", default=[], metavar="K=V")
     ap.add_argument("--secret", action="append", default=[], metavar="K=V")
@@ -193,7 +198,9 @@ def main(argv=None) -> int:
                   "env": {"GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": args.repository, "GITHUB_SHA": "mergecommit0000",
                           "GITHUB_RUN_ID": "1001", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SERVER_URL": "https://github.com",
                           "GITHUB_API_URL": args.github_api, "GITHUB_REF_NAME": "feat/x"}}
-        results = run_workflow(args.workflow, args.workspace, kv(args.input), kv(args.secret), github, policy_dir=args.policy_dir, runner_temp=args.runner_temp)
+        results = run_workflow(args.workflow, args.workspace, kv(args.input), kv(args.secret), github, policy_dir=args.policy_dir, runner_temp=args.runner_temp, job=args.job)
+    if args.job != "gate":   # job không có bước "Enforce gate result": kết quả là bước cuối cùng đã chạy
+        return next(reversed(results.values()), {}).get("returncode", 1)
     return results.get("Enforce gate result", {}).get("returncode", 1)
 
 

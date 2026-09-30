@@ -40,7 +40,7 @@ def generate(tmp_path, *, ui=True, pins=True, finish_flow=True, **over):
         (sut / "Dockerfile").write_text("FROM python:3.11-slim\nEXPOSE 8000\n", encoding="utf-8")
     opts = dict(sut_root=sut, slug="vahan-rpa", openapi_source=str(VAHAN), qc_ref=SHA if pins else None, image=IMAGE if pins else None,
                 sut_env=["VAHAN_API_CORS_ORIGINS=http://ui:8080"] if ui else [])   # người đã xác nhận lựa chọn CORS (VERIFY)
-    opts.update(over)
+    opts.update({"qa_team": "@o/qa", **over})   # thiếu --qa-team thì CODEOWNERS còn TODO và validate từ chối (S1-07)
     init_mod.apply(init_mod.build(init_mod.Options(**opts)))
     if ui and finish_flow:
         (sut / ".qc-agent" / "midscene" / "explore.yaml").write_text(t.midscene_explore_flow(steps=[("aiTap", "tab Settings")]), encoding="utf-8")
@@ -430,3 +430,88 @@ def test_default_project_slug_comes_from_origin_then_directory_name(tmp_path):
 def test_fetch_rejects_an_invalid_slug_before_building_a_url(tmp_path):
     with pytest.raises(policy_source.FetchError):
         policy_source.fetch_main("../x", tmp_path)
+
+
+# ---------- S1-07: CODEOWNERS giao `/.qc-agent/` cho QA, workflow sinh Ground-Truth được ghim ----------
+
+def with_ground_truth(sut):
+    (sut / ".qc-agent" / "ground-truth").mkdir(parents=True, exist_ok=True)
+
+
+def owners_errors(tmp_path, sut, projects):
+    """Lỗi liên quan CODEOWNERS (dạng `nơi: thông điệp`)."""
+    return [line for line in messages(check(tmp_path, sut, projects)).splitlines() if "CODEOWNERS" in line]
+
+
+def test_ground_truth_without_a_codeowners_rule_for_the_locked_dir_is_an_error(tmp_path):
+    sut, projects = generate(tmp_path)
+    with_ground_truth(sut)
+    assert owners_errors(tmp_path, sut, projects) == []
+    (sut / ".github" / "CODEOWNERS").write_text("* @o/core\n/docs/ @o/docs\n", encoding="utf-8")
+    assert any("thiếu quy tắc `/.qc-agent/" in line for line in owners_errors(tmp_path, sut, projects))
+    (sut / ".github" / "CODEOWNERS").write_text("# /.qc-agent/ @o/qa (chỉ là comment)\n/.qc-agent/\n", encoding="utf-8")   # không có owner => không phải quy tắc
+    assert any("thiếu quy tắc" in line for line in owners_errors(tmp_path, sut, projects))
+    (sut / ".github" / "CODEOWNERS").unlink()
+    assert any("không có CODEOWNERS" in line for line in owners_errors(tmp_path, sut, projects))
+
+
+def test_a_rule_that_covers_the_locked_dir_in_any_accepted_spelling_passes(tmp_path):
+    sut, projects = generate(tmp_path)
+    with_ground_truth(sut)
+    for spelling in ("/.qc-agent/ @o/qa", "/.qc-agent/** @o/qa @qa-lead", ".qc-agent/ @o/qa", "/.qc-agent @o/qa", "/.qc-agent/  @o/qa   # ghi chú"):
+        (sut / ".github" / "CODEOWNERS").write_text("* @o/core\n" + spelling + "\n", encoding="utf-8")
+        assert owners_errors(tmp_path, sut, projects) == [], spelling
+
+
+def test_the_codeowners_rule_is_not_required_when_the_repo_has_no_ground_truth(tmp_path):
+    sut, projects = generate(tmp_path)
+    (sut / ".github" / "CODEOWNERS").write_text("* @o/core\n", encoding="utf-8")
+    assert owners_errors(tmp_path, sut, projects) == []
+
+
+def test_a_codeowners_at_the_repo_root_counts_too(tmp_path):
+    sut, projects = generate(tmp_path)
+    with_ground_truth(sut)
+    (sut / ".github" / "CODEOWNERS").unlink()
+    (sut / "CODEOWNERS").write_text("* @o/core\n", encoding="utf-8")
+    assert any("thiếu quy tắc" in line for line in owners_errors(tmp_path, sut, projects))
+    (sut / "CODEOWNERS").write_text("/.qc-agent/ @o/qa\n", encoding="utf-8")
+    assert owners_errors(tmp_path, sut, projects) == []
+
+
+def test_a_placeholder_qa_team_is_rejected_with_its_location(tmp_path):
+    sut, projects = generate(tmp_path, qa_team=None)
+    report = check(tmp_path, sut, projects)
+    located = [f for f in report.findings if f.level == v.ERROR and f.where.startswith(".github/CODEOWNERS:")]
+    assert located and "qc-agent:todo" in located[0].message
+
+
+def gt_workflow_errors(tmp_path, sut, projects):
+    return [line for line in messages(check(tmp_path, sut, projects)).splitlines() if "qc-groundtruth.yml" in line]
+
+
+def test_the_groundtruth_workflow_must_be_pinned_by_sha_and_digest(tmp_path):
+    sut, projects = generate(tmp_path)
+    assert gt_workflow_errors(tmp_path, sut, projects) == []
+    path = sut / ".github" / "workflows" / "qc-groundtruth.yml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("@" + SHA, "@main"), encoding="utf-8")
+    assert any("ghim commit SHA" in line for line in gt_workflow_errors(tmp_path, sut, projects))
+    path.write_text(text.replace("@sha256:" + "d" * 64, ":latest"), encoding="utf-8")
+    assert any("digest" in line for line in gt_workflow_errors(tmp_path, sut, projects))
+    path.write_text("jobs: [", encoding="utf-8")
+    assert any("YAML" in line for line in gt_workflow_errors(tmp_path, sut, projects))
+
+
+def test_an_unpinned_init_output_reports_the_groundtruth_todos(tmp_path):
+    sut, projects = generate(tmp_path, pins=False)
+    located = [f for f in check(tmp_path, sut, projects).findings if f.level == v.ERROR and f.where.startswith(".github/workflows/qc-groundtruth.yml:")]
+    assert len(located) == 2
+
+
+def test_cli_validate_fails_when_ground_truth_is_not_locked(tmp_path, capsys):
+    sut, projects = generate(tmp_path)
+    with_ground_truth(sut)
+    (sut / ".github" / "CODEOWNERS").write_text("* @o/core\n", encoding="utf-8")
+    argv = ["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--mode", "pr"]
+    assert cli_main(argv) == 3 and "thiếu quy tắc `/.qc-agent/" in capsys.readouterr().out
