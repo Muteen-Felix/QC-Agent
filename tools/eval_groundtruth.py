@@ -294,6 +294,9 @@ def main(argv: list[str]) -> int:
             if not args.yes:
                 raise EvalError("--llm real cần --yes (xác nhận chi tiền và việc gửi PRD ra ngoài)")
         else:
+            from qc_agent.llm.client import provider_of
+            if provider_of(model) == "gemini":
+                model = "claude-sonnet-5"   # response giả có dạng Messages API: đừng để QC_GT_MODEL=gemini-* trong .env làm hỏng lượt fake
             os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-eval-fake")   # client đòi có khoá dù transport là giả; không có request thật nào
         analysis = scaffold_openapi.analyze(scaffold_openapi.load(args.openapi)) if args.openapi else None
         runs = []
