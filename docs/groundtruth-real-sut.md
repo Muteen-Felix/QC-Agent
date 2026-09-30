@@ -133,7 +133,7 @@ curl -s http://127.0.0.1:8000/openapi.json -o <SUT>/openapi.json
 qc-agent init --sut-root <SUT> --qa-team @org/qa-team --prd-glob 'docs/prd/**' --openapi <SUT>/openapi.json
 ```
 
-Lưu ý: workflow tái sử dụng hiện đòi secret `ANTHROPIC_API_KEY`; **chưa** có đường Gemini cho CI của workflow đó. Trong Sprint 1, chạy `gt generate` ở máy dev như dưới đây, commit kết quả vào PR.
+Workflow tái sử dụng chọn khoá theo model: bỏ comment `model: gemini-3.6-flash` (cùng `llm_min_interval_s`, `llm_max_retries`, `llm_fallback_models`) trong `.github/workflows/qc-groundtruth.yml` và đặt secret `GEMINI_API_KEY` ở repo SUT (chi tiết: [groundtruth.md](groundtruth.md) §6). Điều kiện: `image` ghim digest và `qc_ref` phải lấy từ bản `main` đã có provider Gemini. Chưa cấu hình CI thì chạy `gt generate` ở máy dev như dưới đây và commit kết quả vào PR.
 
 ## 3. Bước 2: sinh test case, render và QA duyệt (HITL)
 

@@ -96,7 +96,9 @@ def test_gt_on_key_parses_as_workflow_call_with_the_documented_inputs_and_secret
     call = GT[True]["workflow_call"]                                     # `on` không quote => YAML parse thành True (bẫy đã biết)
     assert {n for n, spec in call["inputs"].items() if spec.get("required")} == {"project", "image", "prd_path"}
     assert call["inputs"]["base_branch"]["default"] == "main" and call["inputs"]["openapi"]["default"] == "" and call["inputs"]["allow_unpinned_image"]["default"] is False
-    assert set(call["secrets"]) == {"ANTHROPIC_API_KEY", "qc_bot_token", "GHCR_PULL_TOKEN"} and all(s["required"] is False for s in call["secrets"].values())
+    assert set(call["secrets"]) == {"ANTHROPIC_API_KEY", "GEMINI_API_KEY", "qc_bot_token", "GHCR_PULL_TOKEN"} and all(s["required"] is False for s in call["secrets"].values())
+    for name in ("llm_min_interval_s", "llm_max_retries", "llm_fallback_models"):     # cấu hình chống nghẽn quota Gemini: input (không phải secret), rỗng = mặc định của image
+        assert call["inputs"][name]["type"] == "string" and call["inputs"][name]["default"] == "" and not call["inputs"][name].get("required"), name
     assert set(GT_JOBS) == {"select", "generate", "validate"}
 
 
@@ -111,10 +113,11 @@ def test_gt_no_expression_is_ever_interpolated_into_a_run_script():
     for job, s in all_gt_steps():
         if "run" in s:
             assert "${{" not in s["run"], (job, s["name"])                        # inputs/secrets/matrix chỉ đi qua env: của step
-    for secret in ("ANTHROPIC_API_KEY", "qc_bot_token", "GHCR_PULL_TOKEN"):
+    for secret in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "qc_bot_token", "GHCR_PULL_TOKEN"):
         holders = [(job, s.get("name")) for job, s in all_gt_steps() if f"secrets.{secret}" in json.dumps(s)]
         assert holders, secret
-    assert [(j, s["name"]) for j, s in all_gt_steps() if "secrets.ANTHROPIC_API_KEY" in json.dumps(s)] == [("generate", "Generate Ground-Truth")]
+    for secret in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY"):                    # khoá LLM chỉ nằm ở đúng MỘT step
+        assert [(j, s["name"]) for j, s in all_gt_steps() if f"secrets.{secret}" in json.dumps(s)] == [("generate", "Generate Ground-Truth")], secret
 
 
 def test_gt_the_gate_workflow_also_keeps_expressions_out_of_scripts():
@@ -198,13 +201,15 @@ def test_gt_containers_never_run_as_root_and_secrets_never_reach_the_command_lin
         for command in re.findall(r"docker run[^\n]*(?:\\\n[^\n]*)*", s.get("run", "")):
             assert '--user "$(id -u):$(id -g)"' in command, (job, s["name"])
     generate = gt_step("generate", "Generate Ground-Truth")
-    assert "-e ANTHROPIC_API_KEY " in generate["run"] and "ANTHROPIC_API_KEY=" not in generate["run"]                 # tên biến, không phải giá trị
+    assert '"${key_args[@]}"' in generate["run"] and 'key_args=(-e "$key_var")' in generate["run"]                    # khoá đi vào container bằng TÊN biến
+    assert "_API_KEY=" not in generate["run"] and "-e ANTHROPIC_API_KEY" not in generate["run"] and "-e GEMINI_API_KEY" not in generate["run"]   # không bao giờ là giá trị, không kèm cả hai khoá
     assert "gh pr create" in gt_step("generate", "Open or update the pull request")["run"]
 
 
 def test_gt_validate_is_read_only_offline_and_has_no_llm_secret():
     validate = json.dumps(GT_JOBS["validate"])
-    assert "ANTHROPIC" not in validate and "qc_bot_token" not in validate and "contents: write" not in validate
+    assert "ANTHROPIC" not in validate and "GEMINI" not in validate and "qc_bot_token" not in validate and "contents: write" not in validate
+    assert "ANTHROPIC" not in json.dumps(GT_JOBS["select"]) and "GEMINI" not in json.dumps(GT_JOBS["select"]) and "QC_LLM" not in json.dumps(GT_JOBS["select"])
     run = gt_step("validate", "Run gt validate")["run"]
     assert "--network none" in run and '-v "$PWD:/work:ro"' in run and "gt validate --sut-root /work" in run
     assert "if [ ! -d .qc-agent/ground-truth ]" in run                                                                 # PR đụng suite khác: không có GT thì bỏ qua
@@ -426,3 +431,98 @@ def test_gt_only_branches_in_the_bot_namespace_are_ever_touched(shell, tmp_path,
     done, out = shell("generate", "Prepare bot branch", repo, bot_env(branch))
     assert done.returncode == 1 and "tên nhánh bot không hợp lệ" in done.stdout + done.stderr
     assert git(repo, "branch", "--show-current") == "main" and out == {}
+
+
+# ---- chọn khoá LLM theo model + cấu hình quota Gemini: chạy THẬT bước "Generate Ground-Truth" với `docker` giả ----
+
+GEN_ENV = {"IMAGE": "ghcr.io/muteen-felix/qc-agent@sha256:" + "a" * 64, "PRD": "docs/prd/a.md", "OPENAPI": "", "MODEL": "", "LLM_MIN_INTERVAL_S": "",
+           "LLM_MAX_RETRIES": "", "LLM_FALLBACK_MODELS": "", "ANTHROPIC_API_KEY": "", "GEMINI_API_KEY": ""}
+SECRET_A, SECRET_G = "sk-ant-SECRET-VALUE-1", "AIza-SECRET-VALUE-2"
+
+
+@pytest.fixture
+def generate(shell, tmp_path):
+    """Chạy step Generate với `docker` giả ghi đối số ra file. Trả (kết quả shell, danh sách đối số docker hoặc None nếu docker không được gọi)."""
+    bindir = tmp_path / "dockerbin"
+    bindir.mkdir()
+    (bindir / "docker").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$DOCKER_ARGS_FILE"\n', encoding="utf-8", newline="\n")
+    (bindir / "docker").chmod(0o755)
+    args_file = tmp_path / "docker-args.txt"
+    repo = make_repo(tmp_path, "sut")
+
+    def run(**env):
+        args_file.unlink(missing_ok=True)
+        done, _ = shell("generate", "Generate Ground-Truth", repo, {**GEN_ENV, **env, "DOCKER_ARGS_FILE": args_file.as_posix(),
+                                                                     "PATH": str(bindir) + os.pathsep + os.environ["PATH"]})
+        return done, (args_file.read_text(encoding="utf-8").splitlines() if args_file.exists() else None)
+    return run
+
+
+@needs_bash
+def test_gt_a_gemini_model_needs_the_gemini_key_and_only_that_key_reaches_the_container(generate):
+    done, args = generate(MODEL="gemini-3.6-flash", GEMINI_API_KEY=SECRET_G, ANTHROPIC_API_KEY=SECRET_A)
+    assert done.returncode == 0, done.stderr + done.stdout
+    assert "-e" in args and "GEMINI_API_KEY" in args and "QC_GT_MODEL=gemini-3.6-flash" in args and "ANTHROPIC_API_KEY" not in args
+    assert SECRET_G not in "".join(args) and SECRET_A not in "".join(args)                # tên biến, không phải giá trị
+    assert args.index("--user") < args.index(GEN_ENV["IMAGE"]) and "gt" in args and "generate" in args
+
+
+@needs_bash
+def test_gt_the_default_model_is_claude_and_needs_the_anthropic_key(generate):
+    done, args = generate(ANTHROPIC_API_KEY=SECRET_A, GEMINI_API_KEY=SECRET_G)
+    assert done.returncode == 0, done.stderr + done.stdout
+    assert "ANTHROPIC_API_KEY" in args and "GEMINI_API_KEY" not in args and not any(a.startswith("QC_GT_MODEL") for a in args)
+    done, args = generate(MODEL="claude-haiku-4-5-20251001", ANTHROPIC_API_KEY=SECRET_A)
+    assert done.returncode == 0 and "ANTHROPIC_API_KEY" in args and "QC_GT_MODEL=claude-haiku-4-5-20251001" in args
+
+
+@needs_bash
+@pytest.mark.parametrize("env, missing", [
+    ({"MODEL": "gemini-3.6-flash", "ANTHROPIC_API_KEY": SECRET_A}, "GEMINI_API_KEY"),      # Gemini nhưng chỉ có khoá Claude
+    ({"GEMINI_API_KEY": SECRET_G}, "ANTHROPIC_API_KEY"),                                   # model mặc định (Claude) nhưng chỉ có khoá Gemini
+    ({"MODEL": "claude-sonnet-5", "GEMINI_API_KEY": SECRET_G}, "ANTHROPIC_API_KEY"),
+    ({}, "ANTHROPIC_API_KEY"),
+])
+def test_gt_a_missing_key_stops_before_anything_leaves_the_machine(generate, env, missing):
+    done, args = generate(**env)
+    assert done.returncode == 1 and args is None                                          # docker không được gọi: chưa gửi gì ra ngoài
+    assert f"thiếu secret {missing}" in done.stdout + done.stderr
+    assert SECRET_A not in done.stdout + done.stderr and SECRET_G not in done.stdout + done.stderr
+
+
+@needs_bash
+def test_gt_quota_settings_are_forwarded_as_env_only_when_set(generate):
+    base = {"MODEL": "gemini-3.6-flash", "GEMINI_API_KEY": SECRET_G}
+    done, args = generate(**base)
+    assert done.returncode == 0 and not any(a.startswith("QC_LLM_") for a in args)         # rỗng = mặc định của image
+    done, args = generate(**base, LLM_MIN_INTERVAL_S="12", LLM_MAX_RETRIES="5", LLM_FALLBACK_MODELS="gemini-3.8-flash,gemini-2.5-flash")
+    assert done.returncode == 0, done.stderr
+    assert {"QC_LLM_MIN_INTERVAL_S=12", "QC_LLM_MAX_RETRIES=5", "QC_LLM_FALLBACK_MODELS=gemini-3.8-flash,gemini-2.5-flash"} <= set(args)
+    done, args = generate(**base, LLM_MIN_INTERVAL_S="0.5")
+    assert done.returncode == 0 and "QC_LLM_MIN_INTERVAL_S=0.5" in args
+
+
+@needs_bash
+@pytest.mark.parametrize("env", [
+    {"LLM_MIN_INTERVAL_S": "abc"}, {"LLM_MIN_INTERVAL_S": "1e3"}, {"LLM_MIN_INTERVAL_S": "12; rm -rf /"}, {"LLM_MIN_INTERVAL_S": "-1"}, {"LLM_MIN_INTERVAL_S": "12.3456"},
+    {"LLM_MAX_RETRIES": "abc"}, {"LLM_MAX_RETRIES": "123"}, {"LLM_MAX_RETRIES": "$(id)"},
+    {"LLM_FALLBACK_MODELS": "claude-sonnet-5"}, {"LLM_FALLBACK_MODELS": "gemini-a b"}, {"LLM_FALLBACK_MODELS": "gemini-a,"}, {"LLM_FALLBACK_MODELS": "gemini-a;id"},
+    {"LLM_FALLBACK_MODELS": ",".join(f"gemini-m{i}" for i in range(6))}, {"MODEL": "gem ini"}, {"MODEL": "gemini-x;id"},
+])
+def test_gt_invalid_llm_inputs_are_rejected_before_docker(generate, env):
+    done, args = generate(**{"GEMINI_API_KEY": SECRET_G, "ANTHROPIC_API_KEY": SECRET_A, "MODEL": "gemini-3.6-flash", **env})
+    assert done.returncode == 1 and args is None and "không hợp lệ" in done.stdout + done.stderr
+
+
+def test_gt_the_default_model_in_the_workflow_matches_the_image_default(monkeypatch):
+    """Workflow phải biết model mặc định để chọn khoá khi input `model` rỗng: khoá nó vào settings để hai chỗ không lệch nhau."""
+    from qc_agent import settings
+    monkeypatch.delenv("QC_GT_MODEL", raising=False)
+    found = re.search(r'model="\$\{MODEL:-([^}]+)\}"', gt_step("generate", "Generate Ground-Truth")["run"])
+    assert found and found.group(1) == settings.Settings().gt_model
+
+
+def test_gt_the_provider_switch_is_a_case_on_the_gemini_prefix_only():
+    run = gt_step("generate", "Generate Ground-Truth")["run"]
+    assert 'case "$model" in gemini-*) key_var=GEMINI_API_KEY ;; *) key_var=ANTHROPIC_API_KEY ;; esac' in run
+    assert "${{" not in run and "${!key_var:-}" in run
