@@ -98,7 +98,7 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
   - Text thô: fallback thành một khối duy nhất.
   - Tính `prd_sha256` để về sau cache.
 - [x] **S1.3:** Viết `schemas/ground_truth.json`. Mỗi TC có `tc_id`, `ac_refs[]`, `kind` (`api_contract` | `api_functional` | `flow`), `status` (`draft` | `approved` | `rejected`), `request`, `expect`, `origin` (`llm` | `qa`).
-- [ ] **S1.4 (`generate.py`):** Gửi PRD đã parse và danh sách endpoint, nhận TC JSON, validate theo schema. Nếu sai schema thì cho LLM sửa một lần, vẫn sai thì exit 3. Không có AC nào "mồ côi" (thiếu TC) mà không bị báo.
+- [x] **S1.4 (`generate.py`):** Gửi PRD đã parse và danh sách endpoint, nhận TC JSON, validate theo schema. Nếu sai schema thì cho LLM sửa một lần, vẫn sai thì exit 3. Không có AC nào "mồ côi" (thiếu TC) mà không bị báo.
 - [ ] **S1.5 (`render.py`, tất định):**
   - Sinh `test-cases.yaml` (bản cho người đọc).
   - Sinh `tests_gt/test_<story>.py` bằng template pytest.

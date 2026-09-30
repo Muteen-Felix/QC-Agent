@@ -1,0 +1,1768 @@
+{
+  "_note": "soạn tay — thay bằng bản ghi thật khi có key",
+  "id": "msg_01FixtureNoteboard",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01FixtureNoteboard",
+      "name": "emit_test_cases",
+      "input": {
+        "test_cases": [
+          {
+            "title": "Tạo ghi chú hợp lệ trả 201 và đúng dữ liệu đã gửi",
+            "ac_refs": [
+              "AC-1.1"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Mua sữa\",\"body\":\"2 hộp sữa tươi\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    },
+                    {
+                      "path": "$.title",
+                      "op": "eq",
+                      "value": "Mua sữa"
+                    },
+                    {
+                      "path": "$.body",
+                      "op": "eq",
+                      "value": "2 hộp sữa tươi"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Lưu nguyên văn tiếng Việt, emoji và khoảng trắng đầu/cuối",
+            "ac_refs": [
+              "AC-1.2"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"  Kế hoạch 🚀  \",\"body\":\" Ngày mai: họp 9h. \"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$.title",
+                      "op": "eq",
+                      "value": "  Kế hoạch 🚀  "
+                    },
+                    {
+                      "path": "$.body",
+                      "op": "eq",
+                      "value": " Ngày mai: họp 9h. "
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "title rỗng trả 422",
+            "ac_refs": [
+              "AC-1.3"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"\",\"body\":\"nội dung\"}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "thiếu title trả 422",
+            "ac_refs": [
+              "AC-1.3"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"body\":\"nội dung\"}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "body rỗng trả 422",
+            "ac_refs": [
+              "AC-1.4"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"tiêu đề\",\"body\":\"\"}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "thiếu body trả 422",
+            "ac_refs": [
+              "AC-1.4"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"tiêu đề\"}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "title dài 201 ký tự trả 422",
+            "ac_refs": [
+              "AC-1.5"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"body\":\"x\"}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "title dài đúng 200 ký tự vẫn hợp lệ",
+            "ac_refs": [
+              "AC-1.5"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"body\":\"x\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "body dài 5001 ký tự trả 422",
+            "ac_refs": [
+              "AC-1.6"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"t\",\"body\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "body dài đúng 5000 ký tự vẫn hợp lệ",
+            "ac_refs": [
+              "AC-1.6"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"t\",\"body\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "title là số trả 422",
+            "ac_refs": [
+              "AC-1.7"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":123,\"body\":\"x\"}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "body là null trả 422",
+            "ac_refs": [
+              "AC-1.7"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"t\",\"body\":null}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "title là mảng trả 422",
+            "ac_refs": [
+              "AC-1.7"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":[\"a\"],\"body\":\"x\"}"
+                },
+                "expect": {
+                  "status": [
+                    422
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Danh sách ghi chú luôn trả 200 và một mảng",
+            "ac_refs": [
+              "AC-2.1"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$",
+                      "op": "type",
+                      "value": "array"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Danh sách có ít nhất 1 phần tử sau khi tạo ghi chú",
+            "ac_refs": [
+              "AC-2.1"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$",
+                      "op": "len_gte",
+                      "value": 1
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Xem ghi chú đang tồn tại trả đúng id, title, body",
+            "ac_refs": [
+              "AC-2.2"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Đọc lại\",\"body\":\"nội dung cũ\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "exists"
+                    },
+                    {
+                      "path": "$.title",
+                      "op": "eq",
+                      "value": "Đọc lại"
+                    },
+                    {
+                      "path": "$.body",
+                      "op": "eq",
+                      "value": "nội dung cũ"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Xem ghi chú không tồn tại trả 404 kèm detail",
+            "ac_refs": [
+              "AC-2.3"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "999999"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "id là chữ trả 404",
+            "ac_refs": [
+              "AC-2.4"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "abc"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "id âm trả 404",
+            "ac_refs": [
+              "AC-2.4"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "-1"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "id chữ rất dài không bao giờ trả 5xx",
+            "ac_refs": [
+              "AC-2.5"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "id 17 chữ số trả 404",
+            "ac_refs": [
+              "AC-2.6"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "11111111111111111"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "GET /notes tồn tại và trả 200",
+            "ac_refs": [
+              "AC-2.1"
+            ],
+            "kind": "api_contract",
+            "steps": [
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Xoá ghi chú đang tồn tại trả 204",
+            "ac_refs": [
+              "AC-3.1"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "DELETE",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    204
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Sau khi xoá, xem lại ghi chú trả 404",
+            "ac_refs": [
+              "AC-3.2"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "DELETE",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    204
+                  ],
+                  "json": []
+                },
+                "capture": []
+              },
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Xoá lần hai cùng một id trả 404",
+            "ac_refs": [
+              "AC-3.3"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "DELETE",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    204
+                  ],
+                  "json": []
+                },
+                "capture": []
+              },
+              {
+                "request": {
+                  "method": "DELETE",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Xoá id chưa từng tồn tại trả 404",
+            "ac_refs": [
+              "AC-3.4"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "DELETE",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "999999"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Xoá id không phải số trả 404",
+            "ac_refs": [
+              "AC-3.4"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "DELETE",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "abc"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Tóm tắt ghi chú trả đủ summary, model và prompt_hash",
+            "ac_refs": [
+              "AC-4.1"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes/{note_id}/summarize",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$.summary",
+                      "op": "type",
+                      "value": "string"
+                    },
+                    {
+                      "path": "$.model",
+                      "op": "eq",
+                      "value": "stub-rule-v1"
+                    },
+                    {
+                      "path": "$.prompt_hash",
+                      "op": "len_eq",
+                      "value": 12
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "summary là câu đầu tiên của body",
+            "ac_refs": [
+              "AC-4.2"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Tóm tắt\",\"body\":\"Hôm nay trời đẹp. Ngày mai mưa.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes/{note_id}/summarize",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$.summary",
+                      "op": "eq",
+                      "value": "Hôm nay trời đẹp"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "body không có dấu chấm thì summary bỏ ký tự cuối",
+            "ac_refs": [
+              "AC-4.3"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Tóm tắt\",\"body\":\"abcdef\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes/{note_id}/summarize",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$.summary",
+                      "op": "eq",
+                      "value": "abcde"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "body chứa [[long]] vẫn theo quy tắc câu đầu",
+            "ac_refs": [
+              "AC-4.4"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Tóm tắt\",\"body\":\"Ghi chú [[long]]. Chi tiết.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes/{note_id}/summarize",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$.summary",
+                      "op": "eq",
+                      "value": "Ghi chú [[long]]"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Tóm tắt ghi chú không tồn tại trả 404",
+            "ac_refs": [
+              "AC-4.5"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes/{note_id}/summarize",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "999999"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Tóm tắt không làm đổi ghi chú",
+            "ac_refs": [
+              "AC-4.6"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Giữ nguyên\",\"body\":\"Câu một. Câu hai.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes/{note_id}/summarize",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": []
+                },
+                "capture": []
+              },
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": [
+                    {
+                      "path": "$.title",
+                      "op": "eq",
+                      "value": "Giữ nguyên"
+                    },
+                    {
+                      "path": "$.body",
+                      "op": "eq",
+                      "value": "Câu một. Câu hai."
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Xem ghi chú theo tiêu chí không có trong PRD",
+            "ac_refs": [
+              "AC-9.9"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "1"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Sửa ghi chú bằng PATCH (không có trong danh sách endpoint)",
+            "ac_refs": [
+              "AC-1.2"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "PATCH",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{note_id}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"mới\"}"
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Dùng biến chưa từng được capture",
+            "ac_refs": [
+              "AC-2.2"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              },
+              {
+                "request": {
+                  "method": "GET",
+                  "path": "/notes/{note_id}",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "{{ghost}}"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    200
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Flow chỉ có một bước",
+            "ac_refs": [
+              "AC-3.2"
+            ],
+            "kind": "flow",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}"
+                },
+                "expect": {
+                  "status": [
+                    201
+                  ],
+                  "json": [
+                    {
+                      "path": "$.id",
+                      "op": "type",
+                      "value": "integer"
+                    }
+                  ]
+                },
+                "capture": [
+                  {
+                    "name": "note_id",
+                    "path": "$.id"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "Mã trạng thái ngoài khoảng 100–599",
+            "ac_refs": [
+              "AC-1.1"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes",
+                  "path_params": [],
+                  "query": [],
+                  "headers": [],
+                  "json": "{\"title\":\"t\",\"body\":\"b\"}"
+                },
+                "expect": {
+                  "status": [
+                    999
+                  ],
+                  "json": []
+                },
+                "capture": []
+              }
+            ]
+          },
+          {
+            "title": "Summarize id không tồn tại (viết lại)",
+            "ac_refs": [
+              "AC-4.5"
+            ],
+            "kind": "api_functional",
+            "steps": [
+              {
+                "request": {
+                  "method": "POST",
+                  "path": "/notes/{note_id}/summarize",
+                  "path_params": [
+                    {
+                      "name": "note_id",
+                      "value": "999999"
+                    }
+                  ],
+                  "query": [],
+                  "headers": [],
+                  "json": null
+                },
+                "expect": {
+                  "status": [
+                    404
+                  ],
+                  "json": [
+                    {
+                      "path": "$.detail",
+                      "op": "exists"
+                    }
+                  ]
+                },
+                "capture": []
+              }
+            ]
+          }
+        ],
+        "uncovered_acs": [
+          {
+            "ac_id": "AC-1.8",
+            "reason": "Kiểm tra giao diện trang chủ (nhập liệu và bấm Thêm), không kiểm được chỉ bằng lời gọi HTTP."
+          }
+        ]
+      }
+    }
+  ],
+  "usage": {
+    "input_tokens": 4210,
+    "output_tokens": 9350,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  }
+}

@@ -27,7 +27,7 @@
 | Worker `playwright` (integration `t-020…t-022`) | *Thiết kế* → T6 | §2.3 |
 | Service: API, executor, dashboard (Postgres) | *Đã chạy* | Bỏ phụ thuộc DB của luồng PR/manual: *Thiết kế — S3* |
 | `llm/client.py` (Messages API qua `httpx`, tool-use, egress trước khi gửi) | *Đang triển khai — S1* | Đã có mã + test bằng transport giả (S1-01); **chưa gọi API thật**. `count_tokens`, prompt caching, trần token: S4 |
-| Ground-Truth Engine: `groundtruth/`, schema TC, render, `qc-agent gt …` | *Đang triển khai — S1* | Đã có schema catalog/emit + parse PRD (S1-02). Chưa có: sinh bằng LLM (S1-04), render (S1-05), CLI `gt` (S1-06) |
+| Ground-Truth Engine: `groundtruth/`, schema TC, render, `qc-agent gt …` | *Đang triển khai — S1* | Đã có schema catalog/emit + parse PRD (S1-02) và `generate.py` sinh catalog `draft` từ PRD bằng một lời gọi tool-use (S1-04, test bằng transport giả, **chưa gọi API thật**). Chưa có: render (S1-05), CLI `gt` (S1-06) |
 | Worker `pytest` (`api.functional`, suite `gt-functional`) | *Đang triển khai — S1* | |
 | Workflow sinh GT + khoá `.qc-agent/**` (CODEOWNERS, branch protection) | *Đang triển khai — S1* | |
 | Trigger `manual` + trục `--trigger` | *Thiết kế — S2* | |
