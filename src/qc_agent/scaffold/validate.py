@@ -30,6 +30,9 @@ ENV_REF = re.compile(r"\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}")
 SHA40 = re.compile(r"[0-9a-f]{40}")
 IMAGE_DIGEST = re.compile(r"[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}")
 REUSABLE = "qc-gate.reusable.yml"
+GT_REUSABLE = "qc-groundtruth.reusable.yml"
+GT_WORKFLOW = ".github/workflows/qc-groundtruth.yml"
+CODEOWNERS_FILES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")   # thứ tự ưu tiên của GitHub
 # Biến môi trường mà workflow tái sử dụng chuyển vào container gate (khớp bước "Run qc-agent gate"; test đối chiếu với file workflow thật).
 PASSTHROUGH = frozenset({"OPENAI_API_KEY", "GEMINI_API_KEY", "MIDSCENE_MODEL_BASE_URL", "MIDSCENE_MODEL_API_KEY", "MIDSCENE_MODEL_NAME",
                          "MIDSCENE_MODEL_FAMILY", "QC_JUDGE_PROVIDER", "QC_JUDGE_MODEL", "QC_JUDGE_FALLBACK_PROVIDER", "QC_JUDGE_FALLBACK_MODEL"})
@@ -89,6 +92,45 @@ def _todo_lines(path: Path) -> list[tuple[int, str]]:
     except (OSError, UnicodeError):
         return []
     return [(number, line.strip()) for number, line in enumerate(text.splitlines(), 1) if t.TODO in line]
+
+
+def _check_groundtruth_setup(report: Report, sut_root: Path) -> None:
+    """CODEOWNERS và workflow sinh Ground-Truth (S1-07). Có `.qc-agent/ground-truth/` mà CODEOWNERS không giao `/.qc-agent/` cho ai thì khoá QA vô hiệu: lỗi."""
+    has_gt = (sut_root / ".qc-agent" / "ground-truth").is_dir()
+    owners = next((rel for rel in CODEOWNERS_FILES if (sut_root / rel).is_file()), None)
+    if owners is None:
+        if has_gt:
+            report.add(ERROR, ".github/CODEOWNERS", "có .qc-agent/ground-truth/ nhưng không có CODEOWNERS: ai cũng sửa được Ground-Truth (chạy `qc-agent init --qa-team @org/team`)")
+    else:
+        for line, text in _todo_lines(sut_root / owners):
+            report.add(ERROR, f"{owners}:{line}", _todo_message(text))
+        try:
+            text = (sut_root / owners).read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError):
+            text = ""
+        if has_gt and not t.codeowners_locks_ground_truth(text):
+            report.add(ERROR, owners, "có .qc-agent/ground-truth/ nhưng CODEOWNERS thiếu quy tắc `/.qc-agent/ @<team QA>`: khoá QA không có tác dụng "
+                                      "(chạy `qc-agent init --qa-team @org/team`)")
+    workflow = sut_root / GT_WORKFLOW
+    if not workflow.is_file():
+        return
+    for line, text in _todo_lines(workflow):
+        report.add(ERROR, f"{GT_WORKFLOW}:{line}", _todo_message(text))
+    try:
+        data = yaml.safe_load(workflow.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, yaml.YAMLError):
+        report.add(ERROR, GT_WORKFLOW, "không đọc được YAML")
+        return
+    for name, job in ((data or {}).get("jobs") or {}).items() if isinstance(data, dict) else []:
+        if not isinstance(job, dict) or GT_REUSABLE not in str(job.get("uses", "")):
+            continue
+        where = f"{GT_WORKFLOW} job {name}"
+        ref = str(job["uses"]).rpartition("@")[2]
+        if not SHA40.fullmatch(ref):
+            report.add(ERROR, where, f"`uses` phải ghim commit SHA 40 ký tự của qc-agent, đang là @{ref or '(trống)'}")
+        image = str((job.get("with") or {}).get("image", ""))
+        if not IMAGE_DIGEST.fullmatch(image):
+            report.add(ERROR, where, f"`image` phải ghim theo digest (tên@sha256:<64 hex>), đang là {image or '(trống)'}")
 
 
 def _inside(root: Path, candidate: Path) -> bool:
@@ -159,6 +201,8 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
                 report.add(ERROR, where, message)
             for where, message in checked.warnings:
                 report.add(WARN, where, message)
+
+    _check_groundtruth_setup(report, sut_root)
 
     try:
         workers = registry.load_many(workers_dirs or settings.get().workers_dirs)

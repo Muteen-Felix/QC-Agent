@@ -188,7 +188,8 @@ def test_vahan_fixture_generates_the_phase1_file_set_with_a_real_ui_dockerfile(t
     labels = [o.label for o in outcomes]
     assert [label for label in labels if label not in lane_files()] == [
         ".qc-agent/suites/api-contract.yaml", ".qc-agent/suites/perf-smoke.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/Dockerfile.ui",
-        ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml", ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml"]
+        ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml", ".qc-agent/midscene/canary.yaml",
+        ".github/workflows/qc-groundtruth.yml", ".github/CODEOWNERS", ".github/workflows/qc.yml"]
     assert set(lane_files()) <= set(labels)      # suite Security/Integration được sinh cùng
     assert all(o.status == "created" for o in outcomes) and plan.slug == "vahan-rpa"
     dockerfile = read(tmp_path, ".qc-agent/Dockerfile.ui")
@@ -298,13 +299,14 @@ def test_todos_are_reported_with_their_location(tmp_path):
     _, outcomes = run_init(tmp_path)
     todos = {o.label: o.todos for o in outcomes if o.todos}
     assert set(todos) == {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/midscene/explore.yaml",
-                          ".qc-agent/integration/tier1.spec.mjs", ".qc-agent/integration/tier2.spec.mjs", ".github/workflows/qc.yml"}
+                          ".qc-agent/integration/tier1.spec.mjs", ".qc-agent/integration/tier2.spec.mjs", ".github/workflows/qc.yml",
+                          ".github/workflows/qc-groundtruth.yml", ".github/CODEOWNERS"}   # ghim SHA/digest và team QA đều chưa có
     assert all(entry.startswith("dòng ") for entries in todos.values() for entry in entries)
 
 
 def test_pins_given_leave_only_the_scanner_and_refine_todos(tmp_path):
     _, outcomes = run_init(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, openapi_source=str(VAHAN),
-                           sut_env=["X=y"])
+                           sut_env=["X=y"], qa_team="@muteen/qa")
     assert {o.label for o in outcomes if o.todos} == {".qc-agent/midscene/explore.yaml", ".qc-agent/integration/tier1.spec.mjs",
                                                        ".qc-agent/integration/tier2.spec.mjs"}
 
@@ -323,7 +325,7 @@ def test_a_partial_rerun_only_creates_missing_files(tmp_path):
     run_init(tmp_path)
     (tmp_path / "sut" / ".qc-agent" / "perf" / "smoke.js").unlink()
     _, outcomes = run_init(tmp_path)
-    assert {o.label: o.status for o in outcomes}[".qc-agent/perf/smoke.js"] == "created" and [o.status for o in outcomes].count("kept") == 7 + len(lane_files())
+    assert {o.label: o.status for o in outcomes}[".qc-agent/perf/smoke.js"] == "created" and [o.status for o in outcomes].count("kept") == 9 + len(lane_files())
 
 
 def test_dry_run_writes_nothing_and_shows_a_diff_when_forcing(tmp_path):
@@ -351,7 +353,8 @@ def test_generated_files_load_through_the_real_loaders_and_the_default_policy(tm
 def test_no_api_generates_only_ui_and_warns_it_is_not_eligible_for_pr_mode(tmp_path):
     plan, outcomes = run_init(tmp_path, no_api=True)
     assert {o.label for o in outcomes} == {".qc-agent/Dockerfile.ui", ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml",
-                                           ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml", *lane_files()}    # Security/Integration không phụ thuộc API
+                                           ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml", ".github/workflows/qc-groundtruth.yml",
+                                           ".github/CODEOWNERS", *lane_files()}    # Security/Integration không phụ thuộc API
     assert any("không đủ điều kiện mode pr" in w for w in plan.warnings)
     assert "sut_health_path" not in workflow_with(tmp_path) and "sut_env" not in workflow_with(tmp_path)
 
@@ -496,3 +499,157 @@ def test_default_mode_honours_the_umask(monkeypatch):
         assert init_mod._default_mode() == 0o640
     finally:
         os.umask(mask)
+
+
+# ---------- S1-07: CODEOWNERS (vùng do qc-agent quản lý) + workflow sinh Ground-Truth ----------
+
+QA = "@muteen/qa-team"
+OWNER_RULES = ["/.qc-agent/ " + QA, "/.github/CODEOWNERS " + QA, "/.github/workflows/qc-*.yml " + QA]
+
+
+def owners(tmp_path, rel=".github/CODEOWNERS"):
+    return (tmp_path / "sut" / rel).read_text(encoding="utf-8")
+
+
+def test_a_new_codeowners_holds_only_the_managed_region_with_the_three_rules(tmp_path):
+    run_init(tmp_path, qa_team=QA)
+    text = owners(tmp_path)
+    assert text.startswith("# qc-agent:begin codeowners\n") and text.endswith("# qc-agent:end\n")
+    assert [line for line in text.splitlines() if line and not line.startswith("#")] == OWNER_RULES
+    assert t.codeowners_locks_ground_truth(text) and "qc-agent:todo" not in text
+
+
+def sut_with_github(tmp_path):
+    shutil.copytree(SCAN_FIXTURE, tmp_path / "sut")
+    (tmp_path / "sut" / ".github").mkdir(exist_ok=True)
+    return tmp_path / "sut"
+
+
+def test_an_existing_codeowners_keeps_every_line_outside_the_region(tmp_path):
+    mine = "# owners của nhóm\n*  @muteen/core\n/docs/ @muteen/docs   # có comment cuối dòng\n\n/src/api/ @muteen/backend\n"
+    sut = sut_with_github(tmp_path)
+    (sut / ".github" / "CODEOWNERS").write_text(mine, encoding="utf-8")
+    _, outcomes = run_init(tmp_path, qa_team=QA)
+    assert {o.label: o.status for o in outcomes}[".github/CODEOWNERS"] == "updated"          # file chung: gộp, không cần --force
+    text = owners(tmp_path)
+    assert text.startswith(mine) and text.endswith("# qc-agent:end\n")                        # nối vào CUỐI: quy tắc cuối cùng khớp thắng
+    assert text[len(mine):].startswith("\n# qc-agent:begin codeowners")
+    _, again = run_init(tmp_path, qa_team=QA)
+    assert {o.label: o.status for o in again}[".github/CODEOWNERS"] == "kept" and owners(tmp_path) == text          # chạy lại: không đổi gì
+
+
+def test_changing_the_qa_team_rewrites_only_the_managed_region_wherever_it_sits(tmp_path):
+    before, after = "*  @muteen/core\n\n", "\n/src/ @muteen/backend\n"
+    region = t.codeowners_block("@old/team").rstrip("\n")
+    sut_with_github(tmp_path)
+    (tmp_path / "sut" / ".github" / "CODEOWNERS").write_text(before + region + "\n" + after, encoding="utf-8")
+    run_init(tmp_path, qa_team=QA)
+    text = owners(tmp_path)
+    assert text == before + t.codeowners_block(QA).rstrip("\n") + "\n" + after
+    assert "@old/team" not in text and text.count("# qc-agent:begin codeowners") == 1
+
+
+def test_a_codeowners_at_the_repo_root_is_used_when_there_is_no_dot_github_one(tmp_path):
+    shutil.copytree(SCAN_FIXTURE, tmp_path / "sut")
+    (tmp_path / "sut" / "CODEOWNERS").write_text("* @muteen/core\n", encoding="utf-8")
+    run_init(tmp_path, qa_team=QA)
+    assert not (tmp_path / "sut" / ".github" / "CODEOWNERS").exists() and t.codeowners_locks_ground_truth(owners(tmp_path, "CODEOWNERS"))
+    assert owners(tmp_path, "CODEOWNERS").startswith("* @muteen/core\n")
+
+
+def test_without_qa_team_the_codeowners_gets_a_placeholder_and_a_todo_that_validate_rejects(tmp_path):
+    plan, outcomes = run_init(tmp_path)
+    text = owners(tmp_path)
+    assert "qc-agent:todo VERIFY" in text and "@qc-agent-todo/qa-team" in text
+    assert ".github/CODEOWNERS" in {o.label for o in outcomes if o.todos} and any("--qa-team" in w for w in plan.warnings)
+    run_init(tmp_path, qa_team=QA)
+    assert "qc-agent:todo" not in owners(tmp_path) and QA in owners(tmp_path)
+
+
+@pytest.mark.parametrize("text", ["# qc-agent:begin codeowners\n* @a/b\n", "* @a/b\n# qc-agent:end\n",
+                                  "# qc-agent:end\n# qc-agent:begin codeowners\n", t.codeowners_block("@a/b") * 2])
+def test_unbalanced_region_markers_are_refused_not_guessed(tmp_path, text):
+    sut_with_github(tmp_path)
+    (tmp_path / "sut" / ".github" / "CODEOWNERS").write_text(text, encoding="utf-8")
+    with pytest.raises(init_mod.InitError, match="dấu vùng"):
+        run_init(tmp_path, qa_team=QA)
+    assert owners(tmp_path) == text
+
+
+@pytest.mark.parametrize("bad", ["qa-team", "@", "@a b", "@a/b/c", "@a\nb", "@a/b # x", "@" + "x" * 40])
+def test_a_malformed_qa_team_is_refused(tmp_path, bad):
+    with pytest.raises(init_mod.InitError):
+        run_init(tmp_path, qa_team=bad)
+
+
+def test_dry_run_shows_the_codeowners_diff_and_writes_nothing(tmp_path):
+    sut_with_github(tmp_path)
+    (tmp_path / "sut" / ".github" / "CODEOWNERS").write_text("* @muteen/core\n", encoding="utf-8")
+    _, outcomes = run_init(tmp_path, qa_team=QA, dry_run=True)
+    (entry,) = [o for o in outcomes if o.label == ".github/CODEOWNERS"]
+    assert entry.status == "would-update" and "+/.qc-agent/ " + QA in entry.diff and owners(tmp_path) == "* @muteen/core\n"
+
+
+def gt_workflow(tmp_path):
+    return yaml.safe_load(read(tmp_path, ".github/workflows/qc-groundtruth.yml"))
+
+
+def test_the_groundtruth_caller_workflow_pins_the_reusable_one_and_scopes_its_triggers(tmp_path):
+    run_init(tmp_path, qa_team=QA, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64)
+    data = gt_workflow(tmp_path)
+    on = data[True]                                                                               # `on` không quote => YAML parse thành True
+    assert on["push"] == {"branches": ["main"], "paths": ["docs/prd/**"]}
+    assert on["pull_request"] == {"paths": [".qc-agent/**"]} and on["workflow_dispatch"]["inputs"]["prd_path"]["default"] == "docs/prd/**"
+    job = data["jobs"]["groundtruth"]
+    assert job["uses"] == f"Muteen-Felix/QC-Agent/.github/workflows/qc-groundtruth.reusable.yml@{'a' * 40}"
+    assert job["with"] == {"project": "vahan-rpa", "image": "ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, "prd_path": "${{ inputs.prd_path || 'docs/prd/**' }}"}
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "packages": "read"} and job["secrets"] == "inherit"
+    assert "qc-agent:todo" not in read(tmp_path, ".github/workflows/qc-groundtruth.yml")
+
+
+def test_the_groundtruth_workflow_has_todos_until_pinned_and_follows_prd_glob_and_openapi(tmp_path):
+    run_init(tmp_path, qa_team=QA, prd_glob="requirements/**/*.md")
+    text = read(tmp_path, ".github/workflows/qc-groundtruth.yml")
+    assert text.count("qc-agent:todo") == 2                                                          # SHA và digest chưa ghim
+    data = gt_workflow(tmp_path)
+    assert data[True]["push"]["paths"] == ["requirements/**/*.md"] and data["jobs"]["groundtruth"]["with"]["prd_path"] == "${{ inputs.prd_path || 'requirements/**/*.md' }}"
+    assert "openapi" not in data["jobs"]["groundtruth"]["with"]
+    spec = tmp_path / "sut" / "api" / "openapi.json"
+    spec.parent.mkdir()
+    spec.write_text('{"openapi":"3.0.0","info":{"title":"t","version":"1"},"paths":{"/a":{"get":{"responses":{"200":{"description":"ok"}}}}}}', encoding="utf-8")
+    run_init(tmp_path, qa_team=QA, openapi_source=str(spec), force=True)
+    assert gt_workflow(tmp_path)["jobs"]["groundtruth"]["with"]["openapi"] == "api/openapi.json"      # file TRONG repo: CI đọc được
+
+
+def test_a_live_openapi_url_or_a_file_outside_the_repo_is_not_passed_to_the_workflow(tmp_path):
+    root = tmp_path / "sut"
+    root.mkdir()
+    outside = tmp_path / "o.json"
+    outside.write_text("{}", encoding="utf-8")
+    assert init_mod._repo_file(root, "http://localhost:9/openapi.json") is None and init_mod._repo_file(root, str(outside)) is None
+    assert init_mod._repo_file(root, None) is None and init_mod._repo_file(root, str(root / "khong-co.json")) is None
+    assert "openapi:" not in t.groundtruth_workflow(project="a", openapi=None)
+
+
+@pytest.mark.parametrize("glob", ["../x", "docs/../x", "a b", "/abs", "docs/prd/**\nrun: evil", "", "-x"])
+def test_a_malformed_prd_glob_is_refused(tmp_path, glob):
+    with pytest.raises(init_mod.InitError):
+        run_init(tmp_path, qa_team=QA, prd_glob=glob)
+
+
+def test_init_cli_accepts_qa_team_and_prd_glob(tmp_path, capsys):
+    sut = tmp_path / "sut"
+    shutil.copytree(SCAN_FIXTURE, sut)
+    code = cli_main(["init", "--sut-root", str(sut), "--slug", "vahan-rpa", "--qa-team", QA, "--prd-glob", "specs/*.md"])
+    out = capsys.readouterr().out
+    assert code == 0 and "created" in out and QA in (sut / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
+    assert yaml.safe_load((sut / ".github" / "workflows" / "qc-groundtruth.yml").read_text(encoding="utf-8"))[True]["push"]["paths"] == ["specs/*.md"]
+    assert cli_main(["init", "--sut-root", str(sut), "--qa-team", "khong-hop-le"]) == 3
+
+
+@pytest.mark.parametrize("text, locked", [
+    ("/.qc-agent/ @o/qa\n", True), ("/.qc-agent/ qa-team\n", False), ("/.qc-agent/\n", False), ("# /.qc-agent/ @o/qa\n", False),
+    ("/.qc-agent/ @o/qa # ghi chú\n", True), ("/src/.qc-agent/ @o/qa\n", False), ("* @o/qa\n", False), ("", False),
+])
+def test_only_a_real_owner_on_the_locked_dir_counts_as_a_lock(text, locked):
+    assert t.codeowners_locks_ground_truth(text) is locked

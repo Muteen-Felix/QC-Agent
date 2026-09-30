@@ -126,6 +126,16 @@ Tìm ra khi đối chiếu plan với code và với API thật (tài liệu Cla
     - **Lý do `uncovered_acs` do người sửa thắng lý do mới của LLM**; AC chỉ còn TC `rejected` được tính là chưa có TC (cảnh báo mồ côi) vì loại một TC không làm AC hết cần kiểm.
     - **Egress mặc định** ở `$QC_RUNS_DIR/gt` (tức `./runs/gt`), bị từ chối nếu nằm dưới `<sut>/.qc-agent/`. Workflow S1-07 nên truyền `--egress-dir` ra ngoài cây làm việc để `git add` không kéo nó vào PR.
     - **Không có tuỳ chọn policy egress ở CLI**: `LogOnlyPolicy` là mặc định; test `deny` thay lớp này bằng monkeypatch. Cấu hình policy thật nằm ở S3/S4.
+15. **Workflow Ground-Truth và khoá QA (S1-07) chốt những điểm prompt để ngỏ** (`qc-groundtruth.reusable.yml`, `docs/groundtruth.md`):
+    - **Tên nhánh lấy từ `gt info`**: lệnh mới `qc-agent gt info --prd FILE` (offline, không LLM) in `prd_id`/`sha256`/số story-AC. Workflow cần tên nhánh *trước khi* sinh (để xếp lên nhánh bot đã có), nên không thể lấy `prd_id` từ summary sau khi sinh như prompt gợi ý.
+    - **Nhiều PRD một lần push**: job `select` chọn các PRD vừa đổi khớp glob (tối đa 5) thành matrix, job `generate` chạy tuần tự (`max-parallel: 1`), mỗi PRD một nhánh/PR. Phần shell dùng `python3` (có sẵn trên runner), không dùng `jq`.
+    - **Không force-push**: nhánh bot đã có thì bản mới xếp lên trên (checkout nhánh đó, lấy PRD mới từ nhánh gốc, `regen`, commit thường, push `HEAD:refs/heads/<nhánh>`). Prompt cho phép force-push lên nhánh bot; cách này an toàn hơn vì không bao giờ ghi đè sửa của QA, đổi lại push bị từ chối (job đỏ) nếu QA đẩy đúng lúc chạy.
+    - **PR đã có thì comment, không sửa mô tả** (QA có thể đã sửa). Thân PR do `groundtruth/pr_body.py` dựng từ summary (làm sạch bằng `clean_md`), chạy trong image.
+    - **`validate` chạy `--network none`, workspace chỉ-đọc, không secret**, và bỏ qua PR không đụng `.qc-agent/ground-truth/`.
+    - **`init` luôn sinh CODEOWNERS + `qc-groundtruth.yml`** (thiếu `--qa-team` thì `qc-agent:todo`), nên `qc-agent validate` của repo đã `init` sẵn sẽ đỏ tới khi điền team QA; các test cũ dùng `init` được truyền `qa_team`. CODEOWNERS có sẵn ở `.github/`, gốc hoặc `docs/` (theo thứ tự ưu tiên của GitHub) thì vùng được nối vào **cuối** file (quy tắc cuối thắng).
+    - **`tools/protect_ground_truth.py` gộp, không ghi đè**: đổi định dạng GET sang PUT (kể cả `contexts` cũ sang `checks`), chỉ nâng `require_code_owner_reviews` và số duyệt tối thiểu. Không đụng `enforce_admins`. **Chưa chạy trên repo thật.**
+    - **Harness**: `tools/run_reusable_locally.py --job validate` chạy job `validate` của workflow mới (test `tests/test_gt_workflow_local.py`, cần `QC_TEST_DOCKER_IMAGE` có lệnh `gt`). Job `select`/`generate` cần GitHub thật (checkout, `gh`); phần shell của chúng được kiểm bằng git thật ở `tests/test_workflow_static.py`. `find_bash()` giờ tìm được Git Bash cài theo người dùng (bash.exe trong WindowsApps là WSL).
+    - **Đỏ có chủ ý khi PRD bỏ một AC**: TC `approved` trỏ AC đã mất làm gate `error` (exit 4) cho tới khi QA xử lý; `gt validate` chỉ cảnh báo. Giữ nguyên theo quyết định của bạn để QA nhận ra PRD đã bỏ một tính năng.
 
 ## Cần bạn quyết (prompt sẽ dừng lại hỏi đúng chỗ)
 

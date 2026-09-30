@@ -28,6 +28,11 @@ _URL_PATH = re.compile(r"/[A-Za-z0-9/._~{}-]*")
 _ROUTE_PATH = re.compile(r"/[A-Za-z0-9/._~-]*")  # đường dẫn thăm dò/nhúng vào scalar không quote: không cho `{}`
 _FILE = re.compile(r"[A-Za-z0-9._][A-Za-z0-9/._-]*")  # đường dẫn file tương đối trong repo SUT
 _DURATION = re.compile(r"[1-9][0-9]{0,3}[smh]")
+DEFAULT_PRD_GLOB = "docs/prd/**"
+CODEOWNERS_BEGIN = "# qc-agent:begin codeowners"
+CODEOWNERS_END = "# qc-agent:end"
+_QA_TEAM = re.compile(r"@[A-Za-z0-9_.-]{1,39}(?:/[A-Za-z0-9_.-]{1,100})?")   # @user hoặc @org/team
+_PRD_GLOB = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._*/-]{0,200}")
 _GT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")   # cùng regex `$defs/id` của schemas/ground_truth.json
 _SHA = re.compile(r"[0-9a-f]{40}")
 _IMAGE = re.compile(r"[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}")
@@ -147,6 +152,54 @@ def gt_conftest() -> str:
 def gt_story_test(story_id: str) -> str:
     """test_<story>.py: chỉ có STORY_ID. `story_id` là giá trị duy nhất từ PRD đi vào mã Python và phải khớp regex ID của schema."""
     return render("gt-api-functional.py.tmpl", {"story_id": _q(_need(_GT_ID, story_id, "story_id"))})
+
+
+def groundtruth_workflow(*, project: str, qc_ref: str | None = None, image: str | None = None, qc_repo: str = DEFAULT_QC_REPO,
+                         prd_glob: str = DEFAULT_PRD_GLOB, openapi: str | None = None) -> str:
+    """qc-groundtruth.yml của repo SUT: gọi workflow tái sử dụng sinh GT + kiểm `gt validate` (S1-07). `qc_ref`/`image` thiếu => chỗ giữ + TODO như `qc_workflow`.
+    `openapi` là đường dẫn file TRONG repo (URL của SUT đang chạy thì CI không với tới được)."""
+    _need(_SLUG, project, "project")
+    _need(_REPO, qc_repo, "qc_repo")
+    _need(_PRD_GLOB, prd_glob, "prd_glob")
+    if ".." in prd_glob.split("/"):
+        raise TemplateError(f"prd_glob không được chứa '..': {prd_glob!r}")
+    ref_text = _need(_SHA, qc_ref, "qc_ref") if qc_ref else f"qc-agent-todo-pin-commit-sha  # {TODO} ghim commit SHA 40 ký tự của qc-agent (không dùng @main)"
+    image_text = _q(_need(_IMAGE, image, "image")) if image else f"ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>  # {TODO} điền digest từ Job Summary của workflow image"
+    openapi_line = f"      openapi: {_q(_rel_path(openapi, 'openapi'))}" if openapi else ""
+    return render("qc-groundtruth.yml.tmpl", {"project": project, "qc_repo": qc_repo, "qc_ref": ref_text, "image": image_text, "prd_glob": _q(prd_glob),
+                                              "prd_glob_expr": "'" + prd_glob + "'", "openapi_line": openapi_line})
+
+
+def codeowners_block(qa_team: str | None) -> str:
+    """Vùng CODEOWNERS do qc-agent quản lý (gồm hai dấu). Thiếu `qa_team` => owner giữ chỗ + dòng TODO để `validate` từ chối."""
+    owner = _need(_QA_TEAM, qa_team, "qa_team") if qa_team else "@qc-agent-todo/qa-team"
+    todo = f"# {todo_mark('VERIFY', 'thay @qc-agent-todo/qa-team bằng team QA thật (@org/team hoặc @user) bằng cách chạy lại init với --qa-team')}" if not qa_team else ""
+    return render("CODEOWNERS.tmpl", {"todo_line": todo, "qa_team": owner}).rstrip("\n") + "\n"
+
+
+def merge_codeowners(existing: str | None, qa_team: str | None) -> str:
+    """Nội dung CODEOWNERS mới: chưa có file => chỉ vùng của qc-agent; có rồi => thay ĐÚNG vùng giữa hai dấu, hoặc nối vào CUỐI file (quy tắc cuối thắng).
+    Mọi dòng ngoài vùng được giữ nguyên từng byte."""
+    block = codeowners_block(qa_team)
+    if existing is None or not existing.strip():
+        return block
+    text = existing.replace("\r\n", "\n")
+    begins, ends = text.count(CODEOWNERS_BEGIN), text.count(CODEOWNERS_END)
+    if begins == 0 and ends == 0:
+        return text.rstrip("\n") + "\n\n" + block
+    start, stop = text.find(CODEOWNERS_BEGIN), text.find(CODEOWNERS_END)
+    if begins != 1 or ends != 1 or stop < start:
+        raise TemplateError(f"CODEOWNERS có dấu vùng không cân ({CODEOWNERS_BEGIN} / {CODEOWNERS_END}): sửa tay rồi chạy lại")
+    return text[:start] + block.rstrip("\n") + text[stop + len(CODEOWNERS_END):]
+
+
+def codeowners_locks_ground_truth(text: str) -> bool:
+    """CODEOWNERS có quy tắc cho `/.qc-agent/` với ít nhất một owner (không tính dòng comment)."""
+    for line in text.splitlines():
+        parts = line.split("#", 1)[0].split()
+        if len(parts) >= 2 and parts[0].rstrip("*").rstrip("/") in ("/.qc-agent", ".qc-agent") and all(p.startswith("@") or "@" in p for p in parts[1:]):
+            return True
+    return False
 
 
 def perf_smoke_suite(*, script: str = ".qc-agent/perf/smoke.js", vus: int = 2, duration: str = "10s") -> str:

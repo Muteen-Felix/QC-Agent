@@ -221,7 +221,7 @@ def test_suggestion_is_written_with_the_review_marker(monkeypatch, tmp_path):
 
 def test_validate_rejects_a_suggestion_until_a_human_removes_the_marker(monkeypatch, tmp_path):
     monkeypatch.setattr(suggest, "suggest_flows", lambda urls, root, **k: (suggest.parse_flows(json.dumps(GOOD)), "test-model"))
-    plan = init_mod.build(opts(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "d" * 64))
+    plan = init_mod.build(opts(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "d" * 64, qa_team="@o/qa"))   # thiếu qa_team thì CODEOWNERS còn TODO (S1-07)
     init_mod.apply(plan)
     report = v.validate("vahan-rpa", tmp_path / "sut", projects_dir=ROOT / "configs" / "projects", workers_dirs=[ROOT / "workers"])
     assert any("GỢI Ý bởi LLM" in f.message and f.level == v.ERROR for f in report.findings)

@@ -55,6 +55,9 @@ def _parser() -> argparse.ArgumentParser:
     gen.add_argument("--force", action="store_true", help="ghi đè cả khi đã có test-cases.yaml (MẤT các TC QA đã duyệt; dùng `regen` để giữ chúng)")
     reg = sub.add_parser("regen", help="sinh lại khi PRD đổi và merge theo tc_id: giữ nguyên TC approved/rejected/qa, thay TC draft của LLM")
     common(reg, prd=True)
+    info = sub.add_parser("info", help="in JSON định danh PRD (prd_id, sha256, số story/AC): offline, không LLM; workflow dùng để đặt tên nhánh")
+    info.add_argument("--prd", required=True, metavar="FILE", help="PRD cần đọc")
+    info.add_argument("--openapi", metavar="FILE|URL", help="OpenAPI kèm theo (tuỳ chọn)")
     val = sub.add_parser("validate", help="cổng HITL: exit 1 khi còn draft, drift, rejected thiếu lý do, module-map chưa duyệt…")
     common(val, prd=False)
     return ap
@@ -223,12 +226,21 @@ def _validate(args, root: Path) -> int:
     return 1 if failed else 0
 
 
+def _info(args) -> int:
+    prd = parse_prd(Path(args.prd), openapi_source=args.openapi)
+    print(json.dumps({"prd_id": prd.prd_id, "prd_sha256": prd.sha256, "format": prd.format, "stories": len(prd.stories),
+                      "acs": sum(len(s.acs) for s in prd.stories), "endpoints": len(prd.endpoints), "warnings": list(prd.warnings)}, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
 def main(argv: list[str]) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     try:
         args = _parser().parse_args(argv)
+        if args.command == "info":
+            return _info(args)
         root = _root(args)
         return {"generate": _generate, "regen": _regen, "validate": _validate}[args.command](args, root)
     except SystemExit as exit_:   # --help

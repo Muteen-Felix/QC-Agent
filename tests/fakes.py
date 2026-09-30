@@ -16,6 +16,8 @@ class FakeGitHub:
         self.reviews: list[dict] = []         # POST/GET /pulls/N/reviews
         self.policy_files: dict[str, str] = {}   # configs/projects/<tên> của "qc-agent@main" mà contents API giả trả về
         self.main_sha = "a" * 40
+        self.protection: dict | None = None      # GET /repos/o/r/branches/<b>/protection (dạng GET của GitHub); None => 404 "Branch not protected"
+        self.protection_puts: list[dict] = []    # body của mọi PUT protection
         self.forced: dict[tuple[str, str], int] = {}  # (method, path-prefix) -> status lỗi buộc trả về
         self._next_id = 100
         outer = self
@@ -51,6 +53,12 @@ class FakeGitHub:
                         return self._send(status, {"message": "Resource not accessible by integration"})
                 if self.command == "GET" and (m := re.match(r"^/repos/[^/]+/[^/]+/contents/configs/projects/([^/?]+)\?ref=main$", path)):
                     return self._send_raw(200, outer.policy_files[m.group(1)]) if m.group(1) in outer.policy_files else self._send(404, {"message": "Not Found"})
+                if re.match(r"^/repos/[^/]+/[^/]+/branches/.+/protection$", path):
+                    if self.command == "GET":
+                        return self._send(200, outer.protection) if outer.protection is not None else self._send(404, {"message": "Branch not protected"})
+                    if self.command == "PUT":
+                        outer.protection_puts.append(body)
+                        return self._send(200, body)
                 if self.command == "GET" and re.match(r"^/repos/[^/]+/[^/]+/commits/main$", path):
                     return self._send_raw(200, outer.main_sha)
                 if self.command == "GET" and re.match(r"^/repos/[^/]+/[^/]+/pulls/\d+/files\?", path):
@@ -82,7 +90,7 @@ class FakeGitHub:
                     return self._send(201, {"id": outer._next_id})
                 return self._send(404, {"message": "Not Found"})
 
-            do_GET = do_POST = do_PATCH = _handle
+            do_GET = do_POST = do_PATCH = do_PUT = _handle
 
         self.host = host
         self.server = HTTPServer((host, 0), Handler)
