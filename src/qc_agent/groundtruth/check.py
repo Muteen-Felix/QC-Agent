@@ -3,7 +3,9 @@
 Kết quả có ba mức:
   - lỗi (`errors`)      -> exit 1: chưa được merge. Còn TC draft, catalog draft, rejected thiếu lý do, trùng tc_id, TC draft trỏ AC không có,
                            module-map còn draft/`qc-agent:todo`, hoặc DRIFT (file trong tests_gt/ khác bản render lại từ catalog).
-  - cảnh báo (`warnings`) -> exit 0: AC mồ côi, TC approved/rejected trỏ AC đã mất (PRD đổi), chưa có TC approved nào, thiếu module-map.
+                           Cộng với coverage dưới ngưỡng khi catalog đã `approved` (coverage.py; chỉ khi repo có `openapi.snapshot.json` hoặc `coverage-policy.yaml`).
+  - cảnh báo (`warnings`) -> exit 0: AC mồ côi, TC approved/rejected trỏ AC đã mất (PRD đổi), chưa có TC approved nào, thiếu module-map,
+                           coverage dưới ngưỡng khi catalog còn `draft`.
   - `GTCheckError`      -> exit 3: không đọc được file hoặc sai schema (không có gì để phán tiếp).
 Thông điệp chỉ có vị trí, ID (đã qua regex) và số đếm; không bao giờ trích lại nội dung catalog/PRD (chỉ ID mới lọt vào).
 """
@@ -16,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from qc_agent.groundtruth import coverage as gt_coverage
 from qc_agent.groundtruth import render as gt_render
 from qc_agent.groundtruth import schema as gt_schema
 from qc_agent.scaffold import templates as t
@@ -109,6 +112,51 @@ def _drift(sut_root: Path, probe: dict, result: CheckResult) -> None:
         result.errors.append((path, "file thừa trong tests_gt/: không phải đầu ra của render (drift)"))
 
 
+def _coverage(sut_root: Path, data: dict, result: CheckResult) -> None:
+    """Bộ chấm coverage (coverage.py) trên tập TC APPROVED + waiver đã approved. Chỉ chạy khi repo đã opt-in (có `openapi.snapshot.json` hoặc
+    `coverage-policy.yaml`): repo sinh GT trước bộ chấm giữ hành vi cũ. Dưới ngưỡng là LỖI khi catalog đã `approved` (QA tuyên bố xong; reject TC làm thủng
+    coverage thì không merge được); khi catalog còn `draft` chỉ là cảnh báo vì lúc đó còn TC draft chưa tính."""
+    try:
+        facts = gt_coverage.load_snapshot(sut_root)
+        thresholds, has_policy = gt_coverage.load_policy(sut_root)
+    except gt_coverage.CoverageError as error:
+        raise GTCheckError(str(error)) from None
+    if facts is None and not has_policy:
+        return
+    report = gt_coverage.score(data, facts, tc_statuses=("approved",), waiver_statuses=("approved",))
+    sink = result.errors if data["status"] == "approved" else result.warnings
+    for name, dim in report.shortfalls(thresholds).items():
+        sink.append((gt_render.CATALOG_PATH, f"coverage {name} {dim.covered + dim.waived}/{dim.total} ({dim.ratio:.0%}) dưới ngưỡng {thresholds[name]:.0%} "
+                                             f"(tính TC approved + waiver approved); còn thiếu: {_ids(dim.gaps)}"))
+
+
+_XLSX_ADVICE = {
+    "xlsx_ahead": "xlsx có thay đổi chưa vào test-cases.yaml: chạy `qc-agent gt import-xlsx` rồi commit cả hai file",
+    "yaml_ahead": "test-cases.yaml đã đổi sau lần xuất xlsx (sửa tay YAML hoặc regen): Excel đã cũ, chạy `qc-agent gt export-xlsx` rồi commit",
+    "diverged": "xlsx và test-cases.yaml khác nhau: chạy `qc-agent gt import-xlsx` (báo xung đột nếu cả hai bên cùng sửa một chỗ) rồi `qc-agent gt export-xlsx`",
+}
+
+
+def _xlsx_sync(sut_root: Path, data: dict, result: CheckResult) -> None:
+    """Có `test-cases.xlsx` thì nó PHẢI khớp YAML (so theo ngữ nghĩa, offline). Không có xlsx thì bỏ qua (repo sinh GT trước khi có Excel). openpyxl chỉ được nạp khi có file."""
+    path = Path(sut_root) / gt_render.XLSX_PATH
+    if not path.is_file():
+        return
+    from qc_agent.groundtruth import xlsx as gt_xlsx   # import lười: gate và repo không dùng Excel không nạp openpyxl
+    try:
+        theirs, base, syntax = gt_xlsx.read_xlsx(path)
+    except gt_xlsx.XlsxError as error:
+        raise GTCheckError(f"{gt_render.XLSX_PATH}: {error}") from None
+    for where, message in syntax[:LIST_MAX]:
+        result.errors.append((gt_render.XLSX_PATH, f"{where}: {message}"))
+    state = gt_xlsx.sync_status(data, theirs, base)
+    if state == "yaml_ahead":
+        # Chỉ YAML đi trước: gate đọc YAML nên không mất gì, và import sau này an toàn (gộp ba chiều không bao giờ hoàn nguyên sửa của YAML). Chỉ là Excel đã cũ.
+        result.warnings.append((gt_render.XLSX_PATH, _XLSX_ADVICE[state]))
+    elif state != "in_sync":
+        result.errors.append((gt_render.XLSX_PATH, _XLSX_ADVICE[state]))   # quyết định của QA nằm trong xlsx mà chưa vào YAML: gate không thấy chúng
+
+
 def check(sut_root: Path) -> CheckResult:
     """Chạy toàn bộ cổng HITL trên `<sut_root>/.qc-agent/ground-truth/`. Ném `GTCheckError` khi không phán được (exit 3)."""
     sut_root = Path(sut_root)
@@ -148,6 +196,8 @@ def check(sut_root: Path) -> CheckResult:
     if not any(tc["status"] == "approved" for tc in tcs):
         result.warnings.append((where, "chưa có test case approved nào: suite gt-functional sẽ fail (pytest.tests >= 1)"))
 
+    _coverage(sut_root, data, result)
+    _xlsx_sync(sut_root, data, result)
     _module_map(sut_root, result)
     _drift(sut_root, probe, result)
     return result

@@ -17,6 +17,9 @@
 # (4) Nhà cung cấp LLM theo tiền tố input `model`: `gemini-*` cần secret GEMINI_API_KEY, còn lại (mặc định claude-sonnet-5) cần ANTHROPIC_API_KEY. Gemini free tier có
 # RPM thấp: đặt llm_min_interval_s/llm_max_retries/llm_fallback_models; timeout_minutes mặc định 20 đủ cho backoff 5 lần trên vài model. Image ghim digest PHẢI được build
 # từ mã có provider Gemini, nếu không `gemini-*` bị coi là model Claude.
+# (5) `agent: true`: sinh bằng AGENT (đọc mã nguồn + OpenAPI đầy đủ qua nhiều lượt, chỉ Claude; docs/groundtruth.md §5c). MÃ NGUỒN ĐƯỢC GỬI TỚI ANTHROPIC: chỉ bật khi đã được
+# phép. Agent chỉ đọc bản `git archive` của nhánh gốc (file đã commit, không .git, không file chưa commit) mount `:ro` ở /src: nhánh bot chỉ có `.qc-agent/**` mới và có thể
+# mang mã cũ. Một lần chạy mất nhiều phút tới chục phút: đặt timeout_minutes: 60.
 name: qc-groundtruth (reusable)
 
 on:
@@ -62,6 +65,22 @@ on:
         default: ""
       llm_fallback_models:
         description: "CHỈ Gemini: model dự phòng cách nhau dấu phẩy (tối đa 5), vd. gemini-3.8-flash,gemini-2.5-flash. Rỗng = không có"
+        type: string
+        default: ""
+      agent:
+        description: "sinh bằng AGENT: đọc mã nguồn (bản nhánh gốc) + OpenAPI đầy đủ, nhiều lượt, CHỈ Claude. Mã nguồn được gửi tới Anthropic: chỉ bật khi đã được phép"
+        type: boolean
+        default: false
+      agent_model:
+        description: "ghi đè QC_GT_AGENT_MODEL (chỉ khi agent: true; phải là model Claude). Rỗng = mặc định của image (claude-sonnet-5-5)"
+        type: string
+        default: ""
+      agent_max_turns:
+        description: "ghi đè QC_GT_AGENT_MAX_TURNS (số nguyên 1-999). Rỗng = mặc định của image (40)"
+        type: string
+        default: ""
+      agent_max_cost_usd:
+        description: "ghi đè QC_GT_AGENT_MAX_COST_USD, trần chi phí ước tính cho MỘT PRD (vd 5 hoặc 7.5). Rỗng = mặc định của image (3)"
         type: string
         default: ""
     secrets:
@@ -222,6 +241,20 @@ jobs:
             echo "existing=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Export the base-branch source for the agent (read-only)
+        id: source
+        if: inputs.agent
+        env:
+          BASE_BRANCH: ${{ inputs.base_branch }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$BASE_BRANCH" =~ ^[A-Za-z0-9._/-]{1,100}$ ]]; then echo "::error::base_branch không hợp lệ"; exit 1; fi
+          git rev-parse --verify --quiet "origin/$BASE_BRANCH^{commit}" >/dev/null || { echo "::error::không thấy origin/$BASE_BRANCH"; exit 1; }
+          # `git archive`: chỉ file ĐÃ COMMIT ở đầu nhánh gốc, không có .git, không có file chưa commit (.env cục bộ, build); nằm NGOÀI workspace nên không lọt vào commit của bot
+          src="$RUNNER_TEMP/gt-src"; rm -rf "$src"; mkdir -p "$src"
+          git archive "origin/$BASE_BRANCH" | tar -x -C "$src"
+          echo "dir=$src" >> "$GITHUB_OUTPUT"
+
       - name: Generate Ground-Truth
         env:
           IMAGE: ${{ inputs.image }}
@@ -231,6 +264,11 @@ jobs:
           LLM_MIN_INTERVAL_S: ${{ inputs.llm_min_interval_s }}
           LLM_MAX_RETRIES: ${{ inputs.llm_max_retries }}
           LLM_FALLBACK_MODELS: ${{ inputs.llm_fallback_models }}
+          AGENT: ${{ inputs.agent }}
+          AGENT_MODEL: ${{ inputs.agent_model }}
+          AGENT_MAX_TURNS: ${{ inputs.agent_max_turns }}
+          AGENT_MAX_COST_USD: ${{ inputs.agent_max_cost_usd }}
+          AGENT_SRC: ${{ steps.source.outputs.dir }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -241,7 +279,24 @@ jobs:
           if [ -n "$LLM_FALLBACK_MODELS" ] && ! [[ "$LLM_FALLBACK_MODELS" =~ ^gemini-[A-Za-z0-9._-]{1,64}(,gemini-[A-Za-z0-9._-]{1,64}){0,4}$ ]]; then echo "::error::llm_fallback_models không hợp lệ"; exit 1; fi
           # Chọn khoá theo model (rỗng = mặc định của image: claude-sonnet-5, khoá test bằng settings.gt_model). Chỉ MỘT khoá đi vào container.
           model="${MODEL:-claude-sonnet-5}"
-          case "$model" in gemini-*) key_var=GEMINI_API_KEY ;; *) key_var=ANTHROPIC_API_KEY ;; esac
+          agent_args=(); agent_mounts=(); agent_env=()
+          if [ "$AGENT" = "true" ]; then
+            if [ -n "$AGENT_MODEL" ] && ! [[ "$AGENT_MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$ ]]; then echo "::error::agent_model không hợp lệ"; exit 1; fi
+            if [ -n "$AGENT_MAX_TURNS" ] && ! [[ "$AGENT_MAX_TURNS" =~ ^[1-9][0-9]{0,2}$ ]]; then echo "::error::agent_max_turns không hợp lệ"; exit 1; fi
+            if [ -n "$AGENT_MAX_COST_USD" ] && ! [[ "$AGENT_MAX_COST_USD" =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]]; then echo "::error::agent_max_cost_usd không hợp lệ"; exit 1; fi
+            agent_model="${AGENT_MODEL:-claude-sonnet-5-5}"
+            case "$agent_model" in gemini-*) echo "::error::agent chỉ hỗ trợ model Claude (agent_model: $agent_model)"; exit 1 ;; esac
+            if [ -z "$AGENT_SRC" ] || [ ! -d "$AGENT_SRC" ]; then echo "::error::thiếu mã nguồn nhánh gốc cho agent (bước Export)"; exit 1; fi
+            model="$agent_model"
+            agent_args=(--agent --source-root /src)
+            agent_mounts=(-v "$AGENT_SRC:/src:ro")
+            if [ -n "$AGENT_MODEL" ]; then agent_env+=(-e "QC_GT_AGENT_MODEL=$AGENT_MODEL"); fi
+            if [ -n "$AGENT_MAX_TURNS" ]; then agent_env+=(-e "QC_GT_AGENT_MAX_TURNS=$AGENT_MAX_TURNS"); fi
+            if [ -n "$AGENT_MAX_COST_USD" ]; then agent_env+=(-e "QC_GT_AGENT_MAX_COST_USD=$AGENT_MAX_COST_USD"); fi
+            key_var=ANTHROPIC_API_KEY
+          else
+            case "$model" in gemini-*) key_var=GEMINI_API_KEY ;; *) key_var=ANTHROPIC_API_KEY ;; esac
+          fi
           if [ -z "${!key_var:-}" ]; then echo "::error::thiếu secret $key_var cho model $model (chưa gửi gì ra ngoài)"; exit 1; fi
           key_args=(-e "$key_var")
           llm_args=()
@@ -253,9 +308,9 @@ jobs:
           cmd=generate; if [ -f .qc-agent/ground-truth/test-cases.yaml ]; then cmd=regen; fi
           oa=(); if [ -n "$OPENAPI" ]; then oa=(--openapi "$OPENAPI"); fi
           model_args=(); if [ -n "$MODEL" ]; then model_args=(-e "QC_GT_MODEL=$MODEL"); fi
-          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$egress:/egress" -w /work \
-            "${key_args[@]}" "${llm_args[@]}" "${model_args[@]}" \
-            "$IMAGE" gt "$cmd" --prd "$PRD" --sut-root /work "${oa[@]}" --egress-dir /egress --summary-json /egress/summary.json
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$egress:/egress" "${agent_mounts[@]}" -w /work \
+            "${key_args[@]}" "${llm_args[@]}" "${model_args[@]}" "${agent_env[@]}" \
+            "$IMAGE" gt "$cmd" --prd "$PRD" --sut-root /work "${oa[@]}" "${agent_args[@]}" --egress-dir /egress --summary-json /egress/summary.json
 
       - name: Commit and push to the bot branch
         id: push

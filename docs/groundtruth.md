@@ -25,7 +25,7 @@ gt generate | gt regen ──► nhánh qc-agent/gt/<prd-id> ──► PR "Groun
 | 2 | LLM (`groundtruth/generate.py`) | đề xuất test case (JSON theo schema, không bao giờ là code); code tính `tc_id`, sắp xếp, trạng thái `draft` |
 | 3 | `render.py` (tất định) | `test-cases.yaml`, `tests_gt/`, suite `gt-functional`, `module-map.yaml` nháp |
 | 4 | Bot | commit vào `qc-agent/gt/<prd-id>`, mở PR (hoặc comment nếu PR đã có) |
-| 5 | QA | duyệt/loại từng TC, thêm edge case, điền `module-map.yaml` |
+| 5 | QA | duyệt/loại từng TC, thêm edge case, điền `module-map.yaml`: sửa `test-cases.yaml` **hoặc** mở `test-cases.xlsx` rồi `gt import-xlsx` (mục 5d) |
 | 6 | CI `gt validate` | exit 1 cho tới khi hết `draft` và hết drift |
 | 7 | Code owner | duyệt PR, merge |
 
@@ -40,6 +40,9 @@ qc-agent gt generate --prd docs/prd/noteboard.md --sut-root . --openapi openapi.
 qc-agent gt regen    --prd docs/prd/noteboard.md --sut-root . --openapi openapi.json   # PRD đổi: merge theo tc_id
 qc-agent gt validate --sut-root .                                                      # cổng HITL, offline
 qc-agent gt info     --prd docs/prd/noteboard.md                                       # prd_id, sha256, số story/AC (offline, không LLM)
+qc-agent gt generate --agent --prd … --sut-root . --openapi openapi.json               # bộ sinh agent: đọc mã nguồn + OpenAPI đầy đủ (mục 5c)
+qc-agent gt import-xlsx --sut-root .                                                    # ghi các sửa của QA trong test-cases.xlsx ngược vào YAML (mục 5d)
+qc-agent gt export-xlsx --sut-root .                                                    # xuất lại xlsx từ YAML
 ```
 
 - `generate` từ chối nếu đã có `test-cases.yaml` (dùng `regen`; `--force` sẽ **mất** các TC đã duyệt).
@@ -73,8 +76,9 @@ Catalog cũng có `status` ngoài cùng: đổi thành `approved` khi đã xong 
 - [ ] **AC mồ côi** (không có TC, không nằm trong `uncovered_acs`): thêm TC hoặc ghi lý do vào `uncovered_acs`.
 - [ ] `uncovered_acs`: các AC không kiểm được bằng HTTP (giao diện…): đúng thật chưa?
 - [ ] Thêm **edge case** còn thiếu (mục 5).
+- [ ] **Coverage** (mục 5b): `gt validate` báo gap nào thì thêm TC hoặc ghi `waivers` kèm lý do; thân PR có bảng điểm.
 - [ ] `module-map.yaml`: điền `paths` (glob tới file khai báo route của từng module), xoá `qc-agent:todo`, đổi `status: approved`.
-- [ ] Đổi `status` của catalog thành `approved`, push, chờ check `gt validate` xanh.
+- [ ] Đổi `status` của catalog thành `approved`, push, chờ check `gt validate` xanh. Làm trên Excel thì chạy `gt import-xlsx` và commit cả hai file (mục 5d).
 
 Đừng sửa tay `tests_gt/`: chúng là mã sinh máy, render lại từ `test-cases.yaml`. `gt validate` render lại trong bộ nhớ rồi so, nên sửa tay một dòng là **drift** (exit 1).
 
@@ -97,6 +101,168 @@ Thêm một mục vào `test_cases` của `test-cases.yaml`. Không cần render
 - `flow`: bước sau dùng `{{tên}}` (trong `path_params`, `query`, `json`) cho giá trị đã `capture` ở bước trước: `capture: {note_id: $.id}` rồi `path_params: {note_id: "{{note_id}}"}`.
 - Assertion là bộ đóng: `eq`, `ne`, `exists`, `absent`, `type`, `len_eq`, `len_gte`, `contains`; `path` là tập con JSONPath (`$`, `.khoá`, `[n]`). `ne`, `contains`, `len_*`, `type` yêu cầu path tồn tại.
 - Chạy thử cục bộ với SUT đang chạy: `APP_BASE_URL=http://127.0.0.1:8000 python -m pytest .qc-agent/ground-truth/tests_gt`.
+
+## 5b. Bộ chấm coverage (tất định, đòi 100%)
+
+Bộ chấm (`groundtruth/coverage.py`) không dùng LLM: cùng catalog + cùng snapshot OpenAPI luôn ra cùng điểm. **Mẫu số do code quyết định**, người sinh TC không tự khai mình cần phủ gì.
+
+```
+catalog (test-cases.yaml) ──┐
+                            ├─► coverage.score() ─► ac        23+1 / 25
+openapi.snapshot.json ──────┘                       technique 10 / 10
+  (gt generate/regen ghi, QA khoá)                  api        9 / 12   ◄── gap: "DELETE /notes/{note_id} 422"
+```
+
+**Làm thử** (noteboard, bộ catalog single-shot hiện tại):
+
+```text
+$ qc-agent gt validate --sut-root .
+LỖI  …/test-cases.yaml: coverage ac 24/25 (96%) dưới ngưỡng 100% (tính TC approved + waiver approved); còn thiếu: AC-3.5
+LỖI  …/test-cases.yaml: coverage api 9/12 (75%) dưới ngưỡng 100% …; còn thiếu: GET /notes/{note_id} 422, DELETE /notes/{note_id} 422, …
+```
+
+Mỗi gap có hai cách đóng. **Thêm TC** (ưu tiên), hoặc **miễn có lý do**; id của gap chính là `target`:
+
+```yaml
+uncovered_acs:                       # AC không kiểm được bằng HTTP
+- {ac_id: AC-3.5, reason: chỉ kiểm được ở giao diện}
+waivers:                             # miễn một ô technique/API; chỉ có hiệu lực khi status: approved
+- kind: api                          # api | technique
+  target: "DELETE /notes/{note_id} 422"          # đúng từng ký tự với id gap mà validate in ra
+  reason_code: not_applicable        # not_http_reachable | needs_infra_fault | not_applicable | out_of_scope
+  reason: note_id là chuỗi tự do nên không có đầu vào nào gây 422
+  status: approved
+```
+
+Ngưỡng nằm ở `.qc-agent/ground-truth/coverage-policy.yaml` (QA khoá bằng CODEOWNERS, mặc định 1.0 cho cả ba chiều): `version: 1` rồi `thresholds: {ac: 1, technique: 1, api: 0.9}`.
+
+### Cách chấm
+
+| Chiều | Mẫu số | Một TC tính là phủ khi |
+|---|---|---|
+| `ac` | mọi AC trong catalog | có TC (`approved`) trỏ tới AC; AC nằm trong `uncovered_acs` tính là *miễn* |
+| `technique` | yêu cầu **suy ra từ ràng buộc OpenAPI** của từng operation (bảng dưới) | một bước thật sự làm đúng việc đó **và** mong đúng loại mã |
+| `api` | mọi (operation × mã số khai trong OpenAPI); `default`, 1xx, 3xx, 5xx được miễn sẵn | một bước mong **đúng một** mã đó (`status: [422]`) |
+
+| Ràng buộc trong OpenAPI | Yêu cầu (id gap) | Bước phải có |
+|---|---|---|
+| field `required` | `negative_validation:missing:body.title` | thiếu đúng field đó, các field bắt buộc khác có đủ, mong 4xx |
+| `maxLength: 200` | `boundary:max_length:body.title@200` và `@201` | độ dài đúng 200 mong 2xx; đúng 201 mong 4xx |
+| `minLength: 1` | `…@1` và `…@0` | tương tự |
+| `minimum/maximum` (số nguyên) | `boundary:maximum:body.qty@99` và `@100` | giá trị đúng biên mong 2xx, biên + 1 mong 4xx; biên mở (`exclusive`) lùi một đơn vị |
+| `minimum/maximum` (số thực) | `boundary:minimum:body.price@0` | một giá trị bị từ chối (biên mở thì chính biên cũng tính) |
+| `enum` / `pattern` | `equivalence:enum:body.kind` | giá trị ngoài tập / không khớp pattern, mong 4xx |
+| `security` | `authz:unauthenticated` | một bước mong 401 hoặc 403 |
+
+Gate chấm **chỉ TC `approved`** và waiver `approved`. Catalog còn `status: draft` thì thiếu coverage chỉ là *cảnh báo* (còn TC draft chưa tính); QA đổi catalog sang `approved` thì thiếu coverage là **lỗi** (nên reject TC làm thủng coverage thì không merge được).
+
+**Chống ăn gian** (có test): nhãn `technique` của TC bị bỏ qua vì chỉ có cấu trúc request mới được tính; một bước mong nhiều mã (`[200, 404, 422]`) không phủ mã nào; giá trị `{{biến}}` không tính vì chưa biết lúc chấm; TC thiếu hai field bắt buộc cùng lúc không phủ field nào (lỗi không quy được về một field).
+
+**Tương thích:** repo chưa có `openapi.snapshot.json` lẫn `coverage-policy.yaml` giữ hành vi cũ (không chấm). Chạy `gt generate|regen --openapi …` sẽ ghi snapshot và bật cổng. Không có `--openapi` thì chỉ chấm được chiều `ac`. Code coverage của SUT (line/branch khi chạy `tests_gt`) là con số riêng, **chưa** có trong `gt validate`; kế hoạch là chỉ đo (không chặn) ở `tools/eval_gt_sut.py`.
+
+## 5c. Bộ sinh AGENT (`--agent`): đọc cả repo, nộp từng story, chấm tới khi đủ
+
+Bộ sinh mặc định gọi LLM **một lần** chỉ với PRD và danh sách endpoint rút gọn nên hay thiếu biên, đoán sai mã lỗi. Bộ sinh agent chạy **nhiều lượt**, được đọc mã nguồn và OpenAPI đầy đủ, và chỉ dừng khi bộ chấm coverage (mục 5b) hết gap hoặc hết ngân sách.
+
+```
+PRD + <endpoints> + cây thư mục ──► agent (Claude, nhiều lượt)
+   │ khám phá : list_dir · read_file · grep (chỉ đọc, có sandbox)   openapi_operation · openapi_schema (đủ body/response)
+   │ lập kế hoạch : record_coverage_plan  (AC × technique)
+   │ viết     : submit_test_cases(story) ──► code kiểm TỪNG TC ngay ──► TC sai: trả lý do, agent sửa và nộp lại
+   │ ghi nhận : report_spec_conflict  (mã khác PRD: KHÔNG viết TC theo mã, QA quyết)
+   └ kết thúc : finish_generation ──► coverage.score() ──► còn gap: trả danh sách gap chính xác (tối đa 5 lần) ──► agent nộp thêm
+                                                       └► hết gap hoặc hết ngân sách ──► catalog `draft` (+ cảnh báo nếu chưa đủ)
+```
+
+**Chạy thử** (cần `ANTHROPIC_API_KEY`; chỉ Claude, model mặc định `claude-sonnet-5-5` (rẻ; Opus chỉ khi bạn chủ động đặt)):
+
+```bash
+qc-agent gt generate --agent --prd docs/prd/noteboard.md --sut-root . --openapi openapi.json
+qc-agent gt regen    --agent --prd docs/prd/noteboard.md --sut-root . --openapi openapi.json   # giữ TC QA đã quyết, agent biết để không nộp trùng
+#  --source-root DIR   thư mục mã nguồn được ĐỌC (mặc định --sut-root; CI nên truyền bản origin/<base> mount :ro)
+#  --no-agent          ép bộ sinh một lời gọi dù QC_GT_GENERATOR=agent
+```
+
+Kết quả in ra có dòng `Bộ sinh: AGENT — N lượt, đọc M file, …, hoàn tất: có|KHÔNG`. `summary.json` thêm `generator`, `agent{turns, stop, completed, files_read, bytes_read, submissions, dropped_in_loop, finish_rejections, waivers, spec_conflicts, cost_usd_est, techniques}` và thân PR có dòng tương ứng cộng hai việc mới cho QA khi có `waivers` / `spec_conflicts`.
+
+**Điều agent không bao giờ làm được** (do code chặn, có test):
+- Quyết kỳ vọng từ mã: kỳ vọng lấy từ PRD/OpenAPI; mã khác PRD thì chỉ được `report_spec_conflict`.
+- Tự đặt `tc_id`, `status`, `origin`: code đặt (`draft`, `llm`); catalog cuối đi qua đúng `_assemble` của bộ sinh một lời gọi nên cùng response cho ra cùng từng byte.
+- Tự duyệt: `waivers` và `uncovered_acs` do agent đề xuất luôn là `draft`; gate `gt validate` chỉ tính waiver `approved` (QA duyệt).
+- Đọc bí mật hay thoát khỏi repo: xem bảng sandbox bên dưới.
+- Trích `evidence` từ file chưa đọc: đường dẫn không nằm trong tập file sandbox đã trả bị bỏ.
+
+**Sandbox đọc** (`groundtruth/repo_tools.py`):
+
+| Lớp | Cách chặn |
+|---|---|
+| Path | từ chối tuyệt đối, ổ đĩa, UNC, `..`, `~`; `resolve()` rồi phải nằm trong root, nên symlink/junction trỏ ra ngoài bị chặn (cả khi duyệt cây và grep) |
+| Deny-list | `.git`, `.qc-agent`, `node_modules`, `.venv`, `dist/build`, `.env*`, `*.pem/*.key/*.p12`, `id_rsa*`, `.ssh`, `.aws`, tên chứa `secret`/`credential`, `*.tfstate`, file lock, `*.sqlite/*.db`… Không phân biệt hoa thường; áp lên cả path đã resolve (symlink vào `.env` vẫn bị chặn); mục bị chặn biến mất khỏi `list_dir`/`grep`; đọc path bị chặn trả cùng một thông điệp dù có tồn tại hay không |
+| Kích thước | 256 KB/file, 3 MB tổng (`QC_GT_AGENT_MAX_READ_BYTES`), 400 mục/lần liệt kê, 100 kết quả grep, 400 dòng/lần đọc, dòng dài bị cắt ở 400 ký tự, grep dừng sau 10 s. Hết ngân sách đọc thì tool **từ chối**, không cắt âm thầm |
+| Bí mật | che theo mẫu (khoá AWS/GitHub/Anthropic/Google/Slack, JWT, private key, `password = "…"`, mật khẩu trong URL kết nối) thành `«REDACTED»` mà **không đổi số dòng**. Chỉ là lớp phụ: lớp chính là deny-list và repo mount `:ro` |
+| Dữ liệu không tin cậy | kết quả nằm trong `<file>`/`<listing>`/`<matches>`/`<openapi>`; mọi thẻ trùng tên trong nội dung bị vô hiệu hoá; prompt khai báo mã, comment, docstring, mô tả OpenAPI chỉ là dữ liệu |
+
+**Ngân sách cứng** (hết là dừng và trả bộ dở, không raise; `agent.stop` ghi lý do): `QC_GT_AGENT_MAX_TURNS=40`, `QC_GT_AGENT_MAX_COST_USD=3` (chỉ khi biết giá model), `QC_GT_AGENT_MAX_WALL_S=1800`. Khác: `QC_GT_AGENT_MODEL`, `QC_GT_AGENT_EFFORT=high`, `QC_GT_AGENT_TIMEOUT_S=600`, `QC_GT_AGENT_FALLBACKS`. Bộ dở vẫn được ghi (`completed: false`, cảnh báo, bảng coverage cho thấy gap) vì TC chỉ là bản nháp để QA duyệt.
+
+**Trạng thái và giới hạn hiện tại**
+- Vòng lặp (`llm/agent_loop.py`), sandbox, agent, bộ chấm và cờ CLI đã có và được test bằng LLM giả (hội thoại nhiều lượt soạn sẵn). **Chưa gọi API thật lần nào**: schema tool strict và tham số `fallbacks` chưa được API xác nhận; cần một lần gọi thử có chi phí (xin phép trước) rồi đo A/B bằng `tools/eval_gt_sut.py` (chưa có cờ `--generator`).
+- **Trong CI** bật bằng input `agent: true` của workflow `qc-groundtruth` (bỏ comment trong workflow gọi do `init` sinh; mặc định TẮT). Workflow xuất `git archive origin/<base>` (chỉ file đã commit ở đầu nhánh gốc, không `.git`, không file chưa commit) ra ngoài workspace và mount `:ro` ở `/src` làm `--source-root`, vì nhánh bot chỉ có `.qc-agent/**` mới và có thể mang mã cũ. Agent luôn dùng khoá `ANTHROPIC_API_KEY` (input `model` của bộ sinh một lời gọi không ảnh hưởng); `agent_model`, `agent_max_turns`, `agent_max_cost_usd` ghi đè mặc định. Đặt `timeout_minutes: 60`.
+- **Repo map (tầng 1)**: trước khi vào vòng lặp, code tự quét mã Python (FastAPI + Pydantic) bằng `ast` ra bản tóm tắt: route → hàm xử lý (`file:dòng`), mã trạng thái mà hàm có thể ném (kể cả qua hàm phụ trợ trong file), dependency xác thực, ràng buộc Query/Path và model, enum, hằng số giới hạn, route không có trong OpenAPI. Bản này nằm trong khối `<repo_map>` của tin nhắn đầu (cũng là `source_code` trong egress) và chỉ là **gợi ý nơi cần đọc**: kỳ vọng vẫn lấy từ PRD/OpenAPI. Best-effort (ràng buộc tính bằng biểu thức được giữ nguyên dạng mã), lỗi quét chỉ làm mất bản tóm tắt. Mã khác (không phải Python) chưa có extractor: agent dùng `list_dir`/`grep`/`read_file`.
+- Chỉ Claude: model `gemini-*` cho agent bị từ chối (`bad_request`).
+
+## 5d. Excel cho QA (`test-cases.xlsx`)
+
+`gt generate|regen` ghi thêm `.qc-agent/ground-truth/test-cases.xlsx` (tắt bằng `--no-xlsx` hoặc `QC_GT_XLSX=false`). QA mở file này thay cho YAML. **YAML vẫn là nguồn sự thật của gate**; xlsx là bản để đọc và sửa, hai chiều.
+
+```
+test-cases.yaml ◄──────── gt import-xlsx ─────────  test-cases.xlsx  ◄── QA sửa trong Excel
+       │  (gate đọc file này)                              ▲
+       └────────────── gt generate | regen | export-xlsx ──┘          gt validate: hai file phải KHỚP NHAU
+```
+
+| Sheet | Nội dung | QA làm gì |
+|---|---|---|
+| `HuongDan` | hướng dẫn ngay trong file | đọc |
+| `Catalog` | PRD, model, `status` của catalog | đổi `status` thành `approved` khi xong |
+| `TestCases` | mỗi dòng một TC | `status`, `rejected_reason`, `notes`, `priority`; sửa `title`, `ac_refs`, `kind`, `technique`…; thêm dòng mới |
+| `Steps` / `Assertions` | các bước HTTP và assertion của từng TC (dạng dòng) | sửa/thêm bước và assertion |
+| `Uncovered` / `Waivers` | AC không kiểm được bằng HTTP; waiver coverage | thêm/sửa, **duyệt waiver** (`approved`) |
+| `SpecConflicts` | chỗ mã nguồn khác PRD (do agent báo) | đổi `open` thành `resolved` sau khi quyết |
+| `Coverage` / `AgentPlan` | từng AC, technique, API: phủ / miễn / **gap** (kèm TC phủ); kế hoạch của agent | đọc |
+
+Ô tiêu đề **vàng** là sửa được, **xám** là chỉ đọc. Cột được nhận theo **tên** nên đổi thứ tự cột được. Cột `status` và các enum có danh sách chọn.
+
+**Làm thử**
+
+```bash
+qc-agent gt generate --agent --prd docs/prd/noteboard.md --sut-root . --openapi openapi.json   # có test-cases.xlsx
+# QA mở xlsx: duyệt TC, thêm một TC mới (sheet TestCases: tc_id = NEW-1; Steps/Assertions: cùng tc_id NEW-1)
+qc-agent gt import-xlsx --sut-root . --dry-run     # xem sẽ đổi gì
+qc-agent gt import-xlsx --sut-root .               # ghi YAML, cấp tc_id thật cho TC mới, xuất lại xlsx
+git add .qc-agent && git commit                    # commit CẢ HAI file
+qc-agent gt validate --sut-root .                  # xlsx và YAML phải khớp
+```
+
+**Quy tắc**
+- **Duyệt** (`status`, `rejected_reason`, `notes`, `priority`) sửa thoải mái, TC giữ `origin: llm`.
+- **Sửa nội dung** một TC do LLM sinh (title, `ac_refs`, `kind`, `technique`, `preconditions`, `rationale`, hay bước/assertion) được phép, nhưng TC đó thành `origin: qa` (giữ `tc_id`, thêm ghi chú) để `regen` không ghi đè công sức của bạn.
+- **TC mới**: dòng `TestCases` có `tc_id = NEW-<tên>`, rồi `Steps`/`Assertions` cùng `tc_id`. Mặc định `status: approved`, `origin: qa`; import cấp `TC-<ac>-qa-<mã>` và xuất lại file.
+- **Xoá**: không được xoá dòng TC do LLM sinh (hãy `rejected` kèm lý do); TC `origin: qa` xoá được.
+- Cột chỉ đọc (`origin`, `evidence`) bị sửa là lỗi. Ô công thức (bắt đầu bằng `=`) là lỗi, và mọi chuỗi ghi ra đều là text nên `=HYPERLINK(…)` không bao giờ chạy.
+- `regen` tự **gộp xlsx chưa import** vào YAML trước khi merge nên không ghi đè sửa của QA; có xung đột thì dừng (exit 3) và nói rõ chỗ nào.
+
+**Gộp ba chiều.** Mỗi lần xuất, sheet ẩn `_meta` giữ ảnh chụp lúc đó (`base`). Khi import, mỗi trường được so ba bên: `base` / xlsx / YAML. Một bên sửa thì lấy bên đó; hai bên cùng sửa khác nhau thì là **xung đột** (exit 1, không ghi gì, in `tc_id.trường`). Nhờ vậy một xlsx cũ không bao giờ hoàn nguyên sửa mới của YAML. Đừng xoá sheet `_meta`: thiếu nó thì import gộp hai chiều (xlsx thắng) kèm cảnh báo. Google Sheets có thể làm mất sheet ẩn và danh sách chọn: dùng Excel hoặc LibreOffice.
+
+**`gt validate` và xlsx** (offline, chỉ khi có file xlsx; không có thì bỏ qua):
+
+| Trạng thái | Nghĩa | Kết quả |
+|---|---|---|
+| khớp | xlsx và YAML cùng nội dung | ok |
+| `xlsx_ahead` / khác nhau ở cả hai bên | QA đã quyết trong xlsx mà YAML (gate) chưa thấy | **lỗi**: chạy `gt import-xlsx` |
+| `yaml_ahead` | YAML đi trước (sửa tay YAML, regen): xlsx đã cũ | cảnh báo: chạy `gt export-xlsx` (an toàn: import sau này không hoàn nguyên YAML) |
+| ô sai cú pháp (JSON hỏng, công thức…) | | **lỗi**, kèm địa chỉ ô |
+
+`gt export-xlsx` từ chối ghi đè khi xlsx đang có sửa chưa import (thêm `--force` để bỏ các sửa đó). So sánh theo **ngữ nghĩa**, không theo byte (zip có dấu thời gian), và `generate|regen|export` không ghi lại file khi nội dung đã tương đương nên commit của bot không đổi vô cớ. File xlsx vào bị giới hạn 5 MB, tỉ lệ nén, 5000 dòng/sheet; thông điệp lỗi chỉ nêu địa chỉ ô, không trích nội dung.
 
 ## 6. Cài đặt cho một repo SUT
 
@@ -153,8 +319,10 @@ Không có lớp nào ngăn người khác *mở* PR sửa `.qc-agent/**`; chún
 
 - **PRD (và danh sách endpoint OpenAPI) được gửi tới nhà cung cấp LLM đã chọn** (Anthropic API hoặc Google Gemini API, theo model). Gói miễn phí của Gemini cho phép Google dùng nội dung để cải thiện sản phẩm: PRD nhạy cảm nên dùng khoá trả phí. Mọi lời gọi ghi `egress.jsonl` (loại dữ liệu `prd_text`, `api_spec`, host đích) **trước khi gửi**; chính sách `deny` thì không có request nào.
 - `egress.jsonl` và `summary.json` là **artifact của workflow** (giữ 14 ngày), không bao giờ được commit. Không file nào ghi nội dung PRD, prompt hay response vào log.
+- **Với `--agent`, MÃ NGUỒN của SUT cũng rời máy** (loại dữ liệu mới `source_code` trong `egress.jsonl`, ghi trước mỗi request; cùng với `prd_text` và `api_spec`). Chỉ file qua sandbox (mục 5c) được gửi, nhưng việc che bí mật là best-effort: **chạy `gitleaks` trên repo SUT và xoá bí mật đã commit trước khi bật agent**, và chỉ bật khi đã được phép gửi mã nguồn ra Anthropic (cùng câu hỏi #3 bên dưới, nay gồm cả mã).
 - **Câu hỏi #3 ở [architecture.md](architecture.md) §5.5 chưa được chốt** ("có được gửi PRD ra LLM bên ngoài không"): nó chặn mọi lượt chạy LLM thật. Cho tới khi có câu trả lời, chỉ chạy bằng PRD mẫu/PRD không nhạy cảm.
 - Chi phí một lần sinh: một lời gọi (tối đa 16 000 token ra), cộng tối đa một lần sửa khi đầu ra sai schema. Số token nằm trong `summary.json`.
+- Chi phí bộ sinh agent: tới 40 lượt, mỗi lượt gửi lại cả lịch sử (được prompt cache). Ước tính ban đầu vài USD tới chục USD mỗi PRD với Opus (**chưa đo bằng API thật**); `agent.cost_usd_est` trong `summary.json` là ước tính theo bảng giá trong `llm/agent_loop.py` và `QC_GT_AGENT_MAX_COST_USD` là trần cứng.
 
 ## 9. Sự cố thường gặp
 

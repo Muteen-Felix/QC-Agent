@@ -35,4 +35,10 @@ jobs:
       # llm_min_interval_s: "12"                              # giãn cách giữa hai request (≈ 5 RPM, free tier)
       # llm_max_retries: "5"                                  # thử lại (exponential backoff) khi 429/5xx
       # llm_fallback_models: "gemini-3.8-flash,gemini-2.5-flash"   # model dự phòng khi 404/hết quota
+      # Sinh bằng AGENT (đọc cả mã nguồn + OpenAPI đầy đủ, nhiều lượt, CHỈ Claude; cần secret ANTHROPIC_API_KEY): bỏ comment các dòng dưới.
+      # MÃ NGUỒN ĐƯỢC GỬI TỚI ANTHROPIC: chỉ bật khi đã được phép (docs/groundtruth.md §5c, §8). Một lần chạy mất nhiều phút: đặt timeout_minutes.
+      # agent: true
+      # timeout_minutes: 60
+      # agent_model: claude-sonnet-5-5
+      # agent_max_cost_usd: "3"                                # trần chi phí ước tính cho một PRD
     secrets: inherit

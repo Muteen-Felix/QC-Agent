@@ -55,4 +55,24 @@ def merge(old: dict, candidate: dict) -> MergeResult:
     status = "draft" if any(tc["status"] == "draft" for tc in test_cases) else old["status"]
     catalog = {"version": 1, "prd": copy.deepcopy(candidate["prd"]), "generated_by": copy.deepcopy(candidate["generated_by"]), "status": status,
                "stories": stories, "test_cases": test_cases, "uncovered_acs": uncovered}
+    _carry_agent_fields(old, candidate, catalog, {tc["tc_id"] for tc in test_cases}, position)
     return MergeResult(catalog, len(kept), tuple(tc["tc_id"] for tc in added), removed, lost, orphans)
+
+
+def _carry_agent_fields(old: dict, candidate: dict, catalog: dict, tc_ids: set[str], position: dict) -> None:
+    """`coverage_plan`, `waivers`, `spec_conflicts` chỉ xuất hiện khi agent/QA điền: không có ở cả hai phía thì catalog KHÔNG có khoá (giữ byte như trước).
+    - coverage_plan: của ứng viên (agent lập lại theo PRD mới); bỏ tc_id không còn, bỏ dòng trỏ AC đã mất.
+    - waivers: của QA (cũ) thắng ứng viên theo (kind, target); không bao giờ tự bỏ vì đó là thứ con người đã duyệt.
+    - spec_conflicts: cũ thắng theo (ac_id, summary); bỏ conflict của AC đã mất."""
+    plan = [{**item, "tc_ids": [t for t in item.get("tc_ids", []) if t in tc_ids]} for item in candidate.get("coverage_plan", []) if item["ac_id"] in position]
+    if plan or "coverage_plan" in candidate:
+        catalog["coverage_plan"] = copy.deepcopy(plan)
+    waivers = {(w["kind"], w["target"]): w for w in candidate.get("waivers", [])}
+    waivers.update({(w["kind"], w["target"]): w for w in old.get("waivers", [])})
+    if waivers:
+        catalog["waivers"] = [copy.deepcopy(waivers[key]) for key in sorted(waivers)]
+    conflicts = {(c["ac_id"], c["summary"]): c for c in candidate.get("spec_conflicts", [])}
+    conflicts.update({(c["ac_id"], c["summary"]): c for c in old.get("spec_conflicts", [])})
+    kept = [copy.deepcopy(conflicts[key]) for key in sorted(conflicts, key=lambda k: (position.get(k[0], (9999, 0)), k[1])) if key[0] in position]
+    if kept:
+        catalog["spec_conflicts"] = kept
