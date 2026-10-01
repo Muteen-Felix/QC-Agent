@@ -346,7 +346,8 @@ def test_emit_schema_rejects(name, mutate):
 def test_emit_and_catalog_shapes_stay_in_sync():
     defs = schema.catalog_schema()["$defs"]
     system_owned = {"tc_id", "status", "origin", "rejected_reason", "notes"}
-    assert set(defs["emitTestCase"]["properties"]) == set(defs["testCase"]["properties"]) - system_owned
+    agent_only = {"priority", "technique", "preconditions", "rationale", "evidence"}   # chỉ bộ sinh dạng agent điền (tool riêng); single-shot không có
+    assert set(defs["emitTestCase"]["properties"]) == set(defs["testCase"]["properties"]) - system_owned - agent_only
     assert set(defs["emitTestCase"]["required"]) == set(defs["testCase"]["required"]) - system_owned
     assert set(defs["emitStep"]["properties"]) == set(defs["step"]["properties"])
     assert set(defs["emitRequest"]["properties"]) == set(defs["request"]["properties"])

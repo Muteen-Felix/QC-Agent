@@ -1,0 +1,2246 @@
+[
+ {
+  "content": [
+   {
+    "signature": "sig-fixture",
+    "thinking": "",
+    "type": "thinking"
+   },
+   {
+    "id": "toolu_001",
+    "input": {
+     "depth": 2,
+     "path": "."
+    },
+    "name": "list_dir",
+    "type": "tool_use"
+   },
+   {
+    "id": "toolu_002",
+    "input": {
+     "max_lines": 120,
+     "path": "toyapp/app.py",
+     "start_line": 1
+    },
+    "name": "read_file",
+    "type": "tool_use"
+   },
+   {
+    "id": "toolu_003",
+    "input": {
+     "method": "POST",
+     "path": "/notes"
+    },
+    "name": "openapi_operation",
+    "type": "tool_use"
+   }
+  ],
+  "id": "msg_fake",
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "input_tokens": 100,
+   "output_tokens": 50
+  }
+ },
+ {
+  "content": [
+   {
+    "signature": "sig-fixture",
+    "thinking": "",
+    "type": "thinking"
+   },
+   {
+    "id": "toolu_004",
+    "input": {
+     "items": [
+      {
+       "ac_id": "AC-1.1",
+       "decision": "planned",
+       "reason": null,
+       "scenario": "tạo ghi chú",
+       "technique": "happy_path"
+      },
+      {
+       "ac_id": "AC-1.5",
+       "decision": "planned",
+       "reason": null,
+       "scenario": "title dài 200 và 201",
+       "technique": "boundary"
+      }
+     ]
+    },
+    "name": "record_coverage_plan",
+    "type": "tool_use"
+   }
+  ],
+  "id": "msg_fake",
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "input_tokens": 100,
+   "output_tokens": 50
+  }
+ },
+ {
+  "content": [
+   {
+    "signature": "sig-fixture",
+    "thinking": "",
+    "type": "thinking"
+   },
+   {
+    "id": "toolu_005",
+    "input": {
+     "story_id": "US-1",
+     "test_cases": [
+      {
+       "ac_refs": [
+        "AC-1.1"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           },
+           {
+            "op": "eq",
+            "path": "$.title",
+            "value": "Mua sữa"
+           },
+           {
+            "op": "eq",
+            "path": "$.body",
+            "value": "2 hộp sữa tươi"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Mua sữa\",\"body\":\"2 hộp sữa tươi\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Tạo ghi chú hợp lệ trả 201 và đúng dữ liệu đã gửi"
+      },
+      {
+       "ac_refs": [
+        "AC-1.2"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"  Kế hoạch 🚀  \",\"body\":\" Ngày mai: họp 9h. \"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "eq",
+            "path": "$.title",
+            "value": "  Kế hoạch 🚀  "
+           },
+           {
+            "op": "eq",
+            "path": "$.body",
+            "value": " Ngày mai: họp 9h. "
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Lưu nguyên văn tiếng Việt, emoji và khoảng trắng đầu/cuối"
+      },
+      {
+       "ac_refs": [
+        "AC-1.3"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"\",\"body\":\"nội dung\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "title rỗng trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-1.3"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"body\":\"nội dung\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "thiếu title trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-1.4"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"tiêu đề\",\"body\":\"\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "body rỗng trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-1.4"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"tiêu đề\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "thiếu body trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-1.5"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"body\":\"x\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "title dài 201 ký tự trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-1.5"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"body\":\"x\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "title dài đúng 200 ký tự vẫn hợp lệ"
+      },
+      {
+       "ac_refs": [
+        "AC-1.6"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"t\",\"body\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "body dài 5001 ký tự trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-1.6"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"t\",\"body\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "body dài đúng 5000 ký tự vẫn hợp lệ"
+      },
+      {
+       "ac_refs": [
+        "AC-1.7"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":123,\"body\":\"x\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "title là số trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-1.7"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"t\",\"body\":null}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "body là null trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-1.7"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           422
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":[\"a\"],\"body\":\"x\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "title là mảng trả 422"
+      },
+      {
+       "ac_refs": [
+        "AC-9.9"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "1"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Xem ghi chú theo tiêu chí không có trong PRD"
+      },
+      {
+       "ac_refs": [
+        "AC-1.2"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"mới\"}",
+          "method": "PATCH",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Sửa ghi chú bằng PATCH (không có trong danh sách endpoint)"
+      },
+      {
+       "ac_refs": [
+        "AC-1.1"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           999
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"t\",\"body\":\"b\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Mã trạng thái ngoài khoảng 100–599"
+      }
+     ]
+    },
+    "name": "submit_test_cases",
+    "type": "tool_use"
+   }
+  ],
+  "id": "msg_fake",
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "input_tokens": 100,
+   "output_tokens": 50
+  }
+ },
+ {
+  "content": [
+   {
+    "signature": "sig-fixture",
+    "thinking": "",
+    "type": "thinking"
+   },
+   {
+    "id": "toolu_006",
+    "input": {
+     "story_id": "US-2",
+     "test_cases": [
+      {
+       "ac_refs": [
+        "AC-2.1"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$",
+            "value": "array"
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Danh sách ghi chú luôn trả 200 và một mảng"
+      },
+      {
+       "ac_refs": [
+        "AC-2.1"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "len_gte",
+            "path": "$",
+            "value": 1
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Danh sách có ít nhất 1 phần tử sau khi tạo ghi chú"
+      },
+      {
+       "ac_refs": [
+        "AC-2.2"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Đọc lại\",\"body\":\"nội dung cũ\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.id"
+           },
+           {
+            "op": "eq",
+            "path": "$.title",
+            "value": "Đọc lại"
+           },
+           {
+            "op": "eq",
+            "path": "$.body",
+            "value": "nội dung cũ"
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Xem ghi chú đang tồn tại trả đúng id, title, body"
+      },
+      {
+       "ac_refs": [
+        "AC-2.3"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "999999"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Xem ghi chú không tồn tại trả 404 kèm detail"
+      },
+      {
+       "ac_refs": [
+        "AC-2.4"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "abc"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "id là chữ trả 404"
+      },
+      {
+       "ac_refs": [
+        "AC-2.4"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "-1"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "id âm trả 404"
+      },
+      {
+       "ac_refs": [
+        "AC-2.5"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "id chữ rất dài không bao giờ trả 5xx"
+      },
+      {
+       "ac_refs": [
+        "AC-2.6"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "11111111111111111"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "id 17 chữ số trả 404"
+      },
+      {
+       "ac_refs": [
+        "AC-2.1"
+       ],
+       "evidence": [],
+       "kind": "api_contract",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "GET /notes tồn tại và trả 200"
+      },
+      {
+       "ac_refs": [
+        "AC-2.2"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{ghost}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Dùng biến chưa từng được capture"
+      }
+     ]
+    },
+    "name": "submit_test_cases",
+    "type": "tool_use"
+   }
+  ],
+  "id": "msg_fake",
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "input_tokens": 100,
+   "output_tokens": 50
+  }
+ },
+ {
+  "content": [
+   {
+    "signature": "sig-fixture",
+    "thinking": "",
+    "type": "thinking"
+   },
+   {
+    "id": "toolu_007",
+    "input": {
+     "story_id": "US-3",
+     "test_cases": [
+      {
+       "ac_refs": [
+        "AC-3.1"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           204
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "DELETE",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Xoá ghi chú đang tồn tại trả 204"
+      },
+      {
+       "ac_refs": [
+        "AC-3.2"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           204
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "DELETE",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Sau khi xoá, xem lại ghi chú trả 404"
+      },
+      {
+       "ac_refs": [
+        "AC-3.3"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           204
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "DELETE",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "DELETE",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Xoá lần hai cùng một id trả 404"
+      },
+      {
+       "ac_refs": [
+        "AC-3.4"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "DELETE",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "999999"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Xoá id chưa từng tồn tại trả 404"
+      },
+      {
+       "ac_refs": [
+        "AC-3.4"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "DELETE",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "abc"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Xoá id không phải số trả 404"
+      },
+      {
+       "ac_refs": [
+        "AC-3.2"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Flow chỉ có một bước"
+      }
+     ]
+    },
+    "name": "submit_test_cases",
+    "type": "tool_use"
+   }
+  ],
+  "id": "msg_fake",
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "input_tokens": 100,
+   "output_tokens": 50
+  }
+ },
+ {
+  "content": [
+   {
+    "signature": "sig-fixture",
+    "thinking": "",
+    "type": "thinking"
+   },
+   {
+    "id": "toolu_008",
+    "input": {
+     "story_id": "US-4",
+     "test_cases": [
+      {
+       "ac_refs": [
+        "AC-4.1"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Họp nhóm\",\"body\":\"Chốt kế hoạch tuần. Gửi biên bản.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.summary",
+            "value": "string"
+           },
+           {
+            "op": "eq",
+            "path": "$.model",
+            "value": "stub-rule-v1"
+           },
+           {
+            "op": "len_eq",
+            "path": "$.prompt_hash",
+            "value": 12
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "POST",
+          "path": "/notes/{note_id}/summarize",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Tóm tắt ghi chú trả đủ summary, model và prompt_hash"
+      },
+      {
+       "ac_refs": [
+        "AC-4.2"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Tóm tắt\",\"body\":\"Hôm nay trời đẹp. Ngày mai mưa.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "eq",
+            "path": "$.summary",
+            "value": "Hôm nay trời đẹp"
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "POST",
+          "path": "/notes/{note_id}/summarize",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "summary là câu đầu tiên của body"
+      },
+      {
+       "ac_refs": [
+        "AC-4.3"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Tóm tắt\",\"body\":\"abcdef\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "eq",
+            "path": "$.summary",
+            "value": "abcde"
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "POST",
+          "path": "/notes/{note_id}/summarize",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "body không có dấu chấm thì summary bỏ ký tự cuối"
+      },
+      {
+       "ac_refs": [
+        "AC-4.4"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Tóm tắt\",\"body\":\"Ghi chú [[long]]. Chi tiết.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "eq",
+            "path": "$.summary",
+            "value": "Ghi chú [[long]]"
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "POST",
+          "path": "/notes/{note_id}/summarize",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "body chứa [[long]] vẫn theo quy tắc câu đầu"
+      },
+      {
+       "ac_refs": [
+        "AC-4.5"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "POST",
+          "path": "/notes/{note_id}/summarize",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "999999"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Tóm tắt ghi chú không tồn tại trả 404"
+      },
+      {
+       "ac_refs": [
+        "AC-4.6"
+       ],
+       "evidence": [],
+       "kind": "flow",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [
+          {
+           "name": "note_id",
+           "path": "$.id"
+          }
+         ],
+         "expect": {
+          "json": [
+           {
+            "op": "type",
+            "path": "$.id",
+            "value": "integer"
+           }
+          ],
+          "status": [
+           201
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": "{\"title\":\"Giữ nguyên\",\"body\":\"Câu một. Câu hai.\"}",
+          "method": "POST",
+          "path": "/notes",
+          "path_params": [],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "POST",
+          "path": "/notes/{note_id}/summarize",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        },
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "eq",
+            "path": "$.title",
+            "value": "Giữ nguyên"
+           },
+           {
+            "op": "eq",
+            "path": "$.body",
+            "value": "Câu một. Câu hai."
+           }
+          ],
+          "status": [
+           200
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "GET",
+          "path": "/notes/{note_id}",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "{{note_id}}"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Tóm tắt không làm đổi ghi chú"
+      },
+      {
+       "ac_refs": [
+        "AC-4.5"
+       ],
+       "evidence": [],
+       "kind": "api_functional",
+       "preconditions": null,
+       "priority": "medium",
+       "rationale": null,
+       "steps": [
+        {
+         "capture": [],
+         "expect": {
+          "json": [
+           {
+            "op": "exists",
+            "path": "$.detail"
+           }
+          ],
+          "status": [
+           404
+          ]
+         },
+         "request": {
+          "headers": [],
+          "json": null,
+          "method": "POST",
+          "path": "/notes/{note_id}/summarize",
+          "path_params": [
+           {
+            "name": "note_id",
+            "value": "999999"
+           }
+          ],
+          "query": []
+         }
+        }
+       ],
+       "technique": "happy_path",
+       "title": "Summarize id không tồn tại (viết lại)"
+      }
+     ]
+    },
+    "name": "submit_test_cases",
+    "type": "tool_use"
+   }
+  ],
+  "id": "msg_fake",
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "input_tokens": 100,
+   "output_tokens": 50
+  }
+ },
+ {
+  "content": [
+   {
+    "signature": "sig-fixture",
+    "thinking": "",
+    "type": "thinking"
+   },
+   {
+    "id": "toolu_009",
+    "input": {
+     "self_review": {
+      "gaps_fixed": 0,
+      "notes": "lần đầu"
+     },
+     "uncovered_acs": [],
+     "waivers": []
+    },
+    "name": "finish_generation",
+    "type": "tool_use"
+   }
+  ],
+  "id": "msg_fake",
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "input_tokens": 100,
+   "output_tokens": 50
+  }
+ },
+ {
+  "content": [
+   {
+    "signature": "sig-fixture",
+    "thinking": "",
+    "type": "thinking"
+   },
+   {
+    "id": "toolu_010",
+    "input": {
+     "self_review": {
+      "gaps_fixed": 0,
+      "notes": "ba ô 422 không thể đạt được qua HTTP"
+     },
+     "uncovered_acs": [
+      {
+       "ac_id": "AC-1.8",
+       "reason": "chỉ kiểm được ở giao diện"
+      },
+      {
+       "ac_id": "AC-3.5",
+       "reason": "chỉ kiểm được ở giao diện"
+      }
+     ],
+     "waivers": [
+      {
+       "kind": "api",
+       "reason": "note_id là chuỗi tự do nên không có đầu vào nào gây 422",
+       "reason_code": "not_applicable",
+       "target": "GET /notes/{note_id} 422"
+      },
+      {
+       "kind": "api",
+       "reason": "note_id là chuỗi tự do nên không có đầu vào nào gây 422",
+       "reason_code": "not_applicable",
+       "target": "DELETE /notes/{note_id} 422"
+      },
+      {
+       "kind": "api",
+       "reason": "note_id là chuỗi tự do nên không có đầu vào nào gây 422",
+       "reason_code": "not_applicable",
+       "target": "POST /notes/{note_id}/summarize 422"
+      }
+     ]
+    },
+    "name": "finish_generation",
+    "type": "tool_use"
+   }
+  ],
+  "id": "msg_fake",
+  "model": "claude-opus-5-5",
+  "role": "assistant",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "type": "message",
+  "usage": {
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "input_tokens": 100,
+   "output_tokens": 50
+  }
+ }
+]

@@ -421,6 +421,48 @@ echo $?      # 0 đạt mọi ngưỡng đã đo · 1 không đạt · 3 sai c�
 
 Lệnh này đo (a), (b) trên bộ Gemini **mới** sinh (thư mục tạm, không đè file trong SUT) và (c) trên bộ **đã duyệt** trong SUT; chưa có TC nào `approved` thì bỏ (c) và nhắc trên stderr. Thứ tự khuyến nghị: 4.2/4.3 → QA duyệt và merge (mục 3) → 4.4.
 
+### 4.6. So bộ sinh một lời gọi với AGENT (Claude, đọc mã nguồn)
+
+Agent (xem [groundtruth.md](groundtruth.md) §5c) chỉ dùng Claude, nên phép so này cần `ANTHROPIC_API_KEY` và là **chi phí thật**; mã nguồn của SUT và PRD được gửi tới Anthropic. Chạy sau khi bạn đã được phép gửi mã nguồn ra ngoài.
+
+```bash
+# 1) chạy thử đường ống với LLM giả (không tốn tiền; số liệu KHÔNG nói gì về chất lượng thật: hội thoại cố định của noteboard)
+python tools/eval_gt_sut.py --config eval/my-sut.yaml --llm fake --generator both --skip-mutants
+# 2) đo thật: single vs agent, 3 lượt mỗi bên, kèm mutant chạy trên bộ vừa sinh (bật mặc định khi `both`)
+python tools/eval_gt_sut.py --config eval/my-sut.yaml --llm real --generator both --runs 3 --yes --out-json eval/ab.json
+# chỉ agent: thêm --generated-mutants nếu cũng muốn đo mutant trên bộ vừa sinh;  --agent-model claude-sonnet-5-5 để thử model rẻ hơn
+```
+
+Trước khi gọi API công cụ in `ƯỚC TÍNH AGENT`: số lượt của agent **không ước lượng được trước**, nên nó nêu **trần cứng** `QC_GT_AGENT_MAX_COST_USD` (mặc định $3) nhân số lượt, và đòi `--yes`. Hãy đặt trần thấp (vd `QC_GT_AGENT_MAX_COST_USD=3`) cho lần đo đầu.
+
+**Quy trình ngân sách $5 (đã cài chốt chặn trong code)**: mặc định agent dùng `claude-sonnet-5-5` (có prompt caching) và trần `QC_GT_AGENT_MAX_COST_USD=3`.
+
+| Bước | Lệnh | Trần |
+|---|---|---|
+| 0. Kiểm khô, KHÔNG gọi LLM | `python tools/eval_gt_sut.py --config eval/my-sut.yaml --check-only` | $0 |
+| 1. Smoke call (1 lượt, không mutant) | `QC_GT_AGENT_MAX_COST_USD=1.0 python tools/eval_gt_sut.py --config eval/my-sut.yaml --llm real --generator agent --skip-mutants --runs 1 --max-total-usd 1 --yes` | $1 |
+| 2. Đo thật trên 1 SUT | `QC_GT_AGENT_MAX_COST_USD=3.0 python tools/eval_gt_sut.py --config eval/my-sut.yaml --llm real --generator agent --generated-mutants --runs 1 --max-total-usd 3 --yes --out-json eval/real.json` | $3 |
+| Dự phòng | $1 còn lại: chỉ dùng khi bước 1 hoặc 2 lỗi vì lý do ngoài tầm kiểm soát | |
+
+Chốt chặn: chạy agent thật **từ chối** nếu thiếu `QC_GT_AGENT_MAX_COST_USD` tường minh, thiếu `--max-total-usd`, hoặc `trần × số lượt` vượt `--max-total-usd`; công cụ in ước tính (trần cứng, vì số lượt không dự đoán được) rồi đòi `--yes`. Trần được vòng lặp kiểm TRƯỚC mỗi request nên chi phí vượt tối đa là một lượt gọi cuối (giá theo bảng ước tính, không phải hoá đơn: đặt thêm spend limit trên Console làm lớp bảo vệ thứ hai). `--llm fake` chỉ hợp với noteboard; với SUT khác dùng `--check-only`. Dùng `--generator both` (đo cả single) chỉ khi còn ngân sách.
+
+Mỗi lượt đo thêm:
+- **(d) bộ chấm coverage** (AC / technique / API) trên bộ vừa sinh (tính TC draft và waiver draft: "nếu QA duyệt hết thì đã đủ chưa"). Cần `openapi` trong YAML, không thì chỉ chấm được AC.
+- **(e) mutant trên bộ vừa sinh**: giữ các TC **xanh trên SUT sạch** rồi chạy mutant lên tập đó; TC đỏ trên SUT sạch bị loại vì "bắt được lỗi" của chúng vô nghĩa. Đây là cách duy nhất so được hai bộ sinh mà chưa cần QA duyệt tay (metric (c) chỉ đo bộ đã duyệt). Cần `mutants` trong YAML.
+- **(f) chi phí ước tính, thời gian, số lượt** của agent (ước tính theo bảng giá trong `llm/agent_loop.py`, không phải hoá đơn).
+
+`--generator both` **đạt** (exit 0) khi agent thoả mọi tiêu chí sau, ngưỡng chỉnh được bằng khoá `agent_thresholds` trong YAML:
+
+| Tiêu chí | Mặc định |
+|---|---|
+| `scorer_100` | bộ chấm coverage đạt 100% ở cả AC, technique, API trong **mọi** lượt |
+| `kill_rate` | mutant bị bắt trên bộ vừa sinh ≥ `mutant_kill_rate` (0,9) **hoặc** hơn single ≥ `kill_gain` (0,20) |
+| `green_rate` | tỉ lệ TC xanh ≥ max(single, `green_min` 0,85): agent không được kém single |
+| `completed` | mọi lượt agent hoàn tất (không dừng vì hết ngân sách/lỗi) |
+| `cost`, `wall_time` | chi phí ước tính ≤ `max_cost_usd` (10) mỗi lượt; lượt lâu nhất ≤ `max_wall_s` (1800) |
+
+Chỉ bật `agent: true` trong CI sau khi các tiêu chí này đạt trên **một SUT thật**. Muốn chọn giữa Opus và Sonnet thì chạy cùng phép đo với `--agent-model` khác nhau rồi so chi phí/kết quả. Nhớ rằng mutant do bạn tự viết, nên kết quả chỉ có nghĩa với đúng tập mutant đó.
+
 ## 5. Tóm tắt các bước theo thứ tự
 
 ```text

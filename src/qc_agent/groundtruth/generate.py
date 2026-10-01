@@ -41,8 +41,9 @@ _VERSION = re.compile(r"[a-z0-9-]+/[0-9]+")
 _VAR_NAME = re.compile(r"[a-z][a-z0-9_]{0,39}")
 _VAR_USE = re.compile(r"\{\{(.*?)\}\}")
 _PLACEHOLDER = re.compile(r"\{([^{}/]*)\}")
-_TAG = re.compile(r"<(?=/?\s*(?:prd|endpoints|validation_error)\b)", re.I)
+_TAG = re.compile(r"<(?=/?\s*(?:prd|endpoints|validation_error|repo_overview|repo_map|existing_cases|file|listing|matches|openapi|tool_output)\b)", re.I)
 _STATUS_MIN, _STATUS_MAX = 100, 599
+_EVIDENCE_PATH = re.compile(r"[.]?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[.]?[A-Za-z0-9_-][A-Za-z0-9_.-]*)*")   # phải khớp $defs/evidence.path (không có đoạn `.` hay `..`)
 
 
 class GTError(RuntimeError):
@@ -67,16 +68,17 @@ class _Drop(Exception):
     """TC này vi phạm ngữ nghĩa: bỏ, kèm lý do (không chứa nội dung do LLM viết)."""
 
 
-def load_prompt() -> tuple[str, str]:
-    """(prompt_version, system) từ prompts/gt_generate.md. Nội dung prompt đổi thì phải tăng version (S4-02 dùng làm khoá cache)."""
-    text = PROMPT_FILE.read_text(encoding="utf-8").replace("\r\n", "\n")
+def load_prompt(file: Path | None = None) -> tuple[str, str]:
+    """(prompt_version, system) từ prompts/gt_generate.md (hoặc `file`, vd prompts/gt_agent.md). Nội dung prompt đổi thì phải tăng version (S4-02 dùng làm khoá cache)."""
+    file = file or PROMPT_FILE
+    text = file.read_text(encoding="utf-8").replace("\r\n", "\n")
     if not text.startswith("---\n") or text.find("\n---\n", 3) == -1:
-        raise ValueError("gt_generate.md thiếu front-matter")
+        raise ValueError(f"{file.name} thiếu front-matter")
     end = text.find("\n---\n", 3)
     front = yaml.safe_load(text[4:end])
     version = front.get("prompt_version") if isinstance(front, dict) else None
     if not isinstance(version, str) or not _VERSION.fullmatch(version):
-        raise ValueError("gt_generate.md: prompt_version phải dạng <tên>/<số>")
+        raise ValueError(f"{file.name}: prompt_version phải dạng <tên>/<số>")
     return version, text[end + 5:].strip()
 
 
@@ -220,6 +222,7 @@ def _convert(raw: dict, *, acs: set[str], endpoints: set[tuple[str, str]] | None
         defined.update(step.get("capture", {}))
     digest = hashlib.sha1(_canonical({"kind": raw["kind"], "steps": steps}).encode("utf-8")).hexdigest()[:6]
     tc = {"tc_id": f"TC-{refs[0]}-{digest}", "title": title, "ac_refs": refs, "kind": raw["kind"], "status": "draft", "origin": "llm", "steps": steps}
+    tc.update(_metadata(raw))
     problems = gt_schema.errors(tc, tc_schema)   # luật theo kind: flow >= 2 bước, api_functional <= 1 bước, api_contract chỉ method+path
     if problems:
         raise _Drop("vi phạm schema catalog tại " + "; ".join(problems[:3]))
@@ -228,6 +231,24 @@ def _convert(raw: dict, *, acs: set[str], endpoints: set[tuple[str, str]] | None
 
 def _reason(text: str) -> str:
     return " ".join(text.split())[:REASON_MAX].strip()
+
+
+def _metadata(raw: dict) -> dict:
+    """Trường tuỳ chọn mà chỉ bộ sinh dạng agent điền (priority, technique, preconditions, rationale, evidence). Single-shot không có khoá nào nên cho ra {}.
+    Không đổi `tc_id` (băm theo kind+steps) nên khử trùng và `merge` vẫn như cũ. Chuỗi được co khoảng trắng và cắt độ dài; giá trị rỗng/null bị bỏ."""
+    out: dict = {}
+    for key in ("priority", "technique"):
+        if raw.get(key):
+            out[key] = raw[key]
+    for key in ("preconditions", "rationale"):
+        text = " ".join(raw[key].split())[:REASON_MAX].strip() if isinstance(raw.get(key), str) else ""
+        if text:
+            out[key] = text
+    # fullmatch chứ không chỉ dựa regex của schema: `$` của schema chấp nhận xuống dòng ở cuối, và đường dẫn này đi vào YAML/Excel mà QA mở.
+    evidence = [{"path": e["path"], **({"line": e["line"]} if e.get("line") else {})} for e in raw.get("evidence") or [] if _EVIDENCE_PATH.fullmatch(e["path"])]
+    if evidence:
+        out["evidence"] = evidence[:5]
+    return out
 
 
 def _assemble(prd: ParsedPRD, data: dict, *, model: str, version: str, source: str) -> tuple[dict, list[str], list[str], int, int]:

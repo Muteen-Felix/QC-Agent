@@ -26,6 +26,7 @@ GT_DIR = ".qc-agent/ground-truth"
 TESTS_DIR = f"{GT_DIR}/tests_gt"
 CATALOG_PATH = f"{GT_DIR}/test-cases.yaml"
 MODULE_MAP_PATH = f"{GT_DIR}/module-map.yaml"
+XLSX_PATH = f"{GT_DIR}/test-cases.xlsx"   # bản Excel cho QA (xlsx.py); không do `render` sinh vì là file nhị phân và cần openapi.snapshot cho sheet Coverage
 SUITES_DIR = ".qc-agent/suites"
 API_CONTRACT_PATH = f"{SUITES_DIR}/api-contract.yaml"
 GT_SUITE_PATH = f"{SUITES_DIR}/gt-functional.yaml"
@@ -39,10 +40,12 @@ _VERSION = re.compile(r"[a-z0-9-]+/[0-9]+")
 _SHA = re.compile(r"[0-9a-f]{64}")
 
 _ORDER = {
-    "catalog": ("version", "prd", "generated_by", "status", "stories", "test_cases", "uncovered_acs"),
+    "catalog": ("version", "prd", "generated_by", "status", "stories", "test_cases", "uncovered_acs", "coverage_plan", "waivers", "spec_conflicts"),
     "prd": ("id", "sha256", "source"), "generated_by": ("model", "prompt_version"),
     "story": ("story_id", "title", "acs"), "ac": ("ac_id", "text"), "uncovered": ("ac_id", "reason"),
-    "tc": ("tc_id", "title", "ac_refs", "kind", "status", "origin", "rejected_reason", "notes", "steps"),
+    "tc": ("tc_id", "title", "ac_refs", "kind", "priority", "technique", "status", "origin", "rejected_reason", "notes", "preconditions", "rationale", "evidence", "steps"),
+    "evidence": ("path", "line"), "plan": ("ac_id", "technique", "scenario", "decision", "reason", "tc_ids"),
+    "waiver": ("kind", "target", "reason_code", "reason", "status"), "conflict": ("ac_id", "summary", "evidence", "status"),
     "step": ("request", "expect", "capture"), "request": ("method", "path", "path_params", "query", "headers", "json"),
     "expect": ("status", "json"), "assertion": ("path", "op", "value"),
 }
@@ -102,6 +105,8 @@ def _canonical(catalog: dict) -> dict:
 
     def case(item):
         out = _ordered(item, "tc")
+        if "evidence" in out:
+            out["evidence"] = [_ordered(e, "evidence") for e in item["evidence"]]
         out["steps"] = [step(s) for s in item["steps"]]
         return out
 
@@ -111,6 +116,14 @@ def _canonical(catalog: dict) -> dict:
     out["stories"] = [{**_ordered(s, "story"), "acs": [_ordered(a, "ac") for a in s["acs"]]} for s in catalog["stories"]]
     out["test_cases"] = [case(tc) for tc in catalog["test_cases"]]
     out["uncovered_acs"] = [_ordered(u, "uncovered") for u in catalog["uncovered_acs"]]
+    # Ba khoá dưới đây chỉ có khi agent/QA điền; catalog cũ không có thì KHÔNG được sinh thêm khoá (render phải giữ đúng từng byte).
+    if "coverage_plan" in out:
+        out["coverage_plan"] = [_ordered(p, "plan") for p in catalog["coverage_plan"]]
+    if "waivers" in out:
+        out["waivers"] = [_ordered(w, "waiver") for w in catalog["waivers"]]
+    if "spec_conflicts" in out:
+        out["spec_conflicts"] = [{**_ordered(c, "conflict"), **({"evidence": [_ordered(e, "evidence") for e in c["evidence"]]} if "evidence" in c else {})}
+                                 for c in catalog["spec_conflicts"]]
     return out
 
 

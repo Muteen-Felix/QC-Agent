@@ -9,6 +9,14 @@ Ba metric (dùng lại phần tính của tools/eval_groundtruth.py):
   (c) Bắt lỗi       bộ ĐÃ DUYỆT (`<sut_root>/.qc-agent/ground-truth`) FAIL khi SUT bị chèn lỗi (mutant). Mutant khai trong YAML bằng một trong ba cách:
                     `edits` (thay đúng một đoạn mã), `patch` (diff), `env` (cờ lỗi có sẵn của SUT), hoặc `base_url` (bạn tự chạy bản lỗi).
                     `edits`/`patch` chỉ áp lên BẢN SAO của sut_root; repo thật không bao giờ bị sửa.
+So hai bộ sinh (`--generator single|agent|both`, mặc định `single` = hành vi cũ). Với `agent` và `both` mỗi lượt còn có:
+  (d) Bộ chấm coverage tất định (groundtruth/coverage.py): AC / technique / API, chấm trên bộ vừa sinh; agent phải đạt 100% ở cả ba chiều ở MỌI lượt.
+  (e) Mutant trên bộ VỪA SINH: giữ các TC xanh trên SUT sạch rồi chạy mutant lên tập đó (bật mặc định khi `both`; `--generated-mutants` để bật riêng). Đây là cách duy nhất so
+      được hai bộ sinh mà không cần QA duyệt tay, vì (c) chỉ đo bộ ĐÃ DUYỆT.
+  (f) Chi phí/thời gian của agent (ước tính theo bảng giá trong llm/agent_loop.py, KHÔNG phải hoá đơn) và số lượt.
+`both` đạt khi agent: coverage scorer 100% mọi lượt · kill rate ≥ ngưỡng HOẶC hơn single ≥ `kill_gain` (0,20) · tỉ lệ xanh ≥ max(single, `green_min` 0,85) · mọi lượt hoàn tất ·
+chi phí ≤ `max_cost_usd` (10) · thời gian ≤ `max_wall_s` (1800); ngưỡng chỉnh được ở khoá `agent_thresholds` của YAML. Chế độ `--llm fake` phát lại hội thoại cố định
+(`--fake-script`, mặc định tests/fixtures/llm/gt_agent_noteboard.json) để kiểm đường ống mà không tốn tiền: số liệu của nó KHÔNG nói gì về chất lượng thật.
 Exit: 0 đạt mọi ngưỡng đã đo · 1 không đạt · 3 sai cấu hình/lỗi hệ thống. Thông điệp không chứa nội dung PRD/response/khoá.
 """
 from __future__ import annotations
@@ -40,6 +48,8 @@ class NoApprovedSuite(EvalError):
     """Chưa có bộ đã duyệt để đo (c): lỗi khi chỉ đo bộ đã duyệt, chỉ là ghi chú khi vừa sinh vừa đo."""
 GT_DIR = base.GT_DIR
 DEFAULT_THRESHOLDS = {"ac_coverage": 0.9, "green_rate": 0.9, "mutant_kill_rate": 0.9}
+AGENT_THRESHOLDS = {"kill_gain": 0.20, "green_min": 0.85, "max_cost_usd": 10.0, "max_wall_s": 1800.0}
+DEFAULT_AGENT_FAKE = ROOT / "tests" / "fixtures" / "llm" / "gt_agent_noteboard.json"
 DEFAULT_COPY_IGNORE = [".git", "__pycache__", ".pytest_cache", ".mypy_cache"]
 _MUTANT_KINDS = ("edits", "patch", "env", "base_url")
 
@@ -83,6 +93,10 @@ def validate_config(cfg: dict) -> list[str]:
     non_testable = cfg.get("non_testable", [])
     if not isinstance(non_testable, list) or not all(isinstance(x, str) for x in non_testable):
         problems.append("`non_testable` phải là danh sách AC id")
+    given = cfg.get("agent_thresholds")
+    if given is not None and not (isinstance(given, dict) and set(given) <= set(AGENT_THRESHOLDS) | set(DEFAULT_THRESHOLDS)
+                                  and all(isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 for v in given.values())):
+        problems.append(f"`agent_thresholds` phải là object số không âm với khoá thuộc {sorted(set(AGENT_THRESHOLDS) | set(DEFAULT_THRESHOLDS))}")
     seen = set()
     for index, mutant in enumerate(cfg.get("mutants") or []):
         label = f"mutants[{index}]"
@@ -240,9 +254,17 @@ def summarize_mutants(results: dict[str, dict], required: set[str]) -> dict:
             "required_missed": sorted(m for m in required if m in results and not results[m].get("killed"))}
 
 
-def verdict(thresholds: dict, *, coverage: float | None, green: float | None, mutants: dict | None, baseline_green: bool | None) -> dict:
-    """Phần nào chưa đo (None) thì không có mặt trong `checks`; `passed` cần ít nhất một check và tất cả đều đạt."""
+def verdict(thresholds: dict, *, coverage: float | None, green: float | None, mutants: dict | None, baseline_green: bool | None,
+            scorer_complete: bool | None = None, generated_mutants: dict | None = None, comparison: dict | None = None) -> dict:
+    """Phần nào chưa đo (None) thì không có mặt trong `checks`; `passed` cần ít nhất một check và tất cả đều đạt.
+    `scorer_complete`, `generated_mutants`, `comparison` chỉ dành cho bộ sinh agent (xem `aggregate_runs`, `compare`)."""
     checks: dict[str, bool] = {}
+    if scorer_complete is not None:
+        checks["coverage_scorer_100"] = scorer_complete
+    if generated_mutants is not None:
+        checks["generated_mutant_kill_rate"] = generated_mutants["median_kill_rate"] >= thresholds["mutant_kill_rate"]
+    for name, ok in ((comparison or {}).get("checks") or {}).items():
+        checks[f"vs_single:{name}"] = ok
     if coverage is not None:
         checks["ac_coverage"] = coverage >= thresholds["ac_coverage"]
     if green is not None:
@@ -281,6 +303,7 @@ def render_markdown(report: dict) -> str:
             lines += ["", f"Mutant sống sót (bộ test bỏ sót): {', '.join(appr['mutants']['survived'])}"]
     if "generation" in report and report["generation"]["ac_coverage"]["missing"]:
         lines += ["", f"AC testable chưa có TC (lượt thấp nhất): {', '.join(report['generation']['ac_coverage']['missing'])}"]
+    lines += render_generators(report)
     lines += ["", f"**Kết luận: {'ĐẠT' if report['verdict']['passed'] else 'KHÔNG ĐẠT'}**"]
     return "\n".join(lines) + "\n"
 
@@ -331,6 +354,143 @@ def measure_approved(cfg: dict, golden: dict, measure_mutants: bool) -> dict:
     return out
 
 
+def scripted_transport(responses: list[dict]) -> httpx.MockTransport:
+    """Phát `responses` (response Messages API đã ghi sẵn) tuần tự cho agent ở chế độ fake. Hết script thì trả 599 để lần chạy lộ ra ngay là script quá ngắn."""
+    queue = list(responses)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if not queue:
+            return httpx.Response(599, json={"error": {"type": "api_error", "message": "script đã hết"}})
+        return httpx.Response(200, json=queue.pop(0))
+
+    return httpx.MockTransport(handler)
+
+
+def generate_agent_once(cfg: dict, llm: str, fake_script: Path | None, model: str, egress_dir: Path, spec: dict | None):
+    """Một lượt sinh bằng AGENT (đọc `sut_root` + OpenAPI đầy đủ). `--llm fake` phát lại `fake_script` (danh sách response), mỗi lượt một transport mới."""
+    from qc_agent.groundtruth import agent as gt_agent
+    from qc_agent.groundtruth.prd import parse_prd
+    prd = parse_prd(cfg["prd"], openapi_source=cfg.get("openapi"))
+    options: dict = {"model": model, "egress_dir": egress_dir, "source_root": Path(cfg["sut_root"]), "openapi_spec": spec}
+    if llm == "fake":
+        try:
+            options["transport"] = scripted_transport(json.loads(Path(fake_script).read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            raise EvalError("không đọc được --fake-script (cần file JSON là danh sách response Messages API)") from None
+    return prd, gt_agent.generate_agent(prd, **options)
+
+
+def measure_scorer(catalog: dict, spec: dict | None) -> dict:
+    """(d) Bộ chấm coverage tất định trên bộ VỪA SINH (tính TC draft và waiver draft: 'nếu QA duyệt hết thì đã đủ chưa'). Không có OpenAPI thì chỉ chấm được chiều AC."""
+    from qc_agent.groundtruth import coverage as gt_coverage
+    report = gt_coverage.score(catalog, gt_coverage.snapshot(spec) if spec else None, tc_statuses=("draft", "approved"), waiver_statuses=("draft", "approved"))
+    return {"dims": report.as_dict(limit=10), "complete": report.complete()}
+
+
+def measure_generated_mutants(catalog: dict, golden: dict, cfg: dict, analysis) -> dict:
+    """(e) Mutant chạy trên bộ VỪA SINH: ép approved, chạy trên SUT sạch, GIỮ các TC xanh, rồi chạy mutant lên tập xanh đó. TC đỏ trên SUT sạch bị loại vì 'bắt được lỗi' của
+    chúng vô nghĩa (chúng fail ở mọi nơi). Nhờ vậy so được hai bộ sinh mà không cần QA duyệt tay."""
+    from qc_agent.groundtruth import render as gt_render
+    if not cfg.get("mutants"):
+        return {"measured": False, "reason": "cấu hình không có mutant"}
+    forced = json.loads(json.dumps(catalog))
+    for tc in forced["test_cases"]:
+        tc["status"] = "approved"
+    forced["status"] = "approved"
+    with tempfile.TemporaryDirectory() as tmp:
+        clean = Path(tmp) / "clean"
+        clean.mkdir()
+        gt_render.write(gt_render.render(forced, sut_root=clean, openapi=analysis), clean)
+        with sut_instance(cfg) as url:
+            _, outcomes = base.run_suite(clean, url)
+        green = {tc_id for tc_id, state in outcomes.items() if state == "passed"}
+        subset = json.loads(json.dumps(forced))
+        subset["test_cases"] = [tc for tc in forced["test_cases"] if tc["tc_id"] in green]
+        if not subset["test_cases"]:
+            return {"measured": False, "reason": "không có TC nào xanh trên SUT sạch"}
+        work = Path(tmp) / "green"
+        work.mkdir()
+        gt_render.write(gt_render.render(subset, sut_root=work, openapi=analysis), work)
+        results: dict[str, dict] = {}
+        for mutant in cfg["mutants"]:
+            with sut_instance(cfg, mutant) as url:
+                code, outcomes = base.run_suite(work, url)
+            results[mutant["id"]] = base.mutant_result(mutant["id"], code, outcomes, golden, subset["test_cases"])
+    required = {m["id"] for m in cfg["mutants"] if m.get("required")}
+    return {"measured": True, "test_cases": len(subset["test_cases"]), "excluded_red": len(forced["test_cases"]) - len(subset["test_cases"]),
+            "results": results, **summarize_mutants(results, required)}
+
+
+def aggregate_runs(runs: list[dict]) -> dict:
+    """Gộp N lượt của MỘT bộ sinh. Giữ nguyên các khoá cũ của `report["generation"]` (runs, ac_coverage, green_rate) và thêm scorer / mutants_generated / agent khi có đo."""
+    worst = min(runs, key=lambda r: r["ac_coverage"]["value"])
+    out: dict = {"runs": runs,
+                 "ac_coverage": {"median": base.median([r["ac_coverage"]["value"] for r in runs]), **{k: worst["ac_coverage"][k] for k in ("testable", "covered", "missing")}},
+                 "green_rate": {"median": base.median([r["green_rate"]["value"] for r in runs])}}
+    scored = [r["scorer"] for r in runs if r.get("scorer") and r["scorer"]["dims"]]
+    if scored:
+        out["scorer"] = {"median": {name: base.median([s["dims"][name]["ratio"] for s in scored if name in s["dims"]]) for name in ("ac", "technique", "api")
+                                    if any(name in s["dims"] for s in scored)},
+                         "complete_runs": sum(1 for s in scored if s["complete"]), "runs": len(scored)}
+    measured = [r["mutants_generated"] for r in runs if (r.get("mutants_generated") or {}).get("measured")]
+    if measured:
+        out["mutants_generated"] = {"median_kill_rate": base.median([m["value"] for m in measured]), "runs": len(measured),
+                                    "survived_in_worst": min(measured, key=lambda m: m["value"])["survived"]}
+    agents = [r["agent"] for r in runs if r.get("agent")]
+    if agents:
+        costs = [a["cost_usd_est"] for a in agents if a.get("cost_usd_est") is not None]
+        out["agent"] = {"runs": len(agents), "completed_runs": sum(1 for a in agents if a["completed"]), "turns_median": base.median([a["turns"] for a in agents]),
+                        "cost_usd_median": base.median(costs) if costs else None, "cost_usd_max": max(costs) if costs else None,
+                        "wall_s_max": max(a.get("duration_s", 0.0) for a in agents)}
+    return out
+
+
+def compare(single: dict, agent: dict, thresholds: dict) -> dict:
+    """Agent có 'tốt hơn hẳn' single không (kết quả của `aggregate_runs`). Mục nào chưa đo thì không có mặt trong `checks`."""
+    t = {**DEFAULT_THRESHOLDS, **AGENT_THRESHOLDS, **thresholds}
+    checks: dict[str, bool] = {}
+    if agent.get("scorer"):
+        checks["scorer_100"] = agent["scorer"]["complete_runs"] == agent["scorer"]["runs"]
+    if agent.get("mutants_generated") and single.get("mutants_generated"):
+        a, s = agent["mutants_generated"]["median_kill_rate"], single["mutants_generated"]["median_kill_rate"]
+        checks["kill_rate"] = a >= t["mutant_kill_rate"] or a - s >= t["kill_gain"]
+    checks["green_rate"] = agent["green_rate"]["median"] >= max(single["green_rate"]["median"], t["green_min"])
+    run = agent.get("agent")
+    if run:
+        checks["completed"] = run["completed_runs"] == run["runs"]
+        if run["cost_usd_max"] is not None:
+            checks["cost"] = run["cost_usd_max"] <= t["max_cost_usd"]
+        checks["wall_time"] = run["wall_s_max"] <= t["max_wall_s"]
+    return {"checks": checks, "passed": bool(checks) and all(checks.values())}
+
+
+def render_generators(report: dict) -> list[str]:
+    """Bảng so các bộ sinh đã chạy (single / agent) + các check so sánh. Rỗng khi chỉ chạy `single` như trước."""
+    generators = report.get("generators") or {}
+    if "agent" not in generators:
+        return []
+    mark = lambda ok: "✅" if ok else "❌"  # noqa: E731
+    names = [n for n in ("single", "agent") if n in generators]
+    cell = lambda fn: " | ".join(fn(generators[n]) for n in names)  # noqa: E731
+    pct = lambda value: "—" if value is None else f"{value:.0%}"  # noqa: E731
+    lines = ["", "### So các bộ sinh", "", "| Metric | " + " | ".join(names) + " |", "|---|" + "---|" * len(names),
+             "| AC coverage theo golden (median) | " + cell(lambda g: pct(g["ac_coverage"]["median"])) + " |",
+             "| TC xanh trên SUT sạch (median) | " + cell(lambda g: pct(g["green_rate"]["median"])) + " |"]
+    for dim, label in (("ac", "AC"), ("technique", "technique"), ("api", "API")):
+        lines.append(f"| Coverage scorer {label} (median) | " + cell(lambda g, d=dim: pct((g.get("scorer") or {}).get("median", {}).get(d))) + " |")
+    lines.append("| Coverage scorer 100% (số lượt) | " + cell(lambda g: "—" if not g.get("scorer") else f"{g['scorer']['complete_runs']}/{g['scorer']['runs']}") + " |")
+    lines.append("| Mutant bị bắt trên bộ vừa sinh (median) | " + cell(lambda g: pct((g.get("mutants_generated") or {}).get("median_kill_rate"))) + " |")
+    lines.append("| Số TC (median) | " + cell(lambda g: str(int(base.median([r["test_cases"] for r in g["runs"]])))) + " |")
+    agent = generators["agent"].get("agent")
+    if agent:
+        cost = "—" if agent["cost_usd_max"] is None else f"≤ ${agent['cost_usd_max']:.2f}"
+        lines += ["", f"Agent: {agent['completed_runs']}/{agent['runs']} lượt hoàn tất · {agent['turns_median']:.0f} lượt gọi (median) · chi phí ước tính {cost} · {agent['wall_s_max']:.0f}s (lượt lâu nhất)"]
+    comparison = report.get("comparison")
+    if comparison:
+        lines += ["", "| Tiêu chí 'agent tốt hơn hẳn' | |", "|---|---|"] + [f"| {name} | {mark(ok)} |" for name, ok in comparison["checks"].items()]
+    return lines
+
+
 def generate_once(cfg: dict, llm: str, fake_response: Path | None, model: str, egress_dir: Path):
     import httpx as _httpx
     from qc_agent.groundtruth.generate import generate
@@ -340,6 +500,31 @@ def generate_once(cfg: dict, llm: str, fake_response: Path | None, model: str, e
         payload = json.loads(Path(fake_response).read_text(encoding="utf-8"))
         return prd, generate(prd, model=model, egress_dir=egress_dir, transport=_httpx.MockTransport(lambda request: _httpx.Response(200, json=payload)))
     return prd, generate(prd, model=model, egress_dir=egress_dir)
+
+
+def check_only(cfg: dict, prd, golden: dict) -> int:
+    """Kiểm khô, KHÔNG gọi LLM: mọi thứ mà lần chạy thật cần phải đúng (đường dẫn, PRD, OpenAPI, repo map, SUT khởi động được) để không đốt tiền vì lỗi cấu hình."""
+    from qc_agent.groundtruth import coverage as gt_coverage, repo_map as gt_repo_map
+    from qc_agent.scaffold import openapi as scaffold_openapi
+    acs = sum(len(s.acs) for s in prd.stories)
+    testable = sum(1 for spec_ in golden["acs"].values() if spec_["testable"])
+    lines = [f"PRD `{prd.prd_id}`: {len(prd.stories)} story, {acs} AC ({testable} testable theo non_testable), {len(prd.endpoints)} endpoint từ OpenAPI"]
+    if acs == 0:
+        raise EvalError("PRD không có AC nào: định dạng PRD sai (xem `qc-agent gt info`)")
+    if cfg.get("openapi"):
+        facts = gt_coverage.snapshot(scaffold_openapi.load(cfg["openapi"]))
+        cells = sum(len(gt_coverage.requirements(op)) for op in facts["operations"])
+        lines.append(f"OpenAPI: {len(facts['operations'])} operation, {cells} yêu cầu technique để chấm")
+    else:
+        lines.append("OpenAPI: KHÔNG có trong cấu hình: agent không có tool openapi_*, scorer chỉ chấm AC")
+    built = gt_repo_map.build(Path(cfg["sut_root"]))
+    lines.append(f"repo map: {built['stats']['files']} file Python đã quét ({built['stats']['skipped']} bỏ qua), văn bản {len(gt_repo_map.render_text(built))} ký tự")
+    with sut_instance(cfg) as url:
+        lines.append(f"SUT sạch khởi động được: {url}")
+    lines.append(f"mutant: {len(cfg.get('mutants') or [])} (khai báo hợp lệ)")
+    print("\n".join("OK  " + line for line in lines))
+    print("KIỂM KHÔ ĐẠT: chưa gọi LLM nào. Bước tiếp: `--llm fake` chỉ hợp với noteboard; với SUT khác hãy chạy thật nhỏ (smoke) với QC_GT_AGENT_MAX_COST_USD=1.0.")
+    return 0
 
 
 def main(argv: list[str]) -> int:
@@ -355,6 +540,13 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--fake-response", type=Path, default=base.DEFAULT_FAKE, help="response Messages API phát lại ở chế độ fake")
     ap.add_argument("--out-json", type=Path)
     ap.add_argument("--yes", action="store_true", help="xác nhận việc gửi PRD ra nhà cung cấp LLM (bắt buộc với --llm real)")
+    ap.add_argument("--generator", choices=("single", "agent", "both"), default="single",
+                    help="bộ sinh cần đo: single (một lời gọi, mặc định, hành vi cũ), agent (đọc mã nguồn, nhiều lượt, chỉ Claude), hoặc both để so hai bên cùng PRD/SUT")
+    ap.add_argument("--agent-model", help="ghi đè QC_GT_AGENT_MODEL cho agent (phải là model Claude)")
+    ap.add_argument("--fake-script", type=Path, default=DEFAULT_AGENT_FAKE, help="hội thoại nhiều lượt (danh sách response Messages API) phát lại ở chế độ fake cho agent")
+    ap.add_argument("--max-total-usd", type=float, help="BẮT BUỘC khi --llm real với agent: tổng ngân sách tối đa cho cả lệnh; từ chối chạy nếu trần/lượt × số lượt × số bộ sinh agent vượt mức này")
+    ap.add_argument("--check-only", action="store_true", help="kiểm khô KHÔNG gọi LLM: đọc cấu hình, PRD, OpenAPI, quét repo map, khởi động SUT sạch một lần; in số liệu rồi thoát (làm trước khi chạy thật)")
+    ap.add_argument("--generated-mutants", action="store_true", help="đo mutant trên bộ VỪA SINH (tập TC xanh); tự bật khi --generator both")
     ap.add_argument("--price-in", type=float, help="USD/MTok đầu vào (Gemini free tier: mặc định 0)")
     ap.add_argument("--price-out", type=float, help="USD/MTok đầu ra")
     try:
@@ -374,39 +566,77 @@ def main(argv: list[str]) -> int:
         thresholds = {**DEFAULT_THRESHOLDS, **(cfg.get("thresholds") or {})}
         prd = parse_prd(cfg["prd"], openapi_source=cfg.get("openapi"))
         golden = build_golden(cfg, prd)
+        if args.check_only:
+            return check_only(cfg, prd, golden)
         model = settings.get().gt_model
+        gens = ("single", "agent") if args.generator == "both" else (args.generator,)
+        agent_model = args.agent_model or settings.get().gt_agent_model
+        if "agent" in gens and provider_of(agent_model) != "anthropic":
+            raise EvalError("agent chỉ hỗ trợ model Claude (--agent-model / QC_GT_AGENT_MODEL)")
         if args.llm == "fake":
             if provider_of(model) == "gemini":
                 model = "claude-sonnet-5"   # response giả có dạng Messages API
             if not os.environ.get("ANTHROPIC_API_KEY", "").strip():   # khoá rỗng (vd. từ .env) cũng phải thay
                 os.environ["ANTHROPIC_API_KEY"] = "sk-ant-eval-fake"
         elif not args.skip_generate:
-            free = provider_of(model) == "gemini" and args.price_in is None and args.price_out is None
-            estimate = base.estimate_for(cfg["prd"], cfg.get("openapi"), args.runs, model, 0.0 if free else args.price_in, 0.0 if free else args.price_out)
-            print(f"ƯỚC TÍNH ({model}): ~{estimate['input_tokens_per_run']} token vào + tối đa {estimate['output_tokens_per_run_max']} token ra mỗi lượt, "
-                  f"{args.runs} lượt ≈ {'$0 (free tier, tốn quota RPM/RPD)' if free else '$%.2f' % estimate['usd_total']}. "
-                  "PRD được gửi tới nhà cung cấp LLM (ghi egress trước khi gửi).", file=sys.stderr)
+            if "single" in gens:
+                free = provider_of(model) == "gemini" and args.price_in is None and args.price_out is None
+                estimate = base.estimate_for(cfg["prd"], cfg.get("openapi"), args.runs, model, 0.0 if free else args.price_in, 0.0 if free else args.price_out)
+                print(f"ƯỚC TÍNH ({model}): ~{estimate['input_tokens_per_run']} token vào + tối đa {estimate['output_tokens_per_run_max']} token ra mỗi lượt, "
+                      f"{args.runs} lượt ≈ {'$0 (free tier, tốn quota RPM/RPD)' if free else '$%.2f' % estimate['usd_total']}. "
+                      "PRD được gửi tới nhà cung cấp LLM (ghi egress trước khi gửi).", file=sys.stderr)
+            if "agent" in gens:
+                if not os.environ.get("QC_GT_AGENT_MAX_COST_USD", "").strip():
+                    raise EvalError("chạy agent thật cần đặt tường minh QC_GT_AGENT_MAX_COST_USD (trần cứng USD cho MỘT lượt), vd 1.0 cho smoke call, 3.0 cho lượt đo")
+                if args.max_total_usd is None or args.max_total_usd <= 0:
+                    raise EvalError("chạy agent thật cần --max-total-usd (tổng ngân sách tối đa của cả lệnh)")
+                cap = settings.get().gt_agent_max_cost_usd
+                worst = cap * args.runs * sum(1 for g in gens if g == "agent")
+                if worst > args.max_total_usd + 1e-9:
+                    raise EvalError(f"trần ${cap:.2f}/lượt × {args.runs} lượt = ${worst:.2f} vượt --max-total-usd ${args.max_total_usd:.2f}: giảm --runs hoặc QC_GT_AGENT_MAX_COST_USD")
+                print(f"ƯỚC TÍNH AGENT ({agent_model}): KHÔNG ước lượng được trước (số lượt tuỳ model); trần cứng ${cap:.2f}/lượt (QC_GT_AGENT_MAX_COST_USD) nên {args.runs} lượt ≤ ${cap * args.runs:.2f}. "
+                      "PRD, OpenAPI và MÃ NGUỒN của SUT được gửi tới Anthropic (egress ghi trước khi gửi).", file=sys.stderr)
             if not args.yes:
-                raise EvalError("--llm real cần --yes (xác nhận việc gửi PRD ra ngoài)")
-        analysis = scaffold_openapi.analyze(scaffold_openapi.load(cfg["openapi"])) if cfg.get("openapi") else None
+                raise EvalError("--llm real cần --yes (xác nhận việc gửi PRD, và với agent cả mã nguồn, ra ngoài)")
+        spec = scaffold_openapi.load(cfg["openapi"]) if cfg.get("openapi") else None
+        analysis = scaffold_openapi.analyze(spec) if spec else None
 
+        labels = {"single": model, "agent": agent_model}
+        shown = " vs ".join(labels[g] for g in gens)
         report: dict = {"name": cfg.get("name", Path(cfg["sut_root"]).name), "prd_id": prd.prd_id, "llm": "skipped" if args.skip_generate else args.llm,
-                        "model": "—" if args.skip_generate else model if args.llm == "real" else f"{model} (fake)", "labeled_by": cfg.get("labeled_by"),
-                        "thresholds": thresholds, "mutant_acs": {m["id"]: m["acs"] for m in cfg.get("mutants") or []}}
-        coverage = green = mutants = baseline = None
+                        "model": "—" if args.skip_generate else shown if args.llm == "real" else f"{shown} (fake)", "labeled_by": cfg.get("labeled_by"),
+                        "thresholds": thresholds, "mutant_acs": {m["id"]: m["acs"] for m in cfg.get("mutants") or []}, "generator": "—" if args.skip_generate else args.generator}
+        coverage = green = mutants = baseline = scorer_complete = generated_mutants = comparison = None
         if not args.skip_generate:
-            runs = []
-            with tempfile.TemporaryDirectory() as egress:
-                for _ in range(args.runs):
-                    _, generated = generate_once(cfg, args.llm, args.fake_response, model, Path(egress))
-                    measured = measure_generation(generated.catalog, golden, cfg, analysis)
-                    measured["usage"] = {"input_tokens": generated.usage.input_tokens, "output_tokens": generated.usage.output_tokens}
-                    measured["orphans"] = list(generated.orphans)
-                    runs.append(measured)
-            worst = min(runs, key=lambda r: r["ac_coverage"]["value"])
-            coverage, green = base.median([r["ac_coverage"]["value"] for r in runs]), base.median([r["green_rate"]["value"] for r in runs])
-            report["generation"] = {"runs": runs, "ac_coverage": {"median": coverage, **{k: worst["ac_coverage"][k] for k in ("testable", "covered", "missing")}},
-                                    "green_rate": {"median": green}}
+            measure_generated = (args.generator == "both" or args.generated_mutants) and not args.skip_mutants and bool(cfg.get("mutants"))
+            aggregates: dict[str, dict] = {}
+            for kind in gens:
+                runs = []
+                with tempfile.TemporaryDirectory() as egress:
+                    for _ in range(args.runs):
+                        if kind == "single":
+                            _, generated = generate_once(cfg, args.llm, args.fake_response, model, Path(egress))
+                        else:
+                            _, generated = generate_agent_once(cfg, args.llm, args.fake_script, agent_model, Path(egress), spec)
+                        measured = measure_generation(generated.catalog, golden, cfg, analysis)
+                        measured["usage"] = {"input_tokens": generated.usage.input_tokens, "output_tokens": generated.usage.output_tokens}
+                        measured["orphans"] = list(generated.orphans)
+                        measured["scorer"] = measure_scorer(generated.catalog, spec)
+                        if measure_generated:
+                            measured["mutants_generated"] = measure_generated_mutants(generated.catalog, golden, cfg, analysis)
+                        if kind == "agent":
+                            measured["agent"] = {key: generated.agent.get(key) for key in ("turns", "stop", "completed", "error_kind", "files_read", "bytes_read", "submissions", "dropped_in_loop",
+                                                                                           "finish_rejections", "waivers", "spec_conflicts", "cost_usd_est", "duration_s", "techniques", "repo_map")}
+                        runs.append(measured)
+                aggregates[kind] = aggregate_runs(runs)
+            primary = aggregates["agent"] if "agent" in aggregates else aggregates["single"]
+            coverage, green = primary["ac_coverage"]["median"], primary["green_rate"]["median"]
+            report["generation"], report["generators"] = primary, aggregates
+            if args.generator == "agent":       # agent một mình: scorer 100% và kill rate trên bộ vừa sinh là điều kiện; `both` dồn hết vào `comparison`
+                scorer_complete = primary["scorer"]["complete_runs"] == primary["scorer"]["runs"] if primary.get("scorer") else None
+                generated_mutants = primary.get("mutants_generated")
+            if args.generator == "both":
+                comparison = report["comparison"] = compare(aggregates["single"], aggregates["agent"], {**thresholds, **(cfg.get("agent_thresholds") or {})})
         if args.skip_generate or not args.skip_mutants:
             try:
                 approved = measure_approved(cfg, golden, measure_mutants=not args.skip_mutants)
@@ -425,7 +655,8 @@ def main(argv: list[str]) -> int:
         print(f"LỖI HỆ THỐNG: {type(error).__name__}", file=sys.stderr)
         return 3
 
-    report["verdict"] = verdict(thresholds, coverage=coverage, green=green, mutants=mutants, baseline_green=baseline)
+    report["verdict"] = verdict(thresholds, coverage=coverage, green=green, mutants=mutants, baseline_green=baseline,
+                                scorer_complete=scorer_complete, generated_mutants=generated_mutants, comparison=comparison)
     if args.out_json:
         args.out_json.parent.mkdir(parents=True, exist_ok=True)
         args.out_json.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")

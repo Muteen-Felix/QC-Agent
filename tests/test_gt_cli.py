@@ -19,10 +19,12 @@ from tests.fakes import FakeAnthropic
 from qc_agent.core import egress
 from qc_agent.core.cli import main as cli_main
 from qc_agent.groundtruth import check as gt_check
+from qc_agent.groundtruth import coverage as gt_coverage
 from qc_agent.groundtruth import render as gt_render
 from qc_agent.groundtruth import schema as gt_schema
 from qc_agent.groundtruth.merge import merge
 from qc_agent.llm.client import LLMError, call_tool
+from qc_agent.scaffold import openapi
 from qc_agent.scaffold import validate as v
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -92,6 +94,11 @@ def save_catalog(sut: Path, data: dict) -> None:
     (sut / GT / "test-cases.yaml").write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n")
 
 
+def relax_coverage(sut: Path) -> None:
+    """Các test dùng hàm này kiểm drift/module-map/lý do reject chứ không kiểm coverage (catalog noteboard chưa đủ 100%: xem tests/test_gt_coverage.py)."""
+    (sut / GT / "coverage-policy.yaml").write_text("version: 1\nthresholds: {ac: 0, technique: 0, api: 0}\n", encoding="utf-8", newline="\n")
+
+
 def approve_everything(sut: Path, *, keep_draft=()) -> None:
     """Thao tác của QA: duyệt hết TC và catalog, điền module-map rồi đổi sang approved."""
     data = load_catalog(sut)
@@ -100,6 +107,7 @@ def approve_everything(sut: Path, *, keep_draft=()) -> None:
             tc["status"] = "approved"
     data["status"] = "approved" if not keep_draft else "draft"
     save_catalog(sut, data)
+    relax_coverage(sut)
     path = sut / GT / "module-map.yaml"
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if "qc-agent:todo" not in line]
     path.write_text("\n".join(lines).replace("status: draft", "status: approved").replace("TODO-route-files-of-notes", "toyapp/**") + "\n", encoding="utf-8")
@@ -113,8 +121,15 @@ def dump(entry) -> str:
 
 def test_generate_reproduces_the_golden_tree_and_two_runs_are_byte_identical(tmp_path, capsys, fake):
     first, second = generated(tmp_path, capsys, "one"), generated(tmp_path, capsys, "two")
-    golden = tree(EXPECTED / ".qc-agent")
-    assert tree(first / ".qc-agent") == golden == tree(second / ".qc-agent")
+    trees = [tree(first / ".qc-agent"), tree(second / ".qc-agent")]
+    snapshots = [t.pop("ground-truth/openapi.snapshot.json") for t in trees]   # CLI ghi thêm file này; render() thì không, nên golden không có nó
+    sheets = [t.pop("ground-truth/test-cases.xlsx") for t in trees]            # nhị phân, không hứa byte-ổn-định: so theo NGỮ NGHĨA (xlsx.projection)
+    assert trees[0] == tree(EXPECTED / ".qc-agent") == trees[1]
+    from qc_agent.groundtruth import xlsx as gt_xlsx
+    reads = [gt_xlsx.read_xlsx(sheet) for sheet in sheets]
+    assert all(not syntax and base == gt_xlsx.projection(load_catalog(sut)) and gt_xlsx.strip_rows(theirs) == base for (theirs, base, syntax), sut in zip(reads, (first, second)))
+    expected_snapshot = gt_coverage.snapshot_text(gt_coverage.snapshot(openapi.load(str(OPENAPI)))).encode("utf-8")
+    assert snapshots == [expected_snapshot, expected_snapshot]
     assert fake.count == 2 and all(not r["rejected"] and r["headers"]["x-api-key"] == KEY and r["headers"]["anthropic-version"] for r in fake.requests)
 
 
@@ -282,6 +297,9 @@ def test_validate_fails_while_drafts_remain_and_passes_when_everything_is_review
     assert code == 1 and "33 test case còn draft" in out and "catalog còn status: draft" in out and "module-map còn status: draft" in out and "qc-agent:todo" in out
     approve_everything(sut)
     code, out, err = gt(capsys, "validate", "--sut-root", sut)
+    assert code == 0 and "Excel đã cũ" in out, out                              # QA sửa YAML tay: xlsx cũ chỉ là cảnh báo
+    assert gt(capsys, "export-xlsx", "--sut-root", sut)[0] == 0
+    code, out, err = gt(capsys, "validate", "--sut-root", sut)
     assert code == 0, out
     assert out.strip().splitlines()[-1] == "OK: 0 lỗi, 1 cảnh báo" and "AC-3.5" in out     # orphan chỉ là cảnh báo
 
@@ -392,6 +410,7 @@ def test_no_approved_test_case_is_only_a_warning(tmp_path, capsys, fake):
         tc.update(status="rejected", rejected_reason="loại")
     data["status"] = "approved"
     save_catalog(sut, data)
+    relax_coverage(sut)
     approve_everything_module_map = sut / GT / "module-map.yaml"
     approve_everything_module_map.write_text("version: 1\nstatus: approved\nmodules: []\n", encoding="utf-8")
     code, out, _ = gt(capsys, "validate", "--sut-root", sut)

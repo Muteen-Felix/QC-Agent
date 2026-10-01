@@ -61,6 +61,17 @@ class Settings(BaseSettings):
     llm_min_interval_s: float = 0.0
     llm_fallback_models: str = ""
     gemini_thinking_level: str = ""
+    # Ground-Truth agent (đọc repo SUT, nhiều lượt, chỉ Claude). `single` = bộ sinh một lời gọi như cũ. Xem llm/agent_loop.py và groundtruth/agent.py.
+    gt_generator: str = "single"
+    gt_agent_model: str = "claude-sonnet-5-5"
+    gt_agent_effort: str = "high"
+    gt_agent_max_turns: int = 40
+    gt_agent_max_cost_usd: float = 3.0
+    gt_agent_max_wall_s: float = 1800.0
+    gt_agent_max_read_bytes: int = 3_000_000
+    gt_agent_timeout_s: float = 600.0
+    gt_agent_fallbacks: bool = True
+    gt_xlsx: bool = True   # `gt generate|regen` ghi thêm test-cases.xlsx cho QA (xlsx.py); QC_GT_XLSX=false hoặc --no-xlsx để tắt
 
     @property
     def project_root(self) -> Path:

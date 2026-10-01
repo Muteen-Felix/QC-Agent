@@ -30,7 +30,10 @@
     "status": {"enum": ["draft", "approved"]},
     "stories": {"type": "array", "items": {"$ref": "#/$defs/story"}},
     "test_cases": {"type": "array", "items": {"$ref": "#/$defs/testCase"}},
-    "uncovered_acs": {"type": "array", "items": {"$ref": "#/$defs/uncovered"}}
+    "uncovered_acs": {"type": "array", "items": {"$ref": "#/$defs/uncovered"}},
+    "coverage_plan": {"type": "array", "items": {"$ref": "#/$defs/planItem"}},
+    "waivers": {"type": "array", "items": {"$ref": "#/$defs/waiver"}},
+    "spec_conflicts": {"type": "array", "items": {"$ref": "#/$defs/specConflict"}}
   },
   "if": {"properties": {"status": {"const": "approved"}}, "required": ["status"]},
   "then": {
@@ -121,6 +124,11 @@
         "origin": {"enum": ["llm", "qa"]},
         "rejected_reason": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "notes": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "priority": {"enum": ["high", "medium", "low"]},
+        "technique": {"$ref": "#/$defs/technique"},
+        "preconditions": {"anyOf": [{"type": "string", "maxLength": 300}, {"type": "null"}]},
+        "rationale": {"anyOf": [{"type": "string", "maxLength": 300}, {"type": "null"}]},
+        "evidence": {"type": "array", "maxItems": 5, "items": {"$ref": "#/$defs/evidence"}},
         "steps": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/step"}}
       },
       "allOf": [
@@ -177,6 +185,64 @@
       "additionalProperties": false,
       "required": ["ac_id", "reason"],
       "properties": {"ac_id": {"$ref": "#/$defs/id"}, "reason": {"type": "string", "minLength": 1}}
+    },
+
+    "technique": {
+      "description": "Kỹ thuật thiết kế test. Bộ chấm coverage (S1 agent) suy ra technique BẮT BUỘC của từng AC bằng code; nhãn này chỉ là lời khai của người sinh, bộ chấm còn kiểm TC có thật sự chạm đúng field/ràng buộc.",
+      "enum": ["happy_path", "boundary", "equivalence", "negative_validation", "error_handling", "state_transition", "authz", "idempotency", "data_integrity"]
+    },
+    "evidencePath": {
+      "description": "Đường dẫn tương đối repo, không có đoạn `.` hay `..`, không có `//`. Phải khớp `_EVIDENCE_PATH` trong generate.py.",
+      "type": "string", "pattern": "^[.]?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[.]?[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$", "maxLength": 200
+    },
+    "evidence": {
+      "description": "Bằng chứng trong mã nguồn SUT cho TC (đường dẫn tương đối repo, dòng tuỳ chọn). Chỉ là gợi ý cho QA; kỳ vọng của TC lấy từ PRD/OpenAPI, không lấy từ mã.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {"$ref": "#/$defs/evidencePath"},
+        "line": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]}
+      }
+    },
+    "planItem": {
+      "description": "Một dòng của coverage plan do agent lập: AC x technique. tc_ids do code điền sau khi ghép với TC đã nhận.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ac_id", "technique", "scenario", "decision"],
+      "properties": {
+        "ac_id": {"$ref": "#/$defs/id"},
+        "technique": {"$ref": "#/$defs/technique"},
+        "scenario": {"type": "string", "minLength": 1, "maxLength": 200},
+        "decision": {"enum": ["planned", "skip"]},
+        "reason": {"anyOf": [{"type": "string", "maxLength": 300}, {"type": "null"}]},
+        "tc_ids": {"type": "array", "items": {"type": "string", "pattern": "^TC-[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 80}}
+      }
+    },
+    "waiver": {
+      "description": "Miễn một ô coverage (technique hoặc API) kèm lý do. Chỉ có hiệu lực khi status=approved (QA duyệt).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target", "reason_code", "reason", "status"],
+      "properties": {
+        "kind": {"enum": ["technique", "api"]},
+        "target": {"type": "string", "minLength": 1, "maxLength": 200},
+        "reason_code": {"enum": ["not_http_reachable", "needs_infra_fault", "not_applicable", "out_of_scope"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 300},
+        "status": {"enum": ["draft", "approved", "rejected"]}
+      }
+    },
+    "specConflict": {
+      "description": "Mã nguồn nói khác PRD/OpenAPI. Agent KHÔNG sinh TC theo mã; QA quyết (PRD sai hay SUT sai).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ac_id", "summary", "status"],
+      "properties": {
+        "ac_id": {"$ref": "#/$defs/id"},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 300},
+        "evidence": {"type": "array", "maxItems": 5, "items": {"$ref": "#/$defs/evidence"}},
+        "status": {"enum": ["open", "resolved"]}
+      }
     },
 
     "emitPathParam": {
@@ -238,6 +304,69 @@
         "ac_refs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/id"}},
         "kind": {"enum": ["api_contract", "api_functional", "flow"]},
         "steps": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/emitStep"}}
+      }
+    },
+    "emitEvidence": {
+      "type": "object", "additionalProperties": false, "required": ["path", "line"],
+      "properties": {"path": {"$ref": "#/$defs/evidencePath"}, "line": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]}}
+    },
+    "agentTestCase": {
+      "description": "Test case do agent nộp: như emitTestCase cộng metadata cho QA. Kỳ vọng (status, body) lấy từ PRD/OpenAPI, KHÔNG lấy từ mã nguồn. evidence chỉ là file đã đọc làm căn cứ cho input/biên.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "ac_refs", "kind", "technique", "priority", "preconditions", "rationale", "evidence", "steps"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "ac_refs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/id"}},
+        "kind": {"enum": ["api_contract", "api_functional", "flow"]},
+        "technique": {"$ref": "#/$defs/technique"},
+        "priority": {"enum": ["high", "medium", "low"]},
+        "preconditions": {"anyOf": [{"type": "string", "maxLength": 300}, {"type": "null"}]},
+        "rationale": {"anyOf": [{"type": "string", "maxLength": 300}, {"type": "null"}]},
+        "evidence": {"type": "array", "maxItems": 5, "items": {"$ref": "#/$defs/emitEvidence"}},
+        "steps": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/emitStep"}}
+      }
+    },
+    "emitPlanItem": {
+      "type": "object", "additionalProperties": false, "required": ["ac_id", "technique", "scenario", "decision", "reason"],
+      "properties": {
+        "ac_id": {"$ref": "#/$defs/id"}, "technique": {"$ref": "#/$defs/technique"},
+        "scenario": {"type": "string", "minLength": 1, "maxLength": 200}, "decision": {"enum": ["planned", "skip"]},
+        "reason": {"anyOf": [{"type": "string", "maxLength": 300}, {"type": "null"}]}
+      }
+    },
+    "emitWaiver": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "target", "reason_code", "reason"],
+      "properties": {
+        "kind": {"enum": ["technique", "api"]}, "target": {"type": "string", "minLength": 1, "maxLength": 200},
+        "reason_code": {"enum": ["not_http_reachable", "needs_infra_fault", "not_applicable", "out_of_scope"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 300}
+      }
+    },
+    "submit_test_cases": {
+      "description": "Nộp test case của MỘT story. Code kiểm từng TC ngay và trả lý do cho TC bị bỏ để sửa và nộp lại.",
+      "type": "object", "additionalProperties": false, "required": ["story_id", "test_cases"],
+      "properties": {"story_id": {"$ref": "#/$defs/id"}, "test_cases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/agentTestCase"}}}
+    },
+    "record_coverage_plan": {
+      "description": "Kế hoạch coverage: mỗi dòng là một AC x technique. Gọi lại để thay bản cũ.",
+      "type": "object", "additionalProperties": false, "required": ["items"],
+      "properties": {"items": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/emitPlanItem"}}}
+    },
+    "report_spec_conflict": {
+      "description": "Mã nguồn nói khác PRD/OpenAPI về một AC. Không viết TC theo mã; QA sẽ quyết PRD sai hay SUT sai.",
+      "type": "object", "additionalProperties": false, "required": ["ac_id", "summary", "evidence"],
+      "properties": {"ac_id": {"$ref": "#/$defs/id"}, "summary": {"type": "string", "minLength": 1, "maxLength": 300},
+                     "evidence": {"type": "array", "maxItems": 5, "items": {"$ref": "#/$defs/emitEvidence"}}}
+    },
+    "finish_generation": {
+      "description": "Kết thúc. Code chấm coverage; còn thiếu thì trả danh sách gap để bạn nộp thêm. uncovered_acs và waivers phải có lý do thật và đều do QA duyệt sau.",
+      "type": "object", "additionalProperties": false, "required": ["uncovered_acs", "waivers", "self_review"],
+      "properties": {
+        "uncovered_acs": {"type": "array", "items": {"$ref": "#/$defs/uncovered"}},
+        "waivers": {"type": "array", "items": {"$ref": "#/$defs/emitWaiver"}},
+        "self_review": {"type": "object", "additionalProperties": false, "required": ["gaps_fixed", "notes"],
+                        "properties": {"gaps_fixed": {"type": "integer", "minimum": 0}, "notes": {"type": "string", "maxLength": 300}}}
       }
     },
     "emit_test_cases": {

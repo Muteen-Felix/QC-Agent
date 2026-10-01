@@ -58,6 +58,17 @@ def emit_schema() -> dict:
     return _inline(defs["emit_test_cases"], defs, ("emit_test_cases",))
 
 
+AGENT_TOOLS = ("submit_test_cases", "record_coverage_plan", "report_spec_conflict", "finish_generation")
+
+
+def tool_input_schema(name: str) -> dict:
+    """Input schema của một tool của agent (`AGENT_TOOLS`), đã inline mọi `$ref`: strict-tương thích, và là schema ĐẦY ĐỦ để `agent_loop` validate lại."""
+    if name not in AGENT_TOOLS:
+        raise ValueError(f"không có tool {name!r}; có: {', '.join(AGENT_TOOLS)}")
+    defs = catalog_schema()["$defs"]
+    return _inline(defs[name], defs, (name,))
+
+
 def _path(error: jse.ValidationError) -> str:
     return "/".join(str(part) for part in error.absolute_path) or "<gốc>"
 

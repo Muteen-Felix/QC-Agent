@@ -449,7 +449,8 @@ def test_gt_only_branches_in_the_bot_namespace_are_ever_touched(shell, tmp_path,
 # ---- chọn khoá LLM theo model + cấu hình quota Gemini: chạy THẬT bước "Generate Ground-Truth" với `docker` giả ----
 
 GEN_ENV = {"IMAGE": "ghcr.io/muteen-felix/qc-agent@sha256:" + "a" * 64, "PRD": "docs/prd/a.md", "OPENAPI": "", "MODEL": "", "LLM_MIN_INTERVAL_S": "",
-           "LLM_MAX_RETRIES": "", "LLM_FALLBACK_MODELS": "", "ANTHROPIC_API_KEY": "", "GEMINI_API_KEY": ""}
+           "LLM_MAX_RETRIES": "", "LLM_FALLBACK_MODELS": "", "ANTHROPIC_API_KEY": "", "GEMINI_API_KEY": "",
+           "AGENT": "false", "AGENT_MODEL": "", "AGENT_MAX_TURNS": "", "AGENT_MAX_COST_USD": "", "AGENT_SRC": ""}   # workflow luôn đặt đủ mọi biến (set -u)
 SECRET_A, SECRET_G = "sk-ant-SECRET-VALUE-1", "AIza-SECRET-VALUE-2"
 
 
