@@ -378,7 +378,8 @@ def main(argv: list[str]) -> int:
         if args.llm == "fake":
             if provider_of(model) == "gemini":
                 model = "claude-sonnet-5"   # response giả có dạng Messages API
-            os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-eval-fake")
+            if not os.environ.get("ANTHROPIC_API_KEY", "").strip():   # khoá rỗng (vd. từ .env) cũng phải thay
+                os.environ["ANTHROPIC_API_KEY"] = "sk-ant-eval-fake"
         elif not args.skip_generate:
             free = provider_of(model) == "gemini" and args.price_in is None and args.price_out is None
             estimate = base.estimate_for(cfg["prd"], cfg.get("openapi"), args.runs, model, 0.0 if free else args.price_in, 0.0 if free else args.price_out)

@@ -31,6 +31,15 @@ class RunContext:
     suite_sha256: dict = field(default_factory=dict)  # sha256 nội dung từng suite đã chạy: reviewer thấy suite có bị sửa không
 
 
+    selection: dict | None = None
+    policy_suite_count: int | None = None
+    selected_suite_count: int | None = None
+
+
+def _clean_reason(value: str) -> str:
+    return re.sub(r"[\x00-\x1f\x7f]", " ", str(value)).strip()[:200]
+
+
 def render(ctx: RunContext) -> tuple[str, dict]:
     gating = sorted(
         (result for result in ctx.results.values() if result["verdict"]["gating"]),
@@ -53,6 +62,17 @@ def render(ctx: RunContext) -> tuple[str, dict]:
 
     symbol = {"PASS": "✅", "YELLOW": "🟡", "FAIL": "❌"}.get(ctx.gate.value, "⚠")
     lines.extend([f"## VERDICT: {symbol} {ctx.gate.value}", ""])
+    if ctx.selection is not None:
+        selected = ctx.selection
+        lines.extend(["## Phạm vi chạy", "",
+                      f"- Trigger: {selected['trigger_type']}; source: {selected['source']}; full set: {selected['full_set']}",
+                      f"- Fallback: {selected.get('fallback_reason') or 'không'}; floor: {', '.join(selected.get('floor', [])) or 'không'}",
+                      f"- Suites: {ctx.selected_suite_count}/{ctx.policy_suite_count}"])
+        for worker, reason in sorted(selected.get("rationale", {}).items()):
+            lines.append(f"- {worker}: {_clean_reason(reason)}")
+        if selected.get("floor_enforced_by_core"):
+            lines.append("- Floor được core bổ sung: " + ", ".join(selected["floor_enforced_by_core"]))
+        lines.append("")
     lines.extend(_deterministic_section(ctx, gating))
     lines.extend(_llm_section(ctx))
     lines.extend(_discovery_section(ctx))
@@ -98,6 +118,10 @@ def render(ctx: RunContext) -> tuple[str, dict]:
             },
         },
     }
+    if ctx.selection is not None:
+        report_json["selection"] = {key: ctx.selection.get(key) for key in
+                                    ("trigger_type", "source", "full_set", "fallback_reason", "floor", "workers", "suites", "floor_enforced_by_core")}
+        report_json["selection"].update(selected_suites=ctx.selected_suite_count, policy_suites=ctx.policy_suite_count)
     if ctx.project is not None:
         report_json.update(project=ctx.project, mode=ctx.mode, suite_sha256=ctx.suite_sha256,
                            policy={"source": ctx.policy_source, "sha256": ctx.policy_sha256, "ref": ctx.policy_ref})

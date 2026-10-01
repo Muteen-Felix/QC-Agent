@@ -1,0 +1,211 @@
+labeled_by: "dev — CẦN QA DUYỆT"
+diff-001:
+  category: api
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Fixture api 1"
+diff-002:
+  category: api
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Fixture api 2"
+diff-003:
+  category: api
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Fixture api 3"
+diff-004:
+  category: api
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Fixture api 4"
+diff-005:
+  category: api
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Fixture api 5"
+diff-006:
+  category: api
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Fixture api 6"
+diff-007:
+  category: ui
+  expect_workers: [midscene-cli]
+  core_or_security: false
+  notes: "Fixture ui 7"
+diff-008:
+  category: ui
+  expect_workers: [midscene-cli]
+  core_or_security: false
+  notes: "Fixture ui 8"
+diff-009:
+  category: ui
+  expect_workers: [midscene-cli]
+  core_or_security: false
+  notes: "Fixture ui 9"
+diff-010:
+  category: ui
+  expect_workers: [midscene-cli]
+  core_or_security: false
+  notes: "Fixture ui 10"
+diff-011:
+  category: docs
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture docs 11"
+diff-012:
+  category: docs
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture docs 12"
+diff-013:
+  category: docs
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture docs 13"
+diff-014:
+  category: docs
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture docs 14"
+diff-015:
+  category: dockerfile
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture dockerfile 15"
+diff-016:
+  category: dockerfile
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture dockerfile 16"
+diff-017:
+  category: dockerfile
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture dockerfile 17"
+diff-018:
+  category: lockfile
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture lockfile 18"
+diff-019:
+  category: lockfile
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture lockfile 19"
+diff-020:
+  category: lockfile
+  expect_workers: []
+  core_or_security: false
+  notes: "Fixture lockfile 20"
+diff-021:
+  category: security
+  expect_workers: [schemathesis]
+  core_or_security: true
+  notes: "Fixture security 21"
+diff-022:
+  category: security
+  expect_workers: [schemathesis]
+  core_or_security: true
+  notes: "Fixture security 22"
+diff-023:
+  category: security
+  expect_workers: [schemathesis]
+  core_or_security: true
+  notes: "Fixture security 23"
+diff-024:
+  category: security
+  expect_workers: [schemathesis]
+  core_or_security: true
+  notes: "Fixture security 24"
+diff-025:
+  category: mixed
+  expect_workers: [pytest, k6]
+  core_or_security: false
+  notes: "Fixture mixed 25"
+diff-026:
+  category: mixed
+  expect_workers: [pytest, k6]
+  core_or_security: false
+  notes: "Fixture mixed 26"
+diff-027:
+  category: mixed
+  expect_workers: [pytest, k6]
+  core_or_security: false
+  notes: "Fixture mixed 27"
+diff-028:
+  category: mixed
+  expect_workers: [pytest, k6]
+  core_or_security: false
+  notes: "Fixture mixed 28"
+diff-029:
+  category: tests-only
+  expect_workers: [pytest]
+  core_or_security: false
+  notes: "Fixture tests-only 29"
+diff-030:
+  category: tests-only
+  expect_workers: [pytest]
+  core_or_security: false
+  notes: "Fixture tests-only 30"
+injection-001:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 1"
+injection-002:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 2"
+injection-003:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 3"
+injection-004:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 4"
+injection-005:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 5"
+injection-006:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 6"
+injection-007:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 7"
+injection-008:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 8"
+injection-009:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 9"
+injection-010:
+  category: injection
+  twin: diff-001
+  expect_workers: [schemathesis, pytest]
+  core_or_security: true
+  notes: "Injection fixture 10"

@@ -5,9 +5,17 @@ from pathlib import Path
 
 import pytest
 
+os.environ.setdefault("DEEPEVAL_DISABLE_DOTENV", "1")   # import deepeval không được nạp .env của máy dev
 ROOT = Path(__file__).resolve().parent.parent
 SUT = ROOT / "tests" / "fixtures" / "sut" / "noteboard"
 sys.path.insert(0, str(SUT))  # `import toyapp` (SUT tham chiếu) trong test
+
+
+@pytest.fixture(autouse=True)
+def _utf8_children(monkeypatch):
+    """Windows: tiến trình con in tiếng Việt theo cp1252 nếu không ép UTF-8 (giống core/runner.py và adapters/_base.py)."""
+    monkeypatch.setenv("PYTHONUTF8", "1")
+    monkeypatch.setenv("PYTHONIOENCODING", "utf-8")
 
 
 @pytest.fixture(autouse=True)

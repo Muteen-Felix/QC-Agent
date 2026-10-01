@@ -52,6 +52,16 @@ def test_refine_step_is_advisory_read_only_and_runs_between_the_sut_and_the_gate
     assert DATA[True]["workflow_call"]["inputs"]["refine"]["default"] == "auto"
 
 
+def test_select_runs_before_gate_and_cannot_make_job_red():
+    assert NAMES.index("Select (PR)") < NAMES.index("Run qc-agent gate")
+    select = step("Select (PR)")
+    assert "set +e" in select["run"] and "exit 0" in select["run"]
+    assert "fetch-depth: 0" in TEXT
+    assert '--trigger pr --selection /work/runs/selection.json' in step("Run qc-agent gate")["run"]
+    assert '--trigger manual --workers "$WORKERS"' in step("Run qc-agent gate")["run"]
+    assert "ANTHROPIC_API_KEY" in DATA[True]["workflow_call"]["secrets"]
+
+
 def test_suggest_ui_only_with_an_ui_and_a_model_key():
     run = step("Refine (onboarding suggestions)")["run"]
     assert '[ -n "${UI_URL:-}" ] && [ -n "${MIDSCENE_MODEL_API_KEY:-}" ]' in run and "--suggest-ui --ui-url" in run
@@ -240,7 +250,10 @@ def _bash():
     candidates += [Path(p) for p in (shutil.which("bash"),) if p]
     for candidate in candidates:
         if candidate.is_file() and "WindowsApps" not in str(candidate):
-            probe = subprocess.run([str(candidate), "-c", "echo ok; command -v mapfile >/dev/null && echo mapfile"], capture_output=True, text=True, timeout=30)
+            try:
+                probe = subprocess.run([str(candidate), "-c", "echo ok; command -v mapfile >/dev/null && echo mapfile"], capture_output=True, text=True, timeout=30)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
             if probe.returncode == 0 and "mapfile" in probe.stdout:
                 return str(candidate)
     return None

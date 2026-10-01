@@ -297,7 +297,8 @@ def main(argv: list[str]) -> int:
             from qc_agent.llm.client import provider_of
             if provider_of(model) == "gemini":
                 model = "claude-sonnet-5"   # response giả có dạng Messages API: đừng để QC_GT_MODEL=gemini-* trong .env làm hỏng lượt fake
-            os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-eval-fake")   # client đòi có khoá dù transport là giả; không có request thật nào
+            if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+                os.environ["ANTHROPIC_API_KEY"] = "sk-ant-eval-fake"   # khoá rỗng (vd. từ .env) cũng phải thay; client đòi có khoá dù transport là giả; không có request thật nào
         analysis = scaffold_openapi.analyze(scaffold_openapi.load(args.openapi)) if args.openapi else None
         runs = []
         with tempfile.TemporaryDirectory() as egress:

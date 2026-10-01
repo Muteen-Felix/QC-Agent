@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Schema du lieu selection, khong thuoc CONTRACT.lock.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "trigger_type", "source", "full_set", "diff_sha256", "floor", "workers", "suites", "rationale", "fallback_reason", "llm"],
+  "properties": {
+    "version": {"const": 1},
+    "trigger_type": {"enum": ["pr", "manual"]},
+    "source": {"enum": ["manual", "rules", "llm", "fallback", "cache"]},
+    "full_set": {"type": "boolean"},
+    "diff_sha256": {"type": ["string", "null"]},
+    "floor": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "workers": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "suites": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "floor_enforced_by_core": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "rationale": {"type": "object", "additionalProperties": {"type": "string", "maxLength": 200}},
+    "fallback_reason": {"enum": [null, "timeout", "unavailable", "bad_output", "unknown_worker", "missing_api_key", "egress_denied", "token_cap"]},
+    "llm": {"type": ["object", "null"], "additionalProperties": false,
+      "required": ["model", "prompt_version", "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"],
+      "properties": {"model": {"type": "string"}, "prompt_version": {"type": "string"},
+        "input_tokens": {"type": "integer", "minimum": 0}, "output_tokens": {"type": "integer", "minimum": 0},
+        "cache_creation_input_tokens": {"type": "integer", "minimum": 0}, "cache_read_input_tokens": {"type": "integer", "minimum": 0}}
+    }
+  }
+}

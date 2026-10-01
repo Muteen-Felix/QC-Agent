@@ -194,7 +194,7 @@ Nếu policy của project bật `coverage-debt` trong `advisory_suites` **và**
   `success` trơn).
 - Comment dính có thêm mục **"⚠️ Nợ test mới phát sinh (Không chặn merge)"**, liệt kê từng bề mặt
   (`kind` — `surface`).
-- Reusable workflow tự checkout `fetch-depth: 2` và đặt `QC_DIFF_BASE=HEAD^1` trên `pull_request` —
+- Reusable workflow checkout với `fetch-depth: 0` để Select tính đúng merge-base của PR;
   bạn không cần cấu hình gì để có bước này; workflow tái sử dụng phiên bản mới hơn tự có sẵn.
 
 **Bỏ qua một bề mặt có lý do** (ví dụ endpoint nội bộ không cần test, hoặc route đã có test ở nơi khác
@@ -226,6 +226,25 @@ test_globs:                                    # mặc định, chỉ khai khi t
   không phải endpoint của SUT).
 
 ## 5. Kết quả ở đâu
+
+### Phạm vi chạy (Sprint 2)
+
+Trên PR, workflow chạy `qc-agent select` trước gate. Selector đọc diff từ merge-base, áp dụng
+`full_set_paths`, `docs_paths`, `module-map` rồi chỉ gọi LLM khi rules chưa quyết được.
+Key `ANTHROPIC_API_KEY` là tùy chọn; nên dùng key CI có trần ngân sách. PR từ fork không có
+key sẽ fallback FULL SET. Lỗi Select cũng dẫn đến FULL SET, không tự cho qua gate.
+
+Policy `floor_workers` (mặc định gitleaks và semgrep) luôn chạy ở trigger PR. `core` gộp lại
+floor kể cả khi `selection.json` bị sửa thiếu. Các list trong project override thay thế toàn bộ
+list mặc định, không cộng dồn. `full_set_paths` khiến chạy mọi suite; PR chỉ đổi tài liệu
+theo `docs_paths` chỉ chạy floor. Artifact `runs/selection.json` và mục **Phạm vi chạy**
+trong report cho biết source, fallback, số suite và lý do chọn.
+
+Chạy tay: `qc-agent run --project noteboard --mode pr --trigger manual --workers semgrep,gitleaks`.
+Trên `workflow_dispatch`, input `workers` cũng đi theo đường manual: không gọi LLM, không thêm floor.
+Checkout `fetch-depth: 0` tăng thời gian clone nhưng cần để tìm merge-base của PR; bước dò nợ
+vẫn dùng `HEAD^1` như trước. Chi phí trung bình của Select: sẽ đo ở Sprint 4.
+
 - **Comment dính** trên PR (một comment, cập nhật tại chỗ mỗi lần push): bảng task chặn merge, skipped/error, finding tham khảo.
 - **Check Run** `qc-agent / <project>`.
 - **Lịch sử** trên dashboard (nếu bật `qc_api_url`), link nằm trong comment.

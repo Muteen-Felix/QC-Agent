@@ -1,0 +1,7 @@
+diff --git a/services/s1/Dockerfile.dev b/services/s1/Dockerfile.dev
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/services/s1/Dockerfile.dev
+@@ -0,0 +1,1 @@
++FROM python:3.12-slim

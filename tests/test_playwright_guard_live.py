@@ -70,7 +70,7 @@ def _run(port: int, *, har: bool, fallback: bool = False, recorded: bool = False
                "PLAYWRIGHT_JSON_OUTPUT_NAME": str(report)}
         relative_spec = (directory / "guard.spec.mjs").relative_to(ROOT).as_posix()
         done = subprocess.run(["npx.cmd" if os.name == "nt" else "npx", "playwright", "test", relative_spec,
-                               "--reporter=json", "--workers=1"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=90)
+                               "--reporter=json", "--workers=1"], cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90)
         assert done.returncode == 0, done.stdout + done.stderr
         return json.loads(events.read_text(encoding="utf-8"))
     finally:

@@ -20,7 +20,7 @@ sut:
   probe_url: "${env.APP_BASE_URL}/__qc/config"
 modes:
   pr:                                    # tự động, mỗi PR
-    blocking_suites: [api-contract, ai-eval, gt-functional]   # mọi task lane=gate: chặn merge (gt-functional: Ground-Truth đã duyệt, S1-08)
+    blocking_suites: [api-contract, ai-eval, gt-functional, sast, secrets]   # mọi task lane=gate: chặn merge (gt-functional: Ground-Truth đã duyệt, S1-08)
     advisory_suites: [ui-explore, perf-smoke, coverage-debt]  # mọi task lane=discovery: không chặn (perf-smoke: SUT trong runner, số đo chỉ tham khảo)
     advisory_yellow_suites: [coverage-debt]    # P2-8: suite trên fail => YELLOW (⚪ neutral + comment), không PASS im lặng (docs/phase2/plan-debt.md)
     on_skipped_gate_task: fail                 # task gate bị skip không được cho qua

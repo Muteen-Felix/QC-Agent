@@ -202,6 +202,10 @@ def render_summary(run: dict, *, project: str, mode: str, exit_code: int | None 
         ref = str(policy.get("ref") or "")
         lines.append(f"policy: {'_default' if policy['source'] == 'default' else clean_md(project, 60)}"
                      f"{' @ main ' + ref[:7] if re.fullmatch(r'[0-9a-f]{7,40}', ref) else ''}")
+    selection = report.get("selection") if isinstance(report.get("selection"), dict) else None
+    if selection:
+        lines.append(f"Phạm vi: {selection.get('selected_suites', '?')}/{selection.get('policy_suites', '?')} suites"
+                     f" ({clean_md(selection.get('source', '?'), 20)})")
     if problem:
         lines += ["", "> ⚠️ Lỗi hệ thống/cấu hình (không phải kết quả của gate). Xem log của job."]
     if gating:

@@ -1,6 +1,7 @@
 """Chạy các task theo thứ tự đã xếp sẵn: chọn worker -> spawn adapter (subprocess) -> validate -> retry/budget -> ghi file.
 Runner chỉ biết `worker.module` do registry trả về. KHÔNG được có tên worker cụ thể nào trong file này."""
 import json
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import subprocess
@@ -20,11 +21,12 @@ SLACK_S = 30  # buffer cho adapter đóng gói kết quả; timeout của chính
 
 
 def run_all(specs: dict[str, dict], plan_only: dict[str, dict], registry, run_dir: Path,
-            parallel: bool = False, cwd: Path | None = None, egress_policy: egress.EgressPolicy | None = None) -> dict[str, dict]:
+            parallel: bool = False, cwd: Path | None = None, egress_policy: egress.EgressPolicy | None = None,
+            layers: list[list[str]] | None = None, max_parallel: int = 1) -> dict[str, dict]:
     """Chạy tuần tự theo thứ tự của `specs` (caller đã toposort: phụ thuộc đứng trước). Ghi run_dir/{specs,results}/<task_id>.json.
     Lỗi của một task thành result error/skipped, không dừng cả run. `registry.pick(spec, prefer=()) -> (Worker | None, reason)`."""
-    if parallel:
-        raise NotImplementedError("chạy song song là STEP 39; runner hiện chỉ chạy tuần tự")
+    if max_parallel < 1:
+        raise ValueError("max_parallel phai >= 1")
     bad = [t for t in specs if Path(t).name != t]
     if bad:  # task_id là chuỗi tự do: không cho thoát khỏi run_dir
         raise ValueError(f"task_id không được chứa dấu phân cách đường dẫn: {bad}")
@@ -33,10 +35,33 @@ def run_all(specs: dict[str, dict], plan_only: dict[str, dict], registry, run_di
     runs_root = run_dir.resolve().parent  # adapter dựng workdir từ QC_RUNS_DIR: phải khớp run_dir, truyền qua env của từng tiến trình
     for tid, spec in specs.items():
         _write(run_dir / "specs" / f"{tid}.json", spec)
+
+    def execute(tid: str, done: dict) -> dict:
         with logging_setup.bind(task_id=tid):
-            results[tid] = _run_task(spec, plan_only.get(tid, {}), registry, results, runs_root, cwd, policy, run_dir)
-            _log_task_end(results[tid])
-        _write(run_dir / "results" / f"{tid}.json", results[tid])
+            result = _run_task(specs[tid], plan_only.get(tid, {}), registry, done, runs_root, cwd, policy, run_dir)
+            _log_task_end(result)
+            _write(run_dir / "results" / f"{tid}.json", result)
+            return result
+
+    ordered_layers = layers or [[tid] for tid in specs]
+    for layer in ordered_layers:
+        current = [tid for tid in layer if tid in specs]
+        done = dict(results)
+        if max_parallel == 1 or len(current) < 2:
+            batch = {tid: execute(tid, results) for tid in current}
+        else:
+            safe, exclusive = [], []
+            for tid in current:
+                worker, _ = registry.pick(specs[tid], prefer=tuple(plan_only.get(tid, {}).get("prefer", ())))
+                capability = (worker.capabilities.get(specs[tid]["capability"], {}) if worker else {})
+                (safe if capability.get("parallel_safe", True) else exclusive).append(tid)
+            with ThreadPoolExecutor(max_workers=max_parallel) as pool:
+                futures = {tid: pool.submit(execute, tid, done) for tid in safe}
+                batch = {tid: futures[tid].result() for tid in safe}
+            for tid in exclusive:
+                batch[tid] = execute(tid, done)
+        results.update(batch)
+    results = {tid: results[tid] for tid in specs}
     return results
 
 

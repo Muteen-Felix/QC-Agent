@@ -74,7 +74,7 @@ def test_the_generated_suite_and_the_module_map_are_in_place():
 def test_noteboard_policy_blocks_on_the_ground_truth_suite_and_keeps_the_old_ones():
     project, _ = pj.resolve_project("noteboard", ROOT / "configs" / "projects")
     blocking = project["modes"]["pr"]["blocking_suites"]
-    assert blocking == ["api-contract", "ai-eval", "gt-functional"]                 # danh sách THAY THẾ (không cộng dồn): phải giữ đủ suite cũ
+    assert blocking == ["api-contract", "ai-eval", "gt-functional", "sast", "secrets"]                 # danh sách THAY THẾ (không cộng dồn): phải giữ đủ suite cũ
     suites = pj.load_suites(SUT / ".qc-agent" / "suites")
     plan, _ = pj.build_plan(project, "pr", suites)
     lanes = {task["task_id"]: task["lane"] for task in plan["tasks"]}

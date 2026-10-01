@@ -144,7 +144,9 @@ def _inside(root: Path, candidate: Path) -> bool:
 def _reusable_inputs() -> set[str] | None:
     path = settings.get().project_root / ".github" / "workflows" / REUSABLE
     try:
-        return set(yaml.safe_load(path.read_text(encoding="utf-8"))[True]["workflow_call"]["inputs"])
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        trigger = data[True] if True in data else data["on"]   # `on` không quote => YAML parse thành True; có quote => "on"
+        return set(trigger["workflow_call"]["inputs"])
     except (OSError, KeyError, TypeError, yaml.YAMLError):
         return None  # bản cài đặt không kèm workflow (vd. trong image): bỏ qua kiểm tra tên input
 
