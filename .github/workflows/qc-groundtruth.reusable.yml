@@ -14,6 +14,9 @@
 # BẪY: (1) PR/commit tạo bằng GITHUB_TOKEN KHÔNG kích hoạt workflow `pull_request`, nên job validate chỉ chạy khi QA push commit lên PR (vẫn đúng quy trình: QA phải
 # sửa draft nên sẽ push). Muốn check chạy ngay khi PR mở thì truyền secret qc_bot_token (GitHub App/PAT). (2) Repo phải bật Settings > Actions > General >
 # "Allow GitHub Actions to create and approve pull requests". (3) PR từ fork không có secret: generate chỉ chạy trên push/workflow_dispatch của chính repo.
+# (4) Nhà cung cấp LLM theo tiền tố input `model`: `gemini-*` cần secret GEMINI_API_KEY, còn lại (mặc định claude-sonnet-5) cần ANTHROPIC_API_KEY. Gemini free tier có
+# RPM thấp: đặt llm_min_interval_s/llm_max_retries/llm_fallback_models; timeout_minutes mặc định 20 đủ cho backoff 5 lần trên vài model. Image ghim digest PHẢI được build
+# từ mã có provider Gemini, nếu không `gemini-*` bị coi là model Claude.
 name: qc-groundtruth (reusable)
 
 on:
@@ -49,8 +52,21 @@ on:
       timeout_minutes:
         type: number
         default: 20
+      llm_min_interval_s:
+        description: "CHỈ Gemini: giãn cách tối thiểu (giây) giữa hai request, chống 429 ở free tier (12 ≈ 5 RPM). Rỗng = mặc định của image (0 = tắt)"
+        type: string
+        default: ""
+      llm_max_retries:
+        description: "CHỈ Gemini: số lần thử lại khi 429/5xx/lỗi mạng (exponential backoff). Rỗng = mặc định của image (5)"
+        type: string
+        default: ""
+      llm_fallback_models:
+        description: "CHỈ Gemini: model dự phòng cách nhau dấu phẩy (tối đa 5), vd. gemini-3.8-flash,gemini-2.5-flash. Rỗng = không có"
+        type: string
+        default: ""
     secrets:
-      ANTHROPIC_API_KEY: { required: false }   # thiếu thì job generate dừng với thông báo rõ (không có gì rời máy)
+      ANTHROPIC_API_KEY: { required: false }   # cần khi model là Claude (mặc định); thiếu thì job generate dừng với thông báo rõ (không có gì rời máy)
+      GEMINI_API_KEY: { required: false }      # cần khi model bắt đầu bằng `gemini-` (input `model`); chỉ khoá của ĐÚNG nhà cung cấp được đưa vào container
       qc_bot_token: { required: false }        # GitHub App/PAT: PR do nó mở sẽ kích hoạt workflow pull_request; không có thì dùng GITHUB_TOKEN
       GHCR_PULL_TOKEN: { required: false }
 
@@ -212,18 +228,33 @@ jobs:
           PRD: ${{ matrix.prd }}
           OPENAPI: ${{ inputs.openapi }}
           MODEL: ${{ inputs.model }}
+          LLM_MIN_INTERVAL_S: ${{ inputs.llm_min_interval_s }}
+          LLM_MAX_RETRIES: ${{ inputs.llm_max_retries }}
+          LLM_FALLBACK_MODELS: ${{ inputs.llm_fallback_models }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then echo "::error::thiếu secret ANTHROPIC_API_KEY (chưa gửi gì ra ngoài)"; exit 1; fi
           if [ -n "$MODEL" ] && ! [[ "$MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$ ]]; then echo "::error::model không hợp lệ"; exit 1; fi
+          if [ -n "$LLM_MIN_INTERVAL_S" ] && ! [[ "$LLM_MIN_INTERVAL_S" =~ ^[0-9]{1,4}(\.[0-9]{1,3})?$ ]]; then echo "::error::llm_min_interval_s không hợp lệ"; exit 1; fi
+          if [ -n "$LLM_MAX_RETRIES" ] && ! [[ "$LLM_MAX_RETRIES" =~ ^[0-9]{1,2}$ ]]; then echo "::error::llm_max_retries không hợp lệ"; exit 1; fi
+          if [ -n "$LLM_FALLBACK_MODELS" ] && ! [[ "$LLM_FALLBACK_MODELS" =~ ^gemini-[A-Za-z0-9._-]{1,64}(,gemini-[A-Za-z0-9._-]{1,64}){0,4}$ ]]; then echo "::error::llm_fallback_models không hợp lệ"; exit 1; fi
+          # Chọn khoá theo model (rỗng = mặc định của image: claude-sonnet-5, khoá test bằng settings.gt_model). Chỉ MỘT khoá đi vào container.
+          model="${MODEL:-claude-sonnet-5}"
+          case "$model" in gemini-*) key_var=GEMINI_API_KEY ;; *) key_var=ANTHROPIC_API_KEY ;; esac
+          if [ -z "${!key_var:-}" ]; then echo "::error::thiếu secret $key_var cho model $model (chưa gửi gì ra ngoài)"; exit 1; fi
+          key_args=(-e "$key_var")
+          llm_args=()
+          if [ -n "$LLM_MIN_INTERVAL_S" ]; then llm_args+=(-e "QC_LLM_MIN_INTERVAL_S=$LLM_MIN_INTERVAL_S"); fi
+          if [ -n "$LLM_MAX_RETRIES" ]; then llm_args+=(-e "QC_LLM_MAX_RETRIES=$LLM_MAX_RETRIES"); fi
+          if [ -n "$LLM_FALLBACK_MODELS" ]; then llm_args+=(-e "QC_LLM_FALLBACK_MODELS=$LLM_FALLBACK_MODELS"); fi
           # egress.jsonl + summary.json nằm NGOÀI workspace ($RUNNER_TEMP): không bao giờ lọt vào commit
           egress="$RUNNER_TEMP/gt-egress"; rm -rf "$egress"; mkdir -p "$egress"; chmod 777 "$egress"
           cmd=generate; if [ -f .qc-agent/ground-truth/test-cases.yaml ]; then cmd=regen; fi
           oa=(); if [ -n "$OPENAPI" ]; then oa=(--openapi "$OPENAPI"); fi
           model_args=(); if [ -n "$MODEL" ]; then model_args=(-e "QC_GT_MODEL=$MODEL"); fi
           docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$egress:/egress" -w /work \
-            -e ANTHROPIC_API_KEY "${model_args[@]}" \
+            "${key_args[@]}" "${llm_args[@]}" "${model_args[@]}" \
             "$IMAGE" gt "$cmd" --prd "$PRD" --sut-root /work "${oa[@]}" --egress-dir /egress --summary-json /egress/summary.json
 
       - name: Commit and push to the bot branch

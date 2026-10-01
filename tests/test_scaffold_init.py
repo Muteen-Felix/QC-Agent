@@ -653,3 +653,15 @@ def test_init_cli_accepts_qa_team_and_prd_glob(tmp_path, capsys):
 ])
 def test_only_a_real_owner_on_the_locked_dir_counts_as_a_lock(text, locked):
     assert t.codeowners_locks_ground_truth(text) is locked
+
+
+def test_the_groundtruth_workflow_explains_how_to_switch_to_gemini_without_changing_the_active_inputs(tmp_path):
+    run_init(tmp_path, qa_team=QA, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64)
+    text = read(tmp_path, ".github/workflows/qc-groundtruth.yml")
+    head = text.split("name: qc-groundtruth")[0]
+    assert "ANTHROPIC_API_KEY" in head and "GEMINI_API_KEY" in head                          # hướng dẫn secret nằm ở đầu file
+    for line in ("# model: gemini-3.6-flash", '# llm_min_interval_s: "12"', '# llm_max_retries: "5"', '# llm_fallback_models: "gemini-3.8-flash,gemini-2.5-flash"'):
+        assert line in text, line
+    with_ = gt_workflow(tmp_path)["jobs"]["groundtruth"]["with"]
+    assert set(with_) == {"project", "image", "prd_path"}                                    # mặc định vẫn là Claude: các dòng Gemini chỉ là comment
+    assert "qc-agent:todo" not in text and gt_workflow(tmp_path)["jobs"]["groundtruth"]["secrets"] == "inherit"
