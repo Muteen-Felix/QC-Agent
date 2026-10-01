@@ -18,9 +18,9 @@ def step(name):
 def test_policy_repo_is_a_single_hardcoded_constant_and_main_is_not_configurable():
     assert DATA["env"]["QC_AGENT_REPO"] == "Muteen-Felix/QC-Agent"
     assert len(re.findall(r"Muteen-Felix/QC-Agent", TEXT.replace("uses: Muteen-Felix/QC-Agent/.github", ""))) == 1  # đúng một chỗ (ngoài ví dụ `uses:`)
-    inputs = DATA["on"]["workflow_call"]["inputs"]
+    inputs = DATA[True]["workflow_call"]["inputs"]
     assert not [name for name in inputs if "policy" in name or name.endswith("_ref")]      # Q1: SUT không chọn được ref của policy
-    assert "qc_read_token" in DATA["on"]["workflow_call"]["secrets"] and DATA["on"]["workflow_call"]["secrets"]["qc_read_token"]["required"] is False
+    assert "qc_read_token" in DATA[True]["workflow_call"]["secrets"] and DATA[True]["workflow_call"]["secrets"]["qc_read_token"]["required"] is False
 
 
 def test_fetch_policy_runs_before_the_sut_and_the_gate_mounts_it_read_only_outside_the_workspace():
@@ -49,7 +49,7 @@ def test_refine_step_is_advisory_read_only_and_runs_between_the_sut_and_the_gate
     post = step("Post refine review")
     assert post["continue-on-error"] is True and "steps.refine.outputs.has_patch == 'true'" in post["if"] and "--refine-dir /out" in post["run"]
     assert DATA["permissions"] == {"contents": "read", "checks": "write", "pull-requests": "write", "packages": "read"}   # không thêm quyền nào
-    assert DATA["on"]["workflow_call"]["inputs"]["refine"]["default"] == "auto"
+    assert DATA[True]["workflow_call"]["inputs"]["refine"]["default"] == "auto"
 
 
 def test_select_runs_before_gate_and_cannot_make_job_red():
@@ -59,7 +59,7 @@ def test_select_runs_before_gate_and_cannot_make_job_red():
     assert "fetch-depth: 0" in TEXT
     assert '--trigger pr --selection /work/runs/selection.json' in step("Run qc-agent gate")["run"]
     assert '--trigger manual --workers "$WORKERS"' in step("Run qc-agent gate")["run"]
-    assert "ANTHROPIC_API_KEY" in DATA["on"]["workflow_call"]["secrets"]
+    assert "ANTHROPIC_API_KEY" in DATA[True]["workflow_call"]["secrets"]
 
 
 def test_suggest_ui_only_with_an_ui_and_a_model_key():

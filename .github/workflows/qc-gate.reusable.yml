@@ -27,7 +27,7 @@ env:
   # Repo chứa policy. HARD-CODE vì trong workflow_call `github.repository` là repo GỌI, không phải qc-agent. Fork/đổi tên repo thì sửa đúng chỗ này.
   QC_AGENT_REPO: Muteen-Felix/QC-Agent
 
-"on":
+on:
   workflow_call:
     inputs:
       project:
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-          fetch-depth: 0   # Select can merge-base that is older than two commits.
+          fetch-depth: 0   # Select cần merge-base của PR (có thể cũ hơn 2 commit); dò nợ test vẫn dùng HEAD^1 như trước
 
       - name: Log in to GHCR
         if: startsWith(inputs.image, 'ghcr.io/')

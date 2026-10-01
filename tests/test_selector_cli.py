@@ -32,7 +32,8 @@ def test_select_docs_without_llm_and_code_without_key(tmp_path, monkeypatch):
     (sut / "toyapp/selector_new.py").write_text("x = 1\n", encoding="utf-8")
     git(sut, "add", "-A")
     git(sut, "-c", "user.name=QC", "-c", "user.email=qc@example.invalid", "commit", "-qm", "code")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    for name in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "QC_SELECTOR_MODEL"):   # kín với .env: không được gọi LLM thật
+        monkeypatch.delenv(name, raising=False)
     code_args = base_args.copy()
     code_args[code_args.index("--base") + 1] = head
     code_args[code_args.index("--head") + 1] = git(sut, "rev-parse", "HEAD")

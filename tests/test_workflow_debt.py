@@ -1,4 +1,4 @@
-"""P2-7: workflow tái sử dụng cấp đủ dữ liệu cho khâu dò nợ test — checkout fetch-depth 2 và QC_DIFF_BASE chỉ trên pull_request, chỉ ở bước gate.
+"""P2-7: workflow tái sử dụng cấp đủ dữ liệu cho khâu dò nợ test — checkout fetch-depth 0 (đủ lịch sử cho merge-base của Select) và QC_DIFF_BASE chỉ trên pull_request, chỉ ở bước gate.
 Kiểm tĩnh trên file thật (không Docker/GitHub). Dò nợ là MỘT suite trong lượt gate: không có bước riêng, không nằm trong refine, không continue-on-error."""
 import json
 import re
@@ -21,9 +21,9 @@ def checkouts():
     return [s for s in STEPS if str(s.get("uses", "")).startswith("actions/checkout@")]
 
 
-def test_checkout_fetches_exactly_two_commits_and_keeps_its_hardening():
+def test_checkout_fetches_full_history_and_keeps_its_hardening():
     (checkout,) = checkouts()
-    assert checkout["with"]["fetch-depth"] == 2  # số nguyên 2: HEAD (merge commit) + HEAD^1 (nhánh đích)
+    assert checkout["with"]["fetch-depth"] == 0  # 0 = full history: Select cần merge-base; HEAD^1 của dò nợ vẫn có sẵn
     assert checkout["with"]["persist-credentials"] is False  # không nới lỏng bảo mật khi sửa checkout
     assert re.fullmatch(r"actions/checkout@[0-9a-f]{40}", checkout["uses"])  # vẫn ghim theo SHA
 
@@ -78,5 +78,5 @@ def test_harness_expression_evaluator_follows_github_semantics():
     assert ctx.evaluate("github.event_name == 'a' && 'x'") == ""  # không có nhánh || và vế đầu sai
 
 
-def test_workflow_text_documents_why_fetch_depth_is_two():
-    assert "fetch-depth: 2" in TEXT and "HEAD^1" in TEXT
+def test_workflow_text_documents_fetch_depth_and_head_parent():
+    assert "fetch-depth: 0" in TEXT and "HEAD^1" in TEXT
