@@ -1,0 +1,15 @@
+diff --git a/toyapp/mixed_27.py b/toyapp/mixed_27.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/toyapp/mixed_27.py
+@@ -0,0 +1,2 @@
++def mixed_27(value):
++    return value
+diff --git a/docs/mixed_27.md b/docs/mixed_27.md
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/docs/mixed_27.md
+@@ -0,0 +1,1 @@
++# Mixed 27

@@ -180,25 +180,25 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
 
 ### Task con
 
-- [ ] **S2.1 (`payload.py`):** `TriggerPayload`. Manual thì validate tên worker theo registry và policy (sai tên exit 3), và không import `selector.agent`.
-- [ ] **S2.2 (`pruner.py`):**
+- [x] **S2.1 (`payload.py`):** `TriggerPayload`. Manual thì validate tên worker theo registry và policy (sai tên exit 3), và không import `selector.agent`.
+- [x] **S2.2 (`pruner.py`):**
   - Chạy `git diff -w base..head`.
   - Bỏ file binary, lockfile, file generated/vendor.
   - Bỏ hunk chỉ đổi comment hoặc format.
   - Đặt giới hạn token cho từng file và cho tổng.
   - Danh sách file luôn đầy đủ, kể cả khi hunk bị cắt.
-- [ ] **S2.3 (`rules.py`):** Diff khớp `full_set_paths` thì chạy FULL SET (không gọi LLM). Diff chỉ chạm docs thì chỉ chạy floor. Tra `module-map.yaml` tất định để có gợi ý.
-- [ ] **S2.4 (`agent.py`):**
+- [x] **S2.3 (`rules.py`):** Diff khớp `full_set_paths` thì chạy FULL SET (không gọi LLM). Diff chỉ chạm docs thì chỉ chạy floor. Tra `module-map.yaml` tất định để có gợi ý.
+- [x] **S2.4 (`agent.py`):**
   - Prompt gồm `module-map`, catalog worker được phép, và diff đặt trong vùng phân cách.
   - Tool-use với enum = allowlist worker.
   - Timeout 20s.
   - 5 loại lỗi dẫn đến FULL SET: timeout, 5xx/quota, JSON sai, worker lạ, thiếu API key.
-- [ ] **S2.5:** Floor chặn hai lớp: selector gộp floor, và engine gộp lại lần nữa.
-- [ ] **S2.6:** Nối vào engine. `--rerender` dựng lại được đúng phạm vi đã chọn nhờ selection nằm trong plan.
-- [ ] **S2.7:** Chạy song song theo tầng toposort. Phải giữ nguyên thứ tự các task có `depends_on`.
-- [ ] **S2.8:** Golden set $\ge 30$ diff trên noteboard, gồm các loại: đổi API, đổi UI, chỉ docs, Dockerfile, lockfile, file nhạy cảm bảo mật, diff trộn. `eval_selector.py` in ra recall và precision.
-- [ ] **S2.9:** $\ge 10$ diff chứa prompt injection (kiểu ví dụ ở §5.3 cũ).
-- [ ] **S2.10:** Bước Select trong workflow, và `workflow_dispatch` cho manual.
+- [x] **S2.5:** Floor chặn hai lớp: selector gộp floor, và engine gộp lại lần nữa.
+- [x] **S2.6:** Nối vào engine. `--rerender` dựng lại được đúng phạm vi đã chọn nhờ selection nằm trong plan.
+- [x] **S2.7:** Chạy song song theo tầng toposort. Phải giữ nguyên thứ tự các task có `depends_on`.
+- [x] **S2.8:** Golden set $\ge 30$ diff trên noteboard, gồm các loại: đổi API, đổi UI, chỉ docs, Dockerfile, lockfile, file nhạy cảm bảo mật, diff trộn. `eval_selector.py` in ra recall và precision.
+- [x] **S2.9:** $\ge 10$ diff chứa prompt injection (kiểu ví dụ ở §5.3 cũ).
+- [x] **S2.10:** Bước Select trong workflow, và `workflow_dispatch` cho manual.
 
 ### DoD Sprint 2
 - [ ] Manual (100%): `--trigger manual --workers semgrep,schemathesis` chạy đúng các suite tương ứng và không suite nào khác. Test chặn network xác nhận không có lời gọi LLM nào.

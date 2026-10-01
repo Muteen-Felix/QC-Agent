@@ -4,6 +4,7 @@ Không LLM, không tên worker cụ thể."""
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
 import os
 import re
@@ -12,6 +13,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from jsonschema import Draft202012Validator
 
 from qc_agent import logging_setup, settings
 from qc_agent.core import project as project_lib
@@ -57,7 +59,8 @@ def run_plan(plan_path, runs_dir, *, only: str | None = None, yellow_exit: int =
 def run_project(project: str, mode: str, runs_dir, *, projects_dir=None, suites_dir=None, sut_root=None,
                 only_suites: list[str] | None = None, only: str | None = None, yellow_exit: int = 0,
                 workers_dirs=None, run_id: str | None = None, on_skipped_gate_task: str | None = None,
-                sut_ref: str | None = None, expect_repo: str | None = None) -> RunResult:
+                sut_ref: str | None = None, expect_repo: str | None = None,
+                selection: dict | None = None, trigger: str | None = None) -> RunResult:
     """Chạy các suite mà policy của `mode` chọn cho `project`. Suite nằm trong repo SUT (`sut_root`, mặc định cwd);
     worker chạy với cwd = sut_root nên đường dẫn tương đối trong suite là tương đối repo SUT.
     `on_skipped_gate_task=None` => lấy từ policy của mode (mặc định yellow)."""
@@ -67,11 +70,55 @@ def run_project(project: str, mode: str, runs_dir, *, projects_dir=None, suites_
         raise PlanError(f"project {project!r} đăng ký cho repo {cfg['repo']!r} nhưng đang chạy từ repo {expect_repo!r}: "
                         f"dùng slug của repo mình, hoặc để repo chưa đăng ký dùng chính sách mặc định")
     suites = project_lib.load_suites(Path(suites_dir) if suites_dir else sut_root / cfg["suites_dir"])
-    plan, meta = project_lib.build_plan(cfg, mode, suites, only_suites)
+    if trigger == "pr" and selection is None:
+        selection = {"version": 1, "trigger_type": "pr", "source": "fallback", "full_set": True,
+                     "diff_sha256": None, "floor": [], "workers": [], "suites": [], "rationale": {},
+                     "fallback_reason": "unavailable", "llm": None}
+    if selection is not None:
+        _validate_selection(selection)
+        selection = {k: v for k, v in selection.items() if k != "floor_enforced_by_core"}
+        if selection["trigger_type"] != trigger:
+            raise PlanError("selection.trigger_type khong khop --trigger")
+        if trigger == "pr":
+            loaded_workers = registry.load_many(list(workers_dirs) if workers_dirs else settings.get().workers_dirs)
+            suite_map = project_lib.suites_by_worker(cfg, mode, suites, loaded_workers)
+            outside = set(selection["suites"]) - set(project_lib.policy_suite_names(cfg, mode, suites))
+            if outside:
+                raise PlanError("selection chua suite ngoai policy: " + ", ".join(sorted(outside)))
+            unavailable_floor = [w for w in cfg["modes"][mode].get("floor_workers", []) if w not in suite_map]
+            if unavailable_floor:
+                raise PlanError("floor worker khong co suite trong policy: " + ", ".join(unavailable_floor))
+            floor = {s for w in cfg["modes"][mode].get("floor_workers", []) for s in suite_map.get(w, [])}
+            missing = floor - set(selection["suites"])
+            effective = (project_lib.policy_suite_names(cfg, mode, suites) if selection["full_set"]
+                         else sorted(set(selection["suites"]) | floor))
+            selection = {**selection, "floor": list(cfg["modes"][mode].get("floor_workers", [])),
+                         "workers": sorted(set(selection["workers"]) | set(cfg["modes"][mode].get("floor_workers", []))),
+                         "suites": effective,
+                         "rationale": {**{w: "floor" for w in cfg["modes"][mode].get("floor_workers", [])}, **selection["rationale"]}}
+            if missing:
+                selection["floor_enforced_by_core"] = sorted(missing)
+            only_suites = None if selection["full_set"] else effective
+        else:
+            only_suites = None if selection["full_set"] else selection["suites"]
+    plan, meta = project_lib.build_plan(cfg, mode, suites, only_suites, selection=selection)
+    if selection is not None:
+        meta["selection"] = selection
+        meta["policy_suite_count"] = len(project_lib.policy_suite_names(cfg, mode, suites))
+        meta["selected_suite_count"] = meta["policy_suite_count"] if only_suites is None else len(only_suites)
+    meta["max_parallel"] = cfg["modes"][mode].get("max_parallel", 1)
     meta.update(policy_source=policy_info["source"], policy_sha256=policy_info["sha256"], policy_ref=os.environ.get("QC_POLICY_REF") or None)
     policy = on_skipped_gate_task or meta["on_skipped_gate_task"] or "yellow"
     return _execute(plan, None, runs_dir, only=only, yellow_exit=yellow_exit, workers_dirs=workers_dirs, run_id=run_id,
                     on_skipped_gate_task=policy, sut_ref=sut_ref, sut_root=sut_root, meta=meta)
+
+
+def _validate_selection(selection: dict) -> None:
+    path = settings.get().resolved_schemas_dir / "selection.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(selection))
+    if errors:
+        raise PlanError("selection.json khong hop le: " + ", ".join(str(e.json_path) for e in errors))
 
 
 def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit, workers_dirs, run_id,
@@ -108,6 +155,8 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
 
         signature.write_sut_identity(identity, run_dir)
         (run_dir / "plan.yaml").write_bytes(plan["text"].encode("utf-8"))  # bản lưu để --rerender dựng lại mục AUDIT
+        if plan.get("selection") is not None:
+            (run_dir / "selection.json").write_text(json.dumps(plan["selection"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except BaseException:
         shutil.rmtree(run_dir, ignore_errors=True)  # thư mục này do chính lời gọi này tạo và chưa có worker nào chạy
         if not runs_dir_existed:
@@ -120,7 +169,8 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
     started = time.perf_counter()
     with logging_setup.bind(run_id=run_id, project=(meta or {}).get("project")):
         logging_setup.event(log, "run.start", mode=(meta or {}).get("mode"), plan_id=plan_id, tasks=len(specs))
-        results = runner.run_all(specs, extras, _Registry(workers), run_dir, cwd=cwd)  # runner tự truyền QC_RUNS_DIR cho từng worker
+        results = runner.run_all(specs, extras, _Registry(workers), run_dir, cwd=cwd,
+                                 layers=toposort(plan["tasks"]), max_parallel=(meta or {}).get("max_parallel", 1))
         wallclock = time.perf_counter() - started
 
         signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit, on_skipped_gate_task,
@@ -132,7 +182,9 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
         run_id=run_id, plan_id=plan_id, plan_name=plan["name"], plan_path=plan_label or f"{run_id}/plan.yaml",
         plan_text=plan["text"], sut_id=sut, run_signature=signature_hex, generated_at=now(),
         wallclock_s=round(wallclock, 3), specs=specs, results=results, gate=gate,
-        canary=canary_alerts(results, extras), **{k: v for k, v in (meta or {}).items() if k in ("project", "mode", "suite_sha256", "policy_source", "policy_sha256", "policy_ref")})
+        canary=canary_alerts(results, extras), selection=(meta or {}).get("selection"),
+        policy_suite_count=(meta or {}).get("policy_suite_count"), selected_suite_count=(meta or {}).get("selected_suite_count"),
+        **{k: v for k, v in (meta or {}).items() if k in ("project", "mode", "suite_sha256", "policy_source", "policy_sha256", "policy_ref")})
     md, _ = report.write(run_ctx, run_dir)
     return RunResult(run_id, run_dir, gate.exit_code, gate, md, run_ctx)
 

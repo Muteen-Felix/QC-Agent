@@ -1,0 +1,7 @@
+diff --git a/ui/selector_7.html b/ui/selector_7.html
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/ui/selector_7.html
+@@ -0,0 +1,1 @@
++<button id="selector-7">Save</button>

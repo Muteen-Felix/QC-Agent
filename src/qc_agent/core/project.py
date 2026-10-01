@@ -74,6 +74,10 @@ PROJECT_SCHEMA = {
                     "advisory_yellow_suites": _NAME_LIST,  # tập con của advisory_suites: task fail ở đây => YELLOW (nợ test), không chặn
                     "suites": {"oneOf": [{"const": "*"}, _NAME_LIST]},
                     "on_skipped_gate_task": {"enum": ["yellow", "fail"]},
+                    "floor_workers": _NAME_LIST,
+                    "full_set_paths": {"type": "array", "items": {"type": "string"}},
+                    "docs_paths": {"type": "array", "items": {"type": "string"}},
+                    "max_parallel": {"type": "integer", "minimum": 1},
                 },
                 "oneOf": [
                     {"required": ["suites"], "not": {"anyOf": [{"required": ["blocking_suites"]}, {"required": ["advisory_suites"]}]}},
@@ -220,12 +224,45 @@ def _check_yellow_subset(slug: str, mode: str, policy: dict) -> None:
                         f"(suite chặn merge đã có verdict riêng), thừa: {', '.join(outside)}")
 
 
-def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: list[str] | None = None) -> tuple[dict, dict]:
+def policy_suite_names(project: dict, mode: str, suites: dict[str, dict]) -> list[str]:
+    if mode not in project["modes"]:
+        raise PlanError(f"mode khong ton tai: {mode}")
+    policy = project["modes"][mode]
+    if "suites" in policy:
+        return sorted(suites) if policy["suites"] == "*" else list(policy["suites"])
+    return list(policy.get("blocking_suites", [])) + list(policy.get("advisory_suites", []))
+
+
+def suites_by_worker(project: dict, mode: str, suites: dict[str, dict], workers: dict) -> dict[str, list[str]]:
+    """Anh xa worker sang suite theo compatibility cua manifest, khong probe."""
+    from qc_agent.core.registry import workers_for
+    mapped: dict[str, list[str]] = {name: [] for name in sorted(workers)}
+    for name in policy_suite_names(project, mode, suites):
+        suite = suites.get(name)
+        if suite is None:
+            continue
+        for task in suite["tasks"]:
+            oracle = task.get("oracle") or {}
+            for worker in workers_for(workers, task.get("capability"), task.get("lane"), oracle.get("kind")):
+                if name not in mapped[worker]:
+                    mapped[worker].append(name)
+    return {name: sorted(names) for name, names in mapped.items() if names}
+
+
+def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: list[str] | None = None,
+               selection: dict | None = None) -> tuple[dict, dict]:
     """Ghép các suite được policy chọn thành một plan (cùng hình dạng `load_plan`) + meta để ghi vào report."""
     policies = project["modes"]
     if mode not in policies:
         raise PlanError(f"project {project['slug']}: không có mode {mode!r} (có: {', '.join(sorted(policies))})")
     policy = policies[mode]
+    if policy.get("floor_workers"):
+        from qc_agent.core import registry as registry_lib
+        workers = registry_lib.load_many(settings.get().workers_dirs)
+        suite_map = suites_by_worker(project, mode, suites, workers)
+        floor_suites = {suite for worker in policy["floor_workers"] for suite in suite_map.get(worker, [])}
+        if floor_suites - set(policy.get("blocking_suites", [])):
+            raise PlanError("floor_workers phai thuoc blocking_suites")
     _check_yellow_subset(project["slug"], mode, policy)  # resolve_project đã kiểm; project dựng tay (test/API) không qua đó
 
     if "suites" in policy:
@@ -274,6 +311,8 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
 
     sut = copy.deepcopy(project.get("sut", {}))
     plan = {"plan_version": 1, "name": f"{project['slug']}:{mode}", "sut": sut, "tasks": tasks}
+    if selection is not None:
+        plan["selection"] = copy.deepcopy(selection)
     if yellow_on_fail:  # nằm TRONG plan text: được hash vào plan_id và --rerender dựng lại đúng verdict
         plan["yellow_on_fail"] = yellow_on_fail
     text = yaml.safe_dump(plan, allow_unicode=True, sort_keys=False)
@@ -284,7 +323,10 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
         "absent_advisory_suites": absent_advisory,
         "yellow_task_ids": list(yellow_on_fail),
     }
-    return {"name": plan["name"], "sut": sut, "tasks": tasks, "text": text, "yellow_on_fail": yellow_on_fail}, meta
+    result = {"name": plan["name"], "sut": sut, "tasks": tasks, "text": text, "yellow_on_fail": yellow_on_fail}
+    if selection is not None:
+        result["selection"] = copy.deepcopy(selection)
+    return result, meta
 
 
 _ENV_REF = re.compile(r"\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}")

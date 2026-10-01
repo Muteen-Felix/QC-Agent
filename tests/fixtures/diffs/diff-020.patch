@@ -1,0 +1,7 @@
+diff --git a/uv.lock b/uv.lock
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/uv.lock
+@@ -0,0 +1,1 @@
++selector-lock-20

@@ -43,6 +43,9 @@ def main(argv: list[str]) -> int:
         if argv and argv[0] == "gt":  # Ground-Truth: generate | validate | regen (import lười: gate/manual không kéo LLM vào tiến trình)
             from qc_agent.groundtruth.cli import main as gt_main
             return gt_main(argv[1:])
+        if argv and argv[0] == "select":
+            from qc_agent.selector.cli import main as select_main
+            return select_main(argv[1:])
         if argv and argv[0] == "doctor":  # probe mọi worker (binary/env/version), không chạy gate
             from qc_agent.core.doctor import main as doctor_main
             return doctor_main(argv[1:])
@@ -86,10 +89,21 @@ def _parser() -> argparse.ArgumentParser:
                     help="thư mục manifest worker (lặp được); mặc định $QC_WORKERS_PATH hoặc workers/")
     ap.add_argument("--rerender", metavar="RUN_DIR",
                     help="không chạy worker: tính lại verdict từ RUN_DIR/specs + results, ghi RUN_DIR/report.rerender.md")
+    ap.add_argument("--trigger", choices=("pr", "manual"))
+    ap.add_argument("--workers", help="worker cho trigger manual, cach nhau dau phay")
+    ap.add_argument("--selection", help="selection.json cho trigger pr")
     return ap
 
 
 def _run(args) -> int:
+    if args.workers and args.trigger != "manual":
+        raise PlanError("--workers chi dung voi --trigger manual")
+    if args.selection and args.trigger != "pr":
+        raise PlanError("--selection chi dung voi --trigger pr")
+    if args.trigger and not args.project:
+        raise PlanError("--trigger can --project")
+    if args.trigger == "manual" and not args.workers:
+        raise PlanError("--trigger manual can --workers")
     if bool(args.plan) == bool(args.project):
         raise PlanError("cần đúng một trong --plan hoặc --project (chỉ được bỏ cả hai khi dùng --rerender)")
     common = dict(run_id=args.run_id, only=args.only, yellow_exit=args.yellow_exit, sut_ref=args.sut_ref,
@@ -100,10 +114,22 @@ def _run(args) -> int:
     else:
         if not args.mode:
             raise PlanError("--project cần --mode")
+        selection = None
+        if args.trigger == "manual":
+            from qc_agent.core import project as project_lib
+            from qc_agent.selector.payload import TriggerPayload
+            cfg = project_lib.load_project(args.project, args.projects_dir or settings.get().resolved_projects_dir)
+            root = Path(args.sut_root or Path.cwd())
+            suites = project_lib.load_suites(args.suites_dir or root / cfg["suites_dir"])
+            workers = registry.load_many([Path(d) for d in args.workers_dir] if args.workers_dir else settings.get().workers_dirs)
+            selection = TriggerPayload.manual([w.strip() for w in args.workers.split(",") if w.strip()], cfg, args.mode, suites, workers)
+        elif args.selection:
+            selection = _read_json(Path(args.selection))
         result = engine.run_project(
             args.project, args.mode, Path(args.runs_dir), projects_dir=args.projects_dir, suites_dir=args.suites_dir,
             sut_root=args.sut_root, on_skipped_gate_task=args.on_skipped_gate_task,
-            expect_repo=args.expect_repo, only_suites=[s.strip() for s in args.suites.split(",") if s.strip()] if args.suites else None, **common)
+            expect_repo=args.expect_repo, only_suites=[s.strip() for s in args.suites.split(",") if s.strip()] if args.suites else None,
+            selection=selection, trigger=args.trigger, **common)
     print(result.report_md, end="")
     return result.exit_code
 
@@ -145,11 +171,18 @@ def _rerender(args) -> int:
         wallclock = float(_read_json(run_dir / "report.json")["details"]["wallclock_s"])
     except (PlanError, KeyError, TypeError, ValueError):
         wallclock = 0.0  # report.json gốc mất/hỏng: chỉ ảnh hưởng dòng chi phí, không ảnh hưởng verdict
+    try:
+        scope = (_read_json(run_dir / "report.json").get("selection") or {}) if plan.get("selection") else {}
+    except PlanError:
+        scope = {}
     run_ctx = report.RunContext(
         run_id=next(iter(specs.values()))["run_id"], plan_id=plan_id, plan_name=plan["name"],
         plan_path=f"{run_dir.name}/plan.yaml", plan_text=plan["text"], sut_id=sut, run_signature=signature_hex,
         generated_at=engine.now(), wallclock_s=wallclock, specs=specs, results=results, gate=gate,
-        canary=canary_alerts(results, plan_only))
+        canary=canary_alerts(results, plan_only), selection=plan.get("selection"),
+        selected_suite_count=(scope.get("selected_suites", len(set(plan["selection"].get("suites", [])) |
+                                  set(plan["selection"].get("floor_enforced_by_core", [])))) if plan.get("selection") else None),
+        policy_suite_count=scope.get("policy_suites"))
     md, _ = report.render(run_ctx)  # render, không write: write sẽ đè report.md/report.json gốc
     (run_dir / "report.rerender.md").write_text(md, encoding="utf-8", newline="\n")
     print(md, end="")
