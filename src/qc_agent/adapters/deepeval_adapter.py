@@ -253,7 +253,7 @@ class DeepEvalAdapter(Adapter):
                 "title": f"{metric}: case {case_id} không đạt",
                 "detected_by": f"metric:{metric}",
                 "verdict_source": "deterministic_assert",
-                "severity_hint": "high",
+                "severity_hint": "critical",
             }
             for metric, case_id in failures
         ]

@@ -16,7 +16,7 @@ DEMO_FAIL = ROOT / "tests" / "fixtures" / "plans" / "demo_fail.yaml"
 
 def test_run_plan_returns_result_without_printing(tmp_path, capsys):
     result = engine.run_plan(DEMO, tmp_path / "runs")
-    assert result.exit_code == 0 and result.gate.value == "PASS"
+    assert result.exit_code == 0 and result.gate.value == "PASSED_WITH_WARNINGS"
     assert result.run_id == "r-0001" and (result.run_dir / "report.json").is_file()
     assert "QC Gate Report" in result.report_md
     assert capsys.readouterr().out == ""  # engine không print: việc đó của CLI

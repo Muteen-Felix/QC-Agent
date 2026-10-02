@@ -15,7 +15,7 @@ from sqlalchemy import Engine
 
 from qc_agent import logging_setup, settings
 from qc_agent.api.deps import SESSION_COOKIE, AppState
-from qc_agent.api.routes import auth, catalog, debt, health, ingest, jobs
+from qc_agent.api.routes import auth, catalog, health, ingest, jobs
 from qc_agent.core import project as project_lib
 from qc_agent.jobs import repository as repo
 from qc_agent.jobs.db import make_engine, session_scope
@@ -61,7 +61,7 @@ def create_app(engine: Engine | None = None, *, runs_root: Path | None = None, p
             response.headers.setdefault("Referrer-Policy", "same-origin")
         return response
 
-    for module in (health, auth, catalog, jobs, ingest, debt):
+    for module in (health, auth, catalog, jobs, ingest):
         app.include_router(module.router)
     web_dir = cfg.resolved_web_dir
     if web_dir.is_dir():  # mount SAU các router: /api/* và /healthz khớp trước, phần còn lại là tệp tĩnh

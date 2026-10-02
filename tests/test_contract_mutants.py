@@ -27,6 +27,10 @@ def mutate(base, fn):
 
 
 RESULT_MUTANTS = {
+    "C10_v1_high_is_rejected": (GATE, lambda o: o["findings"][0].update(severity_hint="high")),
+    "C11_location_needs_path": (GATE, lambda o: o["findings"][0].update(location={"line": 1})),
+    "C12_location_line_positive": (GATE, lambda o: o["findings"][0].update(location={"path": "x.py", "line": 0})),
+    "C13_location_no_extra": (GATE, lambda o: o["findings"][0].update(location={"path": "x.py", "column": 1})),
     "C1_gating_true_with_llm_judgment": (GATE, lambda o: o["verdict"].update(verdict_source="llm_judgment", confidence=0.7)),
     "C2_deterministic_with_confidence": (GATE, lambda o: o["verdict"].update(confidence=0.9)),
     "C3_evidence_sha256_too_short": (GATE, lambda o: o["evidence"][0].update(sha256="abc123")),

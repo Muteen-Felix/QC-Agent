@@ -137,7 +137,7 @@ def test_cli_run_emits_parseable_lifecycle_events_on_stderr_and_keeps_stdout_for
     names = [e["event"] for e in events]
     assert names[0] == "run.start" and names[-1] == "run.end" and names.count("task.start") == names.count("task.end") == 4
     end = events[-1]
-    assert end["gate"] == "PASS" and end["exit_code"] == 0 and end["counts"] == {"pass": 4}
+    assert end["gate"] == "PASSED_WITH_WARNINGS" and end["exit_code"] == 0 and end["counts"] == {"pass": 4}
     task_ends = [e for e in events if e["event"] == "task.end"]
     assert all(e["run_id"] == "r-0001" and e["worker"] and e["task_id"].startswith("t-e") and e["status"] == "pass" for e in task_ends)
 

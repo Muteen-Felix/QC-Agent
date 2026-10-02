@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from qc_agent.jobs.models import DebtEntry, Job, JobTask, User
+from qc_agent.jobs.models import Job, JobTask, User
 
 
 def iso(value) -> str | None:
@@ -57,9 +57,3 @@ def job_json(job: Job, slug: str, creators: dict[int, str], *, runs_root: Path |
 
 def loads_json(data: bytes):
     return json.loads(data.decode("utf-8-sig"))
-
-
-def debt_json(row: DebtEntry) -> dict:
-    return {"id": str(row.id), "kind": row.kind, "surface": row.surface, "opened_at": iso(row.opened_at), "closed_at": iso(row.closed_at),
-            "closed_reason": row.closed_reason, "pr_url": row.pr_url, "opened_job_id": str(row.opened_job_id),
-            "last_seen_job_id": str(row.last_seen_job_id), "last_seen_at": iso(row.last_seen_at)}

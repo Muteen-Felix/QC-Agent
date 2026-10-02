@@ -31,7 +31,7 @@ def checks(oracle_spec: dict, metrics: dict, signals: dict) -> OracleOutcome:
         "detected_by": f"check:{n}",
         "verdict_source": "deterministic_assert",
         "confidence": None,
-        "severity_hint": "high",
+        "severity_hint": "critical",
     } for n in failed]
     extra = sorted(set(got) - set(required))
     notes = [f"check ngoài required, không tham gia phán: {extra}"] if extra else []

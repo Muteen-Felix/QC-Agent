@@ -94,13 +94,13 @@ def test_pr_flow_pass_then_fail_with_sticky_comment_check_runs_and_history(stack
     assert bad["Enforce gate result"]["returncode"] == 1, log  # job đỏ
     assert len(stack.gh.comments) == 1, "comment phải được cập nhật tại chỗ, không tạo thêm"
     body = stack.gh.comments[0]["body"]
-    assert "FAIL" in body and "gate 0/2" in body and "schemathesis" in body and "deepeval" in body
+    assert "BLOCKED" in body and "gate 0/2" in body and "schemathesis" in body and "deepeval" in body
     assert [c["conclusion"] for c in stack.gh.check_runs] == ["success", "failure"]
 
     with session_scope(stack.engine) as s:
         rows = s.execute(text("SELECT id, external_id, gate_verdict, status, pr_number, sha, source FROM jobs ORDER BY created_at")).all()
-    assert [tuple(r)[1:] for r in rows] == [("gh-2001-1", "PASS", "succeeded", 7, "abc1234def5678", "ci"),
-                                            ("gh-2002-1", "FAIL", "failed", 7, "abc1234def5678", "ci")]
+    assert [tuple(r)[1:] for r in rows] == [("gh-2001-1", "PASSED", "succeeded", 7, "abc1234def5678", "ci"),
+                                            ("gh-2002-1", "BLOCKED", "failed", 7, "abc1234def5678", "ci")]
     assert f"[chi tiết]({stack.api_url}/#project=noteboard&job={rows[1][0]})" in body  # link tới job của lần chạy MỚI NHẤT trong lịch sử
     assert stack.gh.check_runs[1]["details_url"].endswith(f"job={rows[1][0]}")
     assert GITHUB_TOKEN not in log and stack.token not in log  # bí mật không lọt vào log của các bước

@@ -1,4 +1,4 @@
-"""Đồ dùng chung cho test của khâu dò nợ test (worker + adapter): repo git tạm dựng bằng git thật, cách ly khỏi ~/.gitconfig."""
+"""Repo Git tạm dùng chung cho test worker và adapter coverage."""
 import os
 import subprocess
 import textwrap

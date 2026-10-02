@@ -211,7 +211,7 @@ def perf_smoke_suite(*, script: str = ".qc-agent/perf/smoke.js", vus: int = 2, d
 
 def coverage_debt_suite() -> str:
     """Suite dò nợ test (lane discovery, threshold `debt.new == 0`). Không có chỗ trống: mọi repo dùng chung một mẫu.
-    `init` CHƯA tự sinh: suite chỉ có nghĩa khi policy liệt kê nó trong advisory_suites/advisory_yellow_suites (P2-8), nên bật theo từng project."""
+    `init` CHƯA tự sinh: suite chỉ có nghĩa khi policy liệt kê nó trong advisory_suites, nên bật theo từng project."""
     return render("coverage-debt.yaml.tmpl", {})
 
 

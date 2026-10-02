@@ -1,9 +1,9 @@
 # qc-agent:generated — dò NỢ TEST: bề mặt MỚI thêm (endpoint API, route UI, operation OpenAPI) mà chưa test nào chạm tới.
-# Lane discovery: không bao giờ chặn merge. Policy bật nó bằng modes.<mode>.advisory_suites + advisory_yellow_suites
-# (fail => check ⚪ neutral + comment liệt kê). Cần checkout fetch-depth: 2; có QC_DIFF_BASE => chỉ xét bề mặt của PR, không có => quét toàn bộ.
+# Lane discovery: finding Low không chặn merge và được đồng bộ Jira khi cấu hình. Policy bật bằng modes.<mode>.advisory_suites.
+# Cần checkout đủ lịch sử; có QC_DIFF_BASE => chỉ xét bề mặt của PR, không có => quét toàn bộ.
 # Bỏ qua một bề mặt CÓ LÝ DO: .qc-agent/coverage.yaml -> ignore: [{surface, reason}] (hiện trong diff PR để người review thấy).
 suite: coverage-debt
-description: Nợ test - bề mặt mới chưa có test (mode pr, không chặn; nợ vào sổ test_debt)
+description: Bề mặt mới chưa có test (finding Low, không chặn merge)
 tasks:
 - task_id: t-103
   capability: repo.coverage_debt

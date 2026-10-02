@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from debtkit import FILLER, MAIN_PY, OLD, PING, Repo
-from debtkit import GIT_ENV as _GIT_ENV
+from coveragekit import FILLER, MAIN_PY, OLD, PING, Repo
+from coveragekit import GIT_ENV as _GIT_ENV
 from qc_agent.adapters import coverage_debt_worker as cd
 from qc_agent.adapters.coverage_debt_worker import DebtError
 
@@ -332,7 +332,8 @@ def test_diff_scan_reports_only_new_full_scan_reports_every_uncovered_surface(re
     assert (diff["mode"], diff["base"], diff["metrics"]) == ("diff", "HEAD^1", {"debt.new": 1, "debt.full_scan": False})
     assert [f["surface"] for f in full["findings"]] == ["GET /health", "GET /ping"]  # /old đã có test
     assert (full["mode"], full["base"], full["metrics"]) == ("full", None, {"debt.new": 2, "debt.full_scan": True})
-    assert full["findings"][0] == {"finding_id": "debt:api_endpoint:GET /health", "kind": "api_endpoint", "surface": "GET /health"}
+    assert full["findings"][0] == {"finding_id": "debt:api_endpoint:GET /health", "kind": "api_endpoint",
+                                   "surface": "GET /health", "path": "app/main.py", "line": 4}
 
 
 def test_full_scan_needs_no_git(tmp_path):

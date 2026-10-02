@@ -53,6 +53,6 @@ def threshold(oracle_spec: dict, metrics: dict, signals: dict) -> OracleOutcome:
             "detected_by": f"threshold:{m}",
             "verdict_source": "deterministic_assert",
             "confidence": None,
-            "severity_hint": "high",
+            "severity_hint": "critical",
         })
     return OracleOutcome(value="fail" if findings else "pass", findings=findings)

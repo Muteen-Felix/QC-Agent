@@ -171,10 +171,12 @@ def write_event(tmp_path, payload):
 
 
 def test_context_uses_pr_head_sha_not_the_merge_commit(tmp_path):
-    event = write_event(tmp_path, {"pull_request": {"number": 7, "head": {"sha": "headsha1234", "ref": "feat/x"}}})
+    event = write_event(tmp_path, {"pull_request": {"number": 7, "head": {"sha": "headsha1234", "ref": "feat/x"},
+                                                 "user": {"login": "dev"}, "html_url": "https://github.com/o/r/pull/7"}})
     ctx = ci.context_from_env({"GITHUB_REPOSITORY": "o/r", "GITHUB_SHA": "mergecommit9", "GITHUB_EVENT_PATH": event,
                                "GITHUB_RUN_ID": "555", "GITHUB_RUN_ATTEMPT": "2", "GITHUB_SERVER_URL": "https://github.com"})
-    assert ctx == {"repo": "o/r", "sha": "headsha1234", "pr_number": 7, "branch": "feat/x", "external_id": "gh-555-2",
+    assert ctx == {"repo": "o/r", "sha": "headsha1234", "pr_number": 7, "author": "dev",
+                   "pr_url": "https://github.com/o/r/pull/7", "branch": "feat/x", "external_id": "gh-555-2",
                    "run_url": "https://github.com/o/r/actions/runs/555"}
 
 

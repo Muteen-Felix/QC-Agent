@@ -1,82 +1,20 @@
-import pytest
-
-from qc_agent.core.verdict import gate_verdict
-
-
-def R(status="pass", value="pass", gating=True, src="deterministic_assert", rat=None):
-    return {"status": status, "verdict": {"value": value, "gating": gating, "verdict_source": src, "rationale": rat}}
+from qc_agent.core.findings import NormFinding
+from qc_agent.core.verdict import BLOCKED, PASSED, PASSED_WITH_WARNINGS, gate_verdict
 
 
-G = {"lane": "gate"}
-D = {"lane": "discovery"}
-SKIP = R("skipped", "non_gating", False, "heuristic", "thiếu key")
-ERR = R("error", "fail", False, "heuristic", "crash")
-
-CASES = [
-    ("all_pass",              {"a": G, "b": G},           {"a": R(), "b": R()},                    "PASS", 0),
-    ("one_fail",              {"a": G, "b": G},           {"a": R(), "b": R("fail", "fail")},      "FAIL", 1),
-    ("error_in_gate",         {"a": G, "b": G},           {"a": R(), "b": ERR},                    "FAIL", 1),
-    ("error_in_discovery",    {"a": G, "m": D},           {"a": R(), "m": ERR},                    "PASS", 0),
-    ("skipped_gate_yellow",   {"a": G, "b": G},           {"a": R(), "b": SKIP},                   "YELLOW", 0),
-    ("discovery_finding_ok",  {"a": G, "m": D},           {"a": R(), "m": R("pass", "non_gating", False, "heuristic")}, "PASS", 0),
-    ("empty_and_is_fail",     {"a": G},                   {"a": SKIP},                             "FAIL", 1),
-    ("missing_gate_result",   {"a": G, "b": G},           {"a": R()},                              "FAIL", 1),
-    ("fail_beats_skipped",    {"a": G, "b": G, "c": G},   {"a": R("fail", "fail"), "b": SKIP, "c": R()}, "FAIL", 1),
-    ("llm_never_in_verdict",  {"a": G},                   {"a": R()},                              "PASS", 0),
-]
+def finding(severity):
+    return NormFinding("fp", severity, "task", "suite", "worker", "rule", "title", None, None, None,
+                       "gate", "deterministic_assert", "finding")
 
 
-@pytest.mark.parametrize("name,specs,results,value,code", CASES, ids=[c[0] for c in CASES])
-def test_gate_verdict(name, specs, results, value, code):
-    g = gate_verdict(results, specs)
-    assert (g.value, g.exit_code) == (value, code)
+def test_verdict_by_severity_and_infrastructure():
+    assert (gate_verdict([], []).value, gate_verdict([], []).exit_code) == (PASSED, 0)
+    assert gate_verdict([finding("low")], []).value == PASSED_WITH_WARNINGS
+    for severity in ("medium", "critical"):
+        gate = gate_verdict([finding(severity)], [])
+        assert gate.value == BLOCKED and gate.exit_code == 1 and gate.counts[severity] == 1
+    assert gate_verdict([], [("task", "error")]).value == BLOCKED
 
 
-def test_skipped_gate_is_fail_policy():
-    specs, results = {"a": G, "b": G}, {"a": R(), "b": SKIP}
-    assert gate_verdict(results, specs).value == "YELLOW"  # mặc định giữ hành vi cũ
-    g = gate_verdict(results, specs, skipped_gate_is_fail=True)
-    assert (g.value, g.exit_code) == ("FAIL", 1) and [t for t, _ in g.reasons] == ["b"]
-
-
-def test_skipped_gate_is_fail_ignores_discovery_and_clean_runs():
-    assert gate_verdict({"a": R(), "m": SKIP}, {"a": G, "m": D}, skipped_gate_is_fail=True).value == "PASS"
-    assert gate_verdict({"a": R(), "b": R()}, {"a": G, "b": G}, skipped_gate_is_fail=True).value == "PASS"
-
-
-def test_banner_lists_skipped_and_error():
-    g = gate_verdict({"a": R(), "b": SKIP, "c": ERR}, {"a": G, "b": G, "c": G})
-    assert {t for t, _ in g.banner} == {"b", "c"}
-
-
-DEBT = R("fail", "non_gating", False, "heuristic", "2 bề mặt mới chưa có test")
-
-
-def test_yellow_on_fail_debt_makes_yellow_not_fail():
-    g = gate_verdict({"a": R(), "d": DEBT}, {"a": G, "d": D}, yellow_on_fail={"d"})
-    assert (g.value, g.exit_code) == ("YELLOW", 0) and [t for t, _ in g.reasons] == ["d"]
-
-
-def test_yellow_on_fail_never_hides_a_gate_failure():
-    g = gate_verdict({"a": R("fail", "fail"), "d": DEBT}, {"a": G, "d": D}, yellow_on_fail={"d"})
-    assert (g.value, g.exit_code) == ("FAIL", 1)
-
-
-def test_yellow_on_fail_error_and_pass_do_not_turn_yellow():
-    g = gate_verdict({"a": R(), "d": ERR}, {"a": G, "d": D}, yellow_on_fail={"d"})
-    assert (g.value, g.exit_code) == ("PASS", 0) and [t for t, _ in g.banner] == ["d"]  # hạ tầng: PASS + banner, không đoán §1.1
-    assert gate_verdict({"a": R(), "d": R("pass", "non_gating", False, "heuristic")}, {"a": G, "d": D}, yellow_on_fail={"d"}).value == "PASS"
-
-
-def test_yellow_on_fail_is_opt_in_per_task():
-    """Discovery fail không nằm trong policy (vd. canary/ui-explore) vẫn PASS."""
-    assert gate_verdict({"a": R(), "d": DEBT, "m": DEBT}, {"a": G, "d": D, "m": D}, yellow_on_fail=set()).value == "PASS"
-    assert gate_verdict({"a": R(), "m": DEBT}, {"a": G, "m": D}, yellow_on_fail={"d"}).value == "PASS"
-    g = gate_verdict({"a": R(), "ui-explore": DEBT, "debt": DEBT}, {"a": G, "ui-explore": D, "debt": D}, yellow_on_fail={"debt"})
-    assert g.value == "YELLOW" and [t for t, _ in g.reasons] == ["debt"]  # ui-explore fail không góp vào YELLOW
-    assert gate_verdict({"a": R(), "ui-explore": DEBT}, {"a": G, "ui-explore": D}, yellow_on_fail={"debt"}).value == "PASS"
-
-
-def test_yellow_on_fail_ignored_for_gate_lane_task():
-    g = gate_verdict({"a": R("fail", "fail")}, {"a": G}, yellow_on_fail={"a"})
-    assert g.value == "FAIL"
+def test_policy_can_change_block_set():
+    assert gate_verdict([finding("medium")], [], block_on=("critical",)).value == PASSED_WITH_WARNINGS

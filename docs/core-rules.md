@@ -65,8 +65,8 @@ Khâu Ground-Truth (S1) — `gt-functional` (`t-030`): worker `pytest` · `api.f
 Suite chặn `pytest.failures == 0`, `pytest.errors == 0` và `pytest.tests >= 1` (để "gate rỗng" là `fail`, không phải xanh). Finding: `detected_by: "pytest:<tc_id>"`
 (quy ước `<tool>:<rule_id>`, `severity_hint: medium`). Thư mục test phải có `pytest.ini` riêng (`groundtruth/render.py` sinh), nếu không worker trả `error`: chặn cấu hình/`conftest.py` của repo SUT lọc bớt test làm gate xanh giả. Exit code của pytest: 0/1 → parse JUnit; 5 → metric 0; 2/3/4 và mọi mã khác → `error`.
 
-- **Hiện tại (đến hết S2):** `critical` vẫn chỉ có ở **metric**: `severity_hint` của finding không có `critical` nên nó ghi là `high`. Vì vậy suite phải chặn `*.critical` riêng, chỉ chặn `*.high` sẽ bỏ lọt. **S3.1 đổi:** `severity_hint` ∈ low/medium/critical (contract 2.0.0) và mọi chỗ đang phát `high` được sửa cùng một PR; metric `critical` và ghi chú này được rà lại ở đó.
-- Adapter **đếm**, ngưỡng nằm trong file suite (oracle `threshold`); adapter không có nhánh nào phán pass/fail. Vị trí `file:dòng` hiện đi vào `title` (`rule @ path:line`), chưa có trường `location` — **S3.1** thêm `findings[].location` (tuỳ chọn) trong cùng lần nâng contract.
+- Contract 2.0.0 dùng `severity_hint` ∈ low/medium/critical. Metric gốc của công cụ vẫn có `high` (`semgrep.high`, `trivy.high`) để giữ ý nghĩa của số đếm. Adapter đặt `detected_by: "<tool>:<rule_id>"` để policy có thể chọn luật cụ thể.
+- Adapter **đếm**, ngưỡng nằm trong file suite (oracle `threshold`); adapter không có nhánh nào phán pass/fail. Finding có `location` tuỳ chọn gồm `path`, `line`, `end_line`; title có thể giữ `file:dòng` để người đọc nhận ra vị trí.
 
 ## Cấm
 

@@ -88,7 +88,7 @@ def test_two_perf_full_jobs_on_staging_run_one_at_a_time_and_a_slow_sut_fails_th
             assert first[1] and second[1], spans
             assert first[1] <= second[0], f"hai job perf-full chồng thời gian: {spans}"  # tuần tự
             for _, _, status, verdict, error in spans:
-                assert (status, verdict) == ("failed", "FAIL"), (status, verdict, error)  # ngưỡng p95 < 300ms bị vi phạm khi SUT chậm 400ms
+                assert (status, verdict) == ("failed", "BLOCKED"), (status, verdict, error)  # ngưỡng p95 < 300ms bị vi phạm khi SUT chậm 400ms
             with session_scope(engine) as s:
                 for i in ids:
                     (row,) = repo.get_job(s, uuid.UUID(i)).tasks
