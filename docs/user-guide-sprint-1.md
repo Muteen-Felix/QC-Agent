@@ -58,7 +58,7 @@ BA/Dev sửa PRD ──push main──► Bot (LLM) ──► PR "Ground-Truth: 
 - [ ] Quyền **Admin** trên repo SUT (đặt secret, bật quyền workflow, branch protection).
 - [ ] Một **team QA** (hoặc username) có quyền **Write** trên repo, dùng làm code owner.
 - [ ] Một API key LLM: `GEMINI_API_KEY` **hoặc** `ANTHROPIC_API_KEY` (2.3).
-- [ ] Từ team qc-agent: **image digest** `ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>` (xem Job Summary của workflow `image` bên repo qc-agent, hoặc xin team qc-agent).
+- [ ] Từ team qc-agent: **image digest** `ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12` (xem Job Summary của workflow `image` bên repo qc-agent, hoặc xin team qc-agent).
 
 ### 2.1. Quy chuẩn viết PRD để máy đọc được
 
@@ -114,10 +114,19 @@ Mẹo: nêu rõ **mã lỗi cho từng trường hợp sai** và **giá trị bi
 Kiểm tra parse **offline**, không tốn tiền, trước khi push:
 
 ```bash
-docker run --rm -v "$PWD:/work:ro" -w /work ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> \
+# Linux / macOS / Git Bash
+docker run --rm -v "$PWD:/work:ro" -w /work ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 \
   gt info --prd docs/prd/orders.md
-# in JSON: prd_id, sha256, số story, số AC. Số AC lệch với PRD => sửa định dạng trước khi push.
 ```
+
+```powershell
+# PowerShell (Windows): dùng ${PWD}, KHÔNG dùng "$PWD:..." và không dùng "\" cuối dòng
+docker run --rm -v "${PWD}:/work:ro" -w /work ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 gt info --prd docs/prd/orders.md
+```
+
+Kết quả là JSON: `prd_id`, `sha256`, số story, số AC. Số AC lệch với PRD thì sửa định dạng trước khi push.
+
+> **Bạn đang dùng PowerShell?** Mọi khối `bash` trong tài liệu này dùng cú pháp bash. Khác biệt cần nhớ: `"$PWD:/x"` phải viết `"${PWD}:/x"` (nếu không PowerShell báo *Variable reference is not valid*); nối dòng bằng dấu backtick `` ` `` thay vì `\`; biến môi trường đặt bằng `$env:TEN = "giá trị"` thay vì `TEN=giá trị lệnh`. Nếu không muốn đổi, chạy các khối bash trong **Git Bash**.
 
 ### 2.2. File đặc tả API `openapi.json`
 
@@ -140,6 +149,8 @@ curl -s http://127.0.0.1:5000/swagger/v1/swagger.json -o openapi.json
 
 # NestJS: dùng SwaggerModule.createDocument(app, config) rồi JSON.stringify ra file
 ```
+
+> **PowerShell:** `curl` là bí danh của `Invoke-WebRequest` và không nhận `-s -o`. Dùng `curl.exe -s http://127.0.0.1:8000/openapi.json -o openapi.json` (có đuôi `.exe`), hoặc `Invoke-WebRequest http://127.0.0.1:8000/openapi.json -OutFile openapi.json`. Đừng dùng `> openapi.json` trên Windows PowerShell 5.1 vì nó ghi UTF-16; để Python ghi file: `python -c "import json; from app.main import app; open('openapi.json','w',encoding='utf-8').write(json.dumps(app.openapi(), ensure_ascii=False, indent=2))"`.
 
 ```bash
 git add openapi.json && git commit -m "docs: thêm openapi.json cho qc-agent"
@@ -168,30 +179,27 @@ Chọn nhà cung cấp LLM theo tiền tố model: model `gemini-*` dùng `GEMIN
 
 ## 3. Tích hợp vào repo SUT: một lệnh Docker
 
-Chạy ở **gốc repo SUT**:
-
-```bash
-# Linux / macOS / Git Bash (Windows: đặt MSYS_NO_PATHCONV=1 trước lệnh)
-docker run --rm -v "$PWD:/sut" \
-  ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> \
-  init \
-  --sut-root /sut \
-  --qa-team @my-org/qa-team \
-  --image ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> \
-  --prd-glob 'docs/prd/**' \
-  --openapi /sut/openapi.json
-```
+Chạy ở **gốc repo SUT**. Ví dụ dưới là repo **monorepo** có Dockerfile của API ở `apps/api-server/` (đổi `--qa-team`, `--sut-dockerfile`, `--sut-context` theo repo của bạn):
 
 ```powershell
 # PowerShell (Windows)
-docker run --rm -v "${PWD}:/sut" `
-  ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> `
-  init --sut-root /sut --qa-team @my-org/qa-team `
-  --image ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> `
-  --prd-glob 'docs/prd/**' --openapi /sut/openapi.json
+docker run --rm -v "${PWD}:/sut" -w /sut ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 init --sut-root /sut --qa-team @my-org/qa-team --image ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 --prd-glob "docs/prd/**" --sut-dockerfile "apps/api-server/Dockerfile" --sut-context "apps/api-server"
 ```
 
-Linux: thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` sau `docker run --rm` để file sinh ra thuộc về bạn, không thuộc root.
+```bash
+# Linux / macOS / Git Bash (Windows: đặt MSYS_NO_PATHCONV=1 trước lệnh)
+docker run --rm -v "$PWD:/sut" -w /sut \
+  ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 \
+  init \
+  --sut-root /sut \
+  --qa-team @my-org/qa-team \
+  --image ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 \
+  --prd-glob "docs/prd/**" \
+  --sut-dockerfile "apps/api-server/Dockerfile" \
+  --sut-context "apps/api-server"
+```
+
+Dockerfile của API nằm **ở gốc repo** (hoặc `<thư-mục>/Dockerfile`, `docker/*Dockerfile*`) thì `init` tự tìm được: bỏ hai dòng `--sut-dockerfile` / `--sut-context`. Linux: thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` sau `docker run --rm` để file sinh ra thuộc về bạn, không thuộc root.
 
 **Xem trước, không ghi gì:** thêm `--dry-run` cuối lệnh. Nên chạy thử một lần.
 
@@ -199,15 +207,22 @@ Linux: thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` sau `docker run --rm` đ�
 
 | Phần của lệnh | Ý nghĩa |
 |---|---|
-| `-v "$PWD:/sut"` | gắn thư mục repo hiện tại vào `/sut` trong container; `init` chỉ đọc cây thư mục và **chỉ ghi trong repo của bạn** |
-| `ghcr.io/…@sha256:<DIGEST>` (đứng trước `init`) | image qc-agent dùng để chạy lệnh. **Ghim theo digest**, không dùng tag `latest` |
+| `-v "$PWD:/sut"` (PowerShell: `"${PWD}:/sut"`) | gắn thư mục repo hiện tại vào `/sut` trong container; `init` chỉ đọc cây thư mục và **chỉ ghi trong repo của bạn** |
+| `-w /sut` | đặt thư mục làm việc trong container là `/sut`, để mọi đường dẫn tương đối (như `apps/api-server/Dockerfile`) tính từ gốc repo |
+| `ghcr.io/…@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12` (đứng trước `init`) | image qc-agent dùng để chạy lệnh. **Ghim theo digest**, không dùng tag `latest` |
 | `--sut-root /sut` | thư mục gốc repo SUT **trong container** (khớp điểm gắn ở trên; mặc định đã là `/sut` nếu có gắn, nên có thể bỏ) |
 | `--qa-team @my-org/qa-team` | team QA (hoặc `@username`) được ghi làm **code owner** của `/.qc-agent/`. Thiếu tham số này thì CODEOWNERS dùng owner giữ chỗ kèm `qc-agent:todo` và `qc-agent validate` từ chối |
-| `--image …@sha256:<DIGEST>` | image mà **workflow trên CI** sẽ kéo về để chạy `gt generate`/`gt validate`. Ghi vào `qc-groundtruth.yml`. Thiếu thì file có dấu `qc-agent:todo` để bạn điền tay |
-| `--prd-glob 'docs/prd/**'` | PRD nào kích hoạt workflow khi push lên `main`. Mặc định đã là `docs/prd/**`. Cần dấu nháy đơn để shell không bung glob |
-| `--openapi /sut/openapi.json` | OpenAPI **đã commit trong repo** (đường dẫn trong container). `init` ghi `openapi: "openapi.json"` vào workflow. Bỏ qua tham số này là CI không có OpenAPI |
+| `--image …@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12` | image mà **workflow trên CI** sẽ kéo về để chạy `gt generate`/`gt validate`. Ghi vào `qc-groundtruth.yml`. Thiếu thì file có dấu `qc-agent:todo` để bạn điền tay |
+| `--prd-glob "docs/prd/**"` | PRD nào kích hoạt workflow khi push lên `main`. Mặc định đã là `docs/prd/**`. Giữ dấu nháy để shell không bung glob |
+| `--sut-dockerfile "apps/api-server/Dockerfile"` | đường dẫn **từ gốc repo** tới Dockerfile của API. Scanner chỉ tự tìm ở gốc, `*/Dockerfile` (sâu 1 cấp) và `docker/*Dockerfile*`; Dockerfile nằm sâu hơn (monorepo `apps/<tên>/…`) thì **bắt buộc** chỉ ra, không thì `init` báo *không thấy Dockerfile của API* |
+| `--sut-context "apps/api-server"` | thư mục **context build** của API (nơi `docker build` được chạy). Chỉ cần khi context không phải gốc repo, thường là thư mục chứa Dockerfile |
 
-Tham số tuỳ chọn hay gặp: `--qc-ref <SHA 40 ký tự>` ghim phiên bản workflow tái sử dụng (mặc định lấy từ chính image, thường không cần điền), `--sut-dockerfile PATH` khi `init` báo *không thấy Dockerfile API*, `--slug` đặt tên project.
+Tham số tuỳ chọn hay gặp:
+
+- `--openapi /sut/openapi.json`: OpenAPI **đã commit trong repo** (đường dẫn trong container, mục 2.2). `init` ghi `openapi: "openapi.json"` vào workflow để CI đọc được. **Bỏ tham số này thì CI không có OpenAPI**: LLM chỉ có PRD và bộ chấm coverage chỉ chấm được chiều AC. Chưa có `openapi.json` thì thêm sau bằng cách commit file đó rồi thêm tay dòng `openapi: "openapi.json"` vào khối `with:` của `.github/workflows/qc-groundtruth.yml` (chạy lại `init` không đủ: file đã có thì `init` giữ nguyên, trừ khi `--force`, mà `--force` sẽ ghi đè cả các sửa tay của bạn).
+- `--qc-ref <SHA 40 ký tự>`: ghim phiên bản workflow tái sử dụng (mặc định lấy từ chính image, thường không cần điền).
+- `--slug`: đặt tên project.
+- `--sut-port`, `--health-path`, `--sut-env KEY=VALUE`: khi cổng/health path/biến môi trường của SUT scanner đoán sai.
 
 ### File được tự động sinh trong repo SUT
 
@@ -239,7 +254,7 @@ Chạy lại `init` chỉ cập nhật **vùng giữa hai dấu**; mọi dòng n
 ### Sau khi chạy `init`
 
 1. Đọc phần in ra: mục *"Còn việc cho người (qc-agent:todo)"* liệt kê dòng cần xử lý. Với Sprint 1, bạn chủ yếu cần: `image` đã điền, `--qa-team` đã đúng.
-2. Kiểm nhanh: `docker run --rm -v "$PWD:/sut" <IMAGE> validate --sut-root /sut` (từ chối khi còn TODO hoặc thiếu CODEOWNERS).
+2. Kiểm nhanh (từ chối khi còn TODO hoặc thiếu CODEOWNERS): bash `docker run --rm -v "$PWD:/sut" <IMAGE> validate --sut-root /sut`; PowerShell `docker run --rm -v "${PWD}:/sut" <IMAGE> validate --sut-root /sut`.
 3. `git checkout -b chore/qc-agent-onboarding`, commit, **mở PR vào chính repo của bạn**, nhờ QA duyệt (vì PR đụng CODEOWNERS), rồi merge vào `main`.
 
 > `qc.yml` và các suite khác thuộc **Quality Gate chung** của qc-agent; `init` sinh sẵn nhưng phần tinh chỉnh (ghim digest ở `qc.yml`, xoá TODO còn sót, đăng ký project…) nằm ngoài tài liệu này: xem [onboarding.md](onboarding.md). PR onboarding **có thể đỏ lúc đầu** vì `validate` chặn mọi `qc-agent:todo` còn sót; đó là chủ ý.
@@ -273,7 +288,7 @@ gh secret set GEMINI_API_KEY --repo my-org/my-sut        # sẽ hỏi giá trị
 ```yaml
     with:
       project: my-sut
-      image: ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>
+      image: ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12
       prd_path: ${{ inputs.prd_path || 'docs/prd/**' }}
       openapi: "openapi.json"
       model: gemini-3.6-flash                                  # tiền tố gemini-* => dùng secret GEMINI_API_KEY
@@ -483,8 +498,8 @@ Sau khi sửa xong **phải đồng bộ về YAML** (mục 5.4), vì gate đọ
 `gt validate` là cổng kiểm **offline, tất định, không LLM** (không mạng, không secret). Chạy thử trước khi push:
 
 ```bash
-# Khai báo một lần cho tiện (đổi <DIGEST>)
-export QC_IMAGE=ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>
+# Khai báo một lần cho tiện (digest bên dưới là bản hiện tại; xin team qc-agent bản mới khi nâng cấp)
+export QC_IMAGE=ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12
 qc() { docker run --rm -v "$PWD:/sut" "$QC_IMAGE" "$@"; }       # Linux: thêm --user "$(id -u):$(id -g)" -e HOME=/tmp
 
 qc gt validate --sut-root /sut
@@ -493,7 +508,7 @@ echo $?        # 0 sạch · 1 còn việc cho người · 3 file hỏng/sai sch
 
 ```powershell
 # PowerShell
-$env:QC_IMAGE = "ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>"
+$env:QC_IMAGE = "ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12"
 function qc { docker run --rm -v "${PWD}:/sut" $env:QC_IMAGE @args }
 qc gt validate --sut-root /sut
 ```
@@ -600,6 +615,7 @@ Workflow có tuỳ chọn `agent: true`: LLM đọc cả **mã nguồn** repo qu
 - **Mã nguồn bị gửi tới Anthropic**; chỉ bật khi đã được phép, và chạy `gitleaks` xoá bí mật đã commit trước.
 - Chỉ dùng được với Claude (cần `ANTHROPIC_API_KEY`).
 - **Chưa được kiểm chứng với API thật**; tài liệu này không khuyến nghị dùng cho onboarding. Chi tiết: [groundtruth.md §5c](groundtruth.md).
+- Muốn **đo thử có kiểm soát chi phí** trên CI của repo SUT (trưởng nhóm SUT làm): xem [measure-sprint-1-on-sut.md](measure-sprint-1-on-sut.md).
 
 ### Giới hạn và lưu ý vận hành
 

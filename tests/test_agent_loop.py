@@ -93,6 +93,17 @@ def test_fallbacks_can_be_turned_off_and_effort_is_passed_through(tmp_path):
     assert requests[0].body["output_config"] == {"effort": "xhigh"} and requests[0].body["max_tokens"] == 1234
 
 
+def test_a_tool_can_opt_out_of_strict_and_is_still_validated_client_side(tmp_path):
+    kit = Kit()
+    loose = al.AgentTool("read", "read a file", READ_SCHEMA, kit.read, strict=False)       # schema quá lớn cho grammar strict của API
+    script = [tool_use_msg(("t1", "read", {"path": "x" * 21})), tool_use_msg(("t2", "finish", {"note": "ok"}))]
+    result, requests, _ = run(tmp_path, script, kit, tools=[loose, kit.tools[1]])
+    tools = requests[0].body["tools"]
+    assert "strict" not in tools[0] and tools[1]["strict"] is True and result.stop == "finished"
+    assert kit.read_calls == []                                                             # maxLength vẫn chặn được: client validate bằng schema đầy đủ
+    assert "path (maxLength)" in requests[1].messages[-1]["content"][0]["content"]
+
+
 def test_the_tool_list_and_system_are_byte_identical_every_turn(tmp_path):
     _, requests, _ = run(tmp_path, READ_THEN_FINISH)
     assert requests[0].body["tools"] == requests[1].body["tools"] and requests[0].body["system"] == requests[1].body["system"]

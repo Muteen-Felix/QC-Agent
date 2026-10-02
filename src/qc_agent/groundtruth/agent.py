@@ -244,7 +244,10 @@ def _tools(state: _State, sandbox: RepoSandbox, api: OpenApiTools | None) -> lis
         tools += [al.AgentTool("openapi_operation", DESCRIPTIONS["openapi_operation"], s["openapi_operation"], lambda d: api.operation(d["method"], d["path"])),
                   al.AgentTool("openapi_schema", DESCRIPTIONS["openapi_schema"], s["openapi_schema"], lambda d: api.schema(d["name"]))]
     handlers = {"record_coverage_plan": state.plan_tool, "submit_test_cases": state.submit_tool, "report_spec_conflict": state.conflict_tool, FINISH_TOOL: state.finish_tool}
-    tools += [al.AgentTool(name, DESCRIPTIONS[name], submit_schema() if name == "submit_test_cases" else gt_schema.tool_input_schema(name), handler)
+    # `submit_test_cases` KHÔNG strict: schema ~6 KB bị API từ chối (400 "compiled grammar is too large", đo bằng API thật 2026-10-02) dù một mình hay cùng tool khác.
+    # Không mất chốt chặn: `agent_loop._run_tool` vẫn validate bằng schema đầy đủ và trả lý do cho model sửa; `_convert` kiểm tiếp từng TC.
+    tools += [al.AgentTool(name, DESCRIPTIONS[name], submit_schema() if name == "submit_test_cases" else gt_schema.tool_input_schema(name), handler,
+                           strict=name != "submit_test_cases")
               for name, handler in handlers.items()]
     return tools   # tool cuối cùng nhận cache_control: giữ finish_generation ở cuối cho thứ tự ổn định
 

@@ -5,6 +5,8 @@ Khác `client.call_tool` (một lời gọi, ép `tool_choice`): ở đây model
 Sự thật về API đã kiểm với tài liệu Claude API (2026-09), quyết định hình dạng của file này:
   - `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1` TRẢ 400 với `tool_choice` kiểu `any`/`tool`: dùng `auto` + `strict: true` và để lời nhắc cuối lượt
     ("hãy gọi `<finish_tool>`") dẫn model kết thúc bằng tool, không ép được. Hết lượt mà chưa gọi thì nhắc MỘT lần, vẫn không thì `bad_output`.
+  - `strict: true` có trần độ phức tạp: API biên dịch schema thành grammar và trả 400 "compiled grammar is too large" khi quá lớn (đo thật: schema ~6 KB của
+    `submit_test_cases`). `AgentTool.strict=False` bỏ cờ này cho riêng tool đó; client vẫn validate đầy đủ và trả lỗi cho model sửa.
   - Thinking không tắt được trên Opus 5.5 và có "preserved thinking": lịch sử PHẢI chỉ-được-nối-thêm. Nội dung assistant được trả về NGUYÊN VĂN (kể cả block
     `thinking` kèm chữ ký và block `fallback`); lời nhắc/cảnh báo chỉ được THÊM vào cuối, không bao giờ sửa message cũ. Có test: request N là tiền tố của request N+1.
   - Tool song song: mọi `tool_result` của một lượt nằm trong MỘT message user, theo đúng thứ tự `tool_use`, đứng TRƯỚC mọi block text.
@@ -72,6 +74,7 @@ class AgentTool:
     description: str
     input_schema: dict                       # schema ĐẦY ĐỦ (có thể có maxLength...); `wire_schema` rút gọn khi gửi, client validate lại bằng schema này
     handler: Callable[[dict], ToolOutcome]
+    strict: bool = True                      # False khi schema quá lớn để API biên dịch thành grammar (400 "compiled grammar is too large"): vẫn được validate đầy đủ phía client
 
 
 @dataclass(frozen=True)
@@ -168,7 +171,7 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
     validators = _check_args(purpose=purpose, model=model, system=system, first_user=first_user, tools=tools, finish_tool=finish_tool,
                              budget=budget, effort=effort, max_tokens=max_tokens)
     by_name = {tool.name: tool for tool in tools}
-    wire_tools = [{"name": t.name, "description": t.description, "input_schema": client.wire_schema(t.input_schema), "strict": True} for t in tools]
+    wire_tools = [{"name": t.name, "description": t.description, "input_schema": client.wire_schema(t.input_schema), **({"strict": True} if t.strict else {})} for t in tools]
     wire_tools[-1]["cache_control"] = {"type": "ephemeral"}
 
     key = os.environ.get("ANTHROPIC_API_KEY", "").strip()

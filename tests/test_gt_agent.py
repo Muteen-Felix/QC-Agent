@@ -154,6 +154,8 @@ def test_first_request_shape_and_egress_for_the_agent(prd, spec, emitted, source
     assert first.body["model"] == "claude-opus-5-5" and first.body["tool_choice"] == {"type": "auto"}
     names = [t["name"] for t in first.body["tools"]]
     assert names == ["list_dir", "read_file", "grep", "openapi_operation", "openapi_schema", "record_coverage_plan", "submit_test_cases", "report_spec_conflict", "finish_generation"]
+    strict = {t["name"]: t.get("strict", False) for t in first.body["tools"]}
+    assert strict.pop("submit_test_cases") is False and all(strict.values())     # schema quá lớn cho grammar strict (API thật: 400); 8 tool còn lại vẫn strict
     text = first.messages[0]["content"][0]["text"]
     assert "<prd>" in text and "<endpoints>" in text and "<repo_overview>" in text and "app/" in text and ".env" not in text and SENTINEL not in text
     assert "oracle rule" in first.body["system"][0]["text"] and first.body["system"][0]["text"].startswith("You are a senior QA engineer")
