@@ -14,7 +14,7 @@
 > agent open-source, ma trận loại testing) đã nộp vòng trước và không lặp lại ở đây.
 
 > **Đây là kiến trúc v2 (đích), code đang đuổi theo.** Mỗi thành phần mang một nhãn trạng thái thật:
-> *Đã chạy* (có code + test) · *Đang triển khai — S1* (sprint đang làm) · *Thiết kế — S2/S3/S4*
+> *Đã chạy* (có code + test) · *Đã chạy — chưa đo bằng model thật* (có code + test, DoD phần LLM còn chờ số đo thật) · *Đang triển khai — S1* (sprint đang làm) · *Thiết kế — S3/S4*
 > (đã chốt trong plan, chưa có code). Chỗ nào hình vẽ khác code hôm nay thì có ghi chú ngay dưới hình.
 
 ### Trạng thái từng thành phần
@@ -30,9 +30,9 @@
 | Ground-Truth Engine: `groundtruth/`, schema TC, render, `qc-agent gt …` | *Đang triển khai — S1* | Đã có schema catalog/emit + parse PRD (S1-02) và `generate.py` sinh catalog `draft` từ PRD bằng một lời gọi tool-use (S1-04, test bằng transport giả, **chưa gọi API thật**). và `render.py` render tất định catalog -> `test-cases.yaml`, `tests_gt/` (conftest runtime + `test_<story>.py`), suite `gt-functional`, `module-map.yaml` nháp (S1-05). và CLI `qc-agent gt generate | validate | regen` (merge theo `tc_id`, cổng HITL) cùng kiểm `qc-agent validate` (S1-06). Chưa có: workflow sinh GT + khoá `.qc-agent/**` (S1-07) |
 | Worker `pytest` (`api.functional`, suite `gt-functional`) | *Đang triển khai — S1* | Worker + adapter + test đã có (S1-03); suite `gt-functional` và runtime test GT do `groundtruth/render.py` sinh (S1-05), chưa bật trong policy (S1-08). Worker từ chối (trả `error`) thư mục test thiếu `pytest.ini` để cấu hình của repo SUT không lách được gate; `render.py` sinh file đó — xem docstring `pytest_adapter.py` |
 | Workflow sinh GT + khoá `.qc-agent/**` (CODEOWNERS, branch protection) | *Đang triển khai — S1* | Đã có `qc-groundtruth.reusable.yml` (sinh GT, mở PR, `gt validate`), mẫu caller + vùng CODEOWNERS do `init` sinh, `tools/protect_ground_truth.py` và [groundtruth.md](groundtruth.md) (S1-07). **Chưa chạy trên GitHub thật, chưa bật protection trên repo thật**. `noteboard` đã có bộ GT đã duyệt (vai QA giả lập) và chặn merge bằng suite `gt-functional` (S1-08) |
-| Trigger `manual` + trục `--trigger` | *Thiết kế — S2* | |
-| Selector: prune, path rules, Diff Agent, floor | *Thiết kế — S2* | |
-| Task Runner chạy song song theo tầng | *Thiết kế — S2* | |
+| Trigger `manual` + trục `--trigger` | *Đã chạy* (S2) | `--trigger manual --workers a,b`: đúng các worker đó, không LLM, không floor; sai tên worker exit 3. Test chặn network + kiểm không import `llm`/`selector.agent` (`tests/test_trigger_manual.py`) |
+| Selector: prune, path rules, Diff Agent, floor | *Đã chạy — chưa đo bằng model thật* (S2) | `selector/` + `select` + `schemas/selection.json`; floor gộp hai lần (selector và `core/`); fallback FULL SET cho mọi lỗi LLM. Golden 30 diff + 10 injection (nhãn **chờ QA duyệt**). Recall/precision/P95 với Haiku thật **chưa đo** (`tools/eval_selector.py --llm real`); bản fake chỉ kiểm đường ống |
+| Task Runner chạy song song theo tầng | *Đã chạy* (S2) | `runner.py` chạy cùng tầng toposort theo `max_parallel`, giữ thứ tự `depends_on`. Mặc định `max_parallel: 1` trong `_default.yaml`: muốn song song phải bật trong policy |
 | Contract 2.0.0, normalizer, verdict `BLOCKED` / `PASSED_WITH_WARNINGS` / `PASSED` | *Thiết kế — S3* | |
 | `pr_review` inline, Check Run mới | *Thiết kế — S3* | |
 | Đồng bộ Jira cho finding Low | *Thiết kế — S3* | |
@@ -88,7 +88,7 @@ chúng nối qua **một thư mục file đã có người duyệt** (`.qc-agent
 | Quyền | chỉ đề xuất | chọn phạm vi **ngoài floor**; không phán | chặn merge |
 | Nhịp | theo PRD, chạy lâu được | mỗi PR, P95 ≤ 20 giây | mỗi PR, vài phút |
 | Hỏng thì sao | không ai chặn ai, sửa sau | FULL SET: chạy nhiều hơn, không tắc | cả phòng tắc |
-| Trạng thái | *Đang triển khai — S1* | *Thiết kế — S2* | *Đã chạy* (verdict mới: *Thiết kế — S3*) |
+| Trạng thái | *Đang triển khai — S1* | *Đã chạy — chưa đo bằng model thật* (S2) | *Đã chạy* (verdict mới: *Thiết kế — S3*) |
 
 **Vòng lặp có khép kín**, nhưng không khép bằng cách để model ứng biến lúc chạy. Nó khép qua
 **một file có người duyệt**: vòng ngoài đề xuất, QA duyệt, vòng trong lấy đúng file đó mà chạy.
@@ -109,7 +109,7 @@ ngoài). Selector đánh đổi một phần độ bảo thủ để chạy ít 
 ### 1.2 Chi tiết vòng trong — hai trigger
 
 **Trigger** quyết *ai chọn phạm vi chạy*; **mode** quyết *policy nào* áp (`modes.pr` /
-`modes.manual` trong `configs/projects/`). Hai trục tách biệt (*Thiết kế — S2*).
+`modes.manual` trong `configs/projects/`). Hai trục tách biệt (*Đã chạy — S2*).
 
 ```
   TRIGGER = pr  (tự động trên PR)                 TRIGGER = manual  (CLI · workflow_dispatch)
@@ -197,9 +197,12 @@ ngoài). Selector đánh đổi một phần độ bảo thủ để chạy ít 
 ```
 
 **Trạng thái và khác biệt so với code hôm nay (nói thẳng).**
-- Khối *Chọn phạm vi*, trục `--trigger`, trigger `manual` chạy đúng danh sách worker: *Thiết kế — S2*.
-  Hôm nay mọi PR chạy toàn bộ policy của mode `pr`; chạy tay qua dashboard/API (executor khoá môi
-  trường, checkout SUT, trỏ vào staging) đã chạy, phạm vi = toàn bộ policy.
+- Khối *Chọn phạm vi*, trục `--trigger`, trigger `manual` chạy đúng danh sách worker: *Đã chạy — S2*
+  (`qc-agent select` → `selection.json` → `qc-agent run --trigger pr --selection …`). Lệnh `run`
+  không kèm `--trigger` vẫn giữ hành vi cũ (toàn bộ policy của mode `pr`). Chạy tay qua dashboard/API
+  (executor khoá môi trường, checkout SUT, trỏ vào staging) vẫn có phạm vi = toàn bộ policy; nối
+  executor với `--trigger manual --workers` chưa làm.
+  **Chưa đo:** chất lượng chọn của Haiku thật (recall ≥ 90%, precision ≥ 80%) và P95 ≤ 20s của bước Select.
 - Diff của PR phải lấy từ **merge-base** (`base...head`, không phải `base..head`), nên bước Select cần
   `fetch-depth: 0`.
 - Hộp VERDICT và PHẢN HỒI là đích của **S3** (contract 2.0.0: `severity_hint` ∈ low/medium/critical).
@@ -269,8 +272,8 @@ hôm nay — nếu test chỉ sinh sau khi thấy diff thì nó không còn là 
 | Trigger | Tín hiệu | Việc | Trạng thái |
 |---|---|---|---|
 | PRD mới hoặc đổi | BA commit PRD (`prd_sha256` đổi) | `gt generate` lần đầu; `gt regen` khi PRD đổi, **merge theo `tc_id`**, không bao giờ ghi đè TC `approved` hay `origin: qa` → PR `qc-agent/gt/<prd-id>` | *Đang triển khai — S1* |
-| PR của dev | `pull_request` | selector → gate (`--trigger pr`) | *Thiết kế — S2* (hôm nay: gate chạy toàn policy) |
-| Chạy tay | `workflow_dispatch` hoặc CLI kèm danh sách worker | `--trigger manual --workers a,b`: đúng các worker đó, không LLM, không floor | *Thiết kế — S2* |
+| PR của dev | `pull_request` | selector → gate (`--trigger pr`) | *Đã chạy — S2* (bước Select trong `qc-gate.reusable.yml`; Select lỗi thì gate chạy toàn policy) |
+| Chạy tay | `workflow_dispatch` hoặc CLI kèm danh sách worker | `--trigger manual --workers a,b`: đúng các worker đó, không LLM, không floor | *Đã chạy — S2* (CLI và `workflow_dispatch`) |
 
 Một bẫy khi vận hành: PR do `GITHUB_TOKEN` mở **không** kích hoạt workflow `pull_request` khác. CI
 `gt validate` trên PR sinh GT vì vậy chỉ chạy khi QA push commit (đúng quy trình, vì QA phải sửa
@@ -375,7 +378,7 @@ Ba công cụ **tất định** chạy ở lane gate, mỗi công cụ là một
 
 **Trạng thái và giới hạn (nói thẳng).**
 - *Đã chạy:* worker, suite mẫu (`qc-agent init` sinh sẵn), review gắn dòng và test âm tính; công cụ thật đã chạy trong image `qc-agent:verify` (fixture của test là output thật, không soạn tay); đã bật ở `configs/projects/_default.yaml` (`blocking_suites: [api-contract, sast, secrets, deps]`).
-- **Chưa có:** một PR thật trên repo SUT thật; `noteboard` (policy riêng, list thay thế) chưa có suite `sast`/`secrets` — thêm ở S2 cùng lúc floor bắt đầu dựa vào chúng.
+- **Chưa có:** một PR thật trên repo SUT thật; `noteboard` đã khai báo suite `sast`/`secrets` (floor của S2 dựa vào chúng), nhưng vẫn chạy trên fixture, chưa trên SUT thật.
 - **Xanh không có nghĩa là an toàn.** Semgrep so khớp mẫu nên chắc chắn bỏ sót; bộ rule khởi điểm còn nhỏ. Gate chỉ bắt *lỗi đã có luật* và *CVE đã công bố*.
 - gitleaks mặc định không thấy secret đã bị xoá khỏi cây nhưng còn trong lịch sử; Trivy mù với CVE chưa vào DB của nó.
 - **Chưa kiểm tự động:** quyền của extension (`manifest.json`) và **đường đi của credential vào trang B** — vẫn là mục đọc tay khi review. DAST (ZAP) và quét container image để Later (§5.4).
@@ -510,7 +513,7 @@ bao vây phần chọn:
        core/: gộp floor LẦN 2 + thi hành tất định + chấm tất định  →  BLOCKED / PASSED…
 ```
 
-*Thiết kế — S2.* Bản DRAFT 2026-09-28 dùng ràng buộc "LLM chỉ được THÊM, không được BỚT" với
+*Đã chạy — S2 (chưa đo bằng model thật).* Bản DRAFT 2026-09-28 dùng ràng buộc "LLM chỉ được THÊM, không được BỚT" với
 baseline là **toàn bộ policy** (đã thay ở v2). v2 cho LLM được *bớt* worker ngoài floor để chạy nhanh
 và rẻ hơn, và bù lại bằng các lớp phòng thủ sau:
 
@@ -543,7 +546,7 @@ của policy. Trigger `manual` không có floor và không có LLM: rủi ro tr�
 |---|---|---|
 | **Now** — đã có | Gate PR tất định (hợp đồng API) · perf smoke và full · onboarding một lệnh cho repo mới · chạy thủ công qua dashboard · worker security (Semgrep, gitleaks, Trivy) bật ở `_default.yaml` | Hợp đồng API và perf: đã chạy trên bản copy vahan-rpa. Security: công cụ thật chạy trong image, **chưa có PR thật** |
 | **Sprint 1** — đang làm | **Ground-Truth Engine**: LLM client, parse PRD, TC JSON, render tất định, worker `pytest`, `qc-agent gt …`, workflow PR GT, khoá `.qc-agent/**` | DoD S1: AC coverage ≥ 90% trên PRD mẫu; bắt ≥ 9/10 mutant; `gt regen` giữ 100% TC `approved` |
-| **Sprint 2** — thiết kế | **Lõi orchestrator**: trigger `manual` không LLM; selector (prune → path rules → Diff Agent → floor); fallback FULL SET; Task Runner song song | DoD S2: recall Diff Agent ≥ 90% / precision ≥ 80%; manual, fallback, floor, injection đạt 100% |
+| **Sprint 2** — xong code, chờ số đo LLM thật | **Lõi orchestrator**: trigger `manual` không LLM; selector (prune → path rules → Diff Agent → floor); fallback FULL SET; Task Runner song song | DoD S2: recall Diff Agent ≥ 90% / precision ≥ 80%; manual, fallback, floor, injection đạt 100% |
 | **Sprint 3** — thiết kế | **Gatekeeper**: contract 2.0.0, normalizer, verdict `BLOCKED`/`PASSED_WITH_WARNINGS`/`PASSED`, `pr_review` inline, Jira cho Low | DoD S3: ≥ 90% comment đúng dòng; Jira lỗi không đổi verdict |
 | **Sprint 4** — thiết kế | **E2E trên CI thật**: cache selection + GT, prompt caching, trần token, runbook | DoD S4: 5 kịch bản A–E tự động; ≥ 9/10 lần xanh liên tiếp; token diff giảm ≥ 40% |
 | **Song song** | Integration qua bản ghi HAR (§2.3) | Có ít nhất một suite gate chạy trên PR thật |

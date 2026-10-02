@@ -201,12 +201,13 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
 - [x] **S2.10:** Bước Select trong workflow, và `workflow_dispatch` cho manual.
 
 ### DoD Sprint 2
-- [ ] Manual (100%): `--trigger manual --workers semgrep,schemathesis` chạy đúng các suite tương ứng và không suite nào khác. Test chặn network xác nhận không có lời gọi LLM nào.
-- [ ] PR: Diff Agent (chỉ phần LLM, median 3 lần) đạt recall $\ge 90\%$, precision $\ge 80\%$ trên golden set. Recall cuối (sau khi gộp floor và rules) = $100\%$ với nhóm file cốt lõi và nhóm bảo mật.
-- [ ] Fallback (100%): cả 5 loại lỗi đều cho FULL SET, có `fallback_reason`, gate không ra error.
-- [ ] Injection (100%): 10/10 case vẫn chạy floor, verdict không đổi. Sửa tay `selection.json` để bỏ floor thì core vẫn chạy floor.
-- [ ] Diff chỉ docs thì chỉ chạy floor. Diff chạm Dockerfile thì FULL SET và không gọi LLM.
-- [ ] Bước Select có P95 $\le 20s$. `selection.json` có trong artifact, lý do chọn hiện trong report.
+- [x] Manual (100%): `--trigger manual --workers semgrep,schemathesis` chạy đúng các suite tương ứng và không suite nào khác. Test chặn network xác nhận không có lời gọi LLM nào. *Bằng chứng:* `tests/test_trigger_manual.py` (chặn `socket.connect`, kiểm `qc_agent.llm` và `qc_agent.selector.agent` không bị import, `floor == []`).
+- [ ] PR: Diff Agent (chỉ phần LLM, median 3 lần) đạt recall $\ge 90\%$, precision $\ge 80\%$ trên golden set. Recall cuối (sau khi gộp floor và rules) = $100\%$ với nhóm file cốt lõi và nhóm bảo mật. **PENDING (chưa tick):** `tools/eval_selector.py --llm fake --runs 3` chỉ chứng minh đường ống và công thức đo (đạt 1.0 vì fake trả đúng nhãn), không đo chất lượng model. Cần chạy `--llm real --runs 3 --yes` (tốn quota, gửi diff ra ngoài: chờ người dùng chạy và xác nhận).
+- [x] Fallback (100%): cả 5 loại lỗi đều cho FULL SET, có `fallback_reason`, gate không ra error. *Bằng chứng:* `tests/test_selector_agent.py` (timeout, 5xx/quota, JSON sai, worker lạ, thiếu API key, thêm `egress_denied`) và `tests/test_selector_cli.py` (thiếu key → `select` exit 0, `full_set`, `fallback_reason=missing_api_key`).
+- [x] Injection (100%): 10/10 case vẫn chạy floor, verdict không đổi. Sửa tay `selection.json` để bỏ floor thì core vẫn chạy floor. *Bằng chứng:* `tests/test_selector_golden.py` (10 diff injection, LLM giả chọn rỗng vẫn giữ floor), `tools/eval_selector.py --llm fake --runs 3` (`injection_pass` 30/30, so với bản sạch tương ứng), `tests/test_floor_enforced.py` (selection không có floor, core tự bổ sung `sast`, `secrets`).
+- [x] Diff chỉ docs thì chỉ chạy floor. Diff chạm Dockerfile thì FULL SET và không gọi LLM. *Bằng chứng:* `tests/test_selector_agent.py::test_rules_short_circuit_http` (HTTP bị chặn bằng `AssertionError`), `tests/test_selector_golden.py`, `tests/test_selector_cli.py` (docs → `source=rules`, `suites=[sast, secrets]`).
+- [x] `selection.json` có trong artifact, lý do chọn hiện trong report. *Bằng chứng:* engine ghi `selection.json` vào `run_dir`, workflow upload `runs/`; `tests/test_floor_enforced.py::test_report_and_rerender_keep_enforced_scope` kiểm mục "Phạm vi chạy" và `--rerender`.
+- [ ] Bước Select có P95 $\le 20s$. **PENDING (chưa tick):** bản fake đo được P95 ≈ 0,4s nhưng không tính độ trễ API; cần số đo với LLM thật (cùng lần chạy `--llm real` ở trên).
 
 ---
 
