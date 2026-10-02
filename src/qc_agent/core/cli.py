@@ -1,5 +1,5 @@
 """Điểm ghép của orchestrator: plan -> resolve -> worker -> verdict -> report. Không LLM, không tên worker cụ thể.
-Exit code: PASS=0 · YELLOW=--yellow-exit · FAIL=1 · lỗi của HỆ THỐNG (PlanError, lỗi nội bộ, gọi sai lệnh)=3.
+Exit code: PASSED=0 · PASSED_WITH_WARNINGS=--warn-exit · BLOCKED=1 · lỗi hệ thống=3.
 Phải chạy từ thư mục gốc repo: adapter được spawn bằng `python -m <module>` và đọc đường dẫn tương đối theo cwd."""
 import argparse
 import os
@@ -12,6 +12,7 @@ from pathlib import Path
 
 from qc_agent import logging_setup, settings
 from qc_agent.core import engine, registry, report, runner, signature
+from qc_agent.core.findings import normalize
 from qc_agent.core.plan import PlanError, load_plan
 from qc_agent.core.verdict import canary_alerts
 
@@ -52,8 +53,12 @@ def main(argv: list[str]) -> int:
         if argv and argv[0] == "run":  # `qc-agent run --project ...` và `qc-agent --plan ...` đều được
             argv = argv[1:]
         args = _parser().parse_args(argv)
-        if not 0 <= args.yellow_exit <= 255:
-            raise PlanError(f"tham số sai: --yellow-exit phải trong 0..255, nhận {args.yellow_exit}")
+        if args.yellow_exit is not None:
+            print("CẢNH BÁO: --yellow-exit đã cũ; dùng --warn-exit", file=sys.stderr)
+        warn_exit = args.warn_exit if args.yellow_exit is None else args.yellow_exit
+        if not 0 <= warn_exit <= 255:
+            raise PlanError(f"tham số sai: --warn-exit phải trong 0..255, nhận {warn_exit}")
+        args.warn_exit = warn_exit
         return _rerender(args) if args.rerender else _run(args)
     except SystemExit as exit_:  # --help
         return exit_.code if isinstance(exit_.code, int) else 0
@@ -78,9 +83,10 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--expect-repo", metavar="OWNER/REPO",
                     help="repo đang chạy gate (CI: $GITHUB_REPOSITORY); project ĐÃ ĐĂNG KÝ cho repo khác thì exit 3")
     ap.add_argument("--only", help="chỉ chạy các task này, vd t-a,t-b (phải kèm đủ task được depends_on)")
-    ap.add_argument("--yellow-exit", type=int, default=0, metavar="N", help="exit code khi gate YELLOW (mặc định 0)")
+    ap.add_argument("--warn-exit", type=int, default=0, metavar="N", help="exit code khi PASSED_WITH_WARNINGS (mặc định 0)")
+    ap.add_argument("--yellow-exit", type=int, default=None, metavar="N", help="alias cũ của --warn-exit")
     ap.add_argument("--on-skipped-gate-task", choices=engine.SKIPPED_POLICIES, default=None,
-                    help="task gate bị skipped: yellow (theo --yellow-exit) hoặc fail (gate FAIL, exit 1); mặc định: policy của mode, rồi yellow")
+                    help="task gate bị skipped: yellow (finding Low) hoặc fail (BLOCKED); mặc định: policy của mode, rồi yellow")
     ap.add_argument("--sut-ref", metavar="SHA",
                     help="commit/ref của SUT đang được gate (vd. PR head SHA); mặc định plan.sut.ref hoặc git HEAD của SUT root")
     ap.add_argument("--run-id", metavar="ID", help="id của run (mặc định r-NNNN); executor dùng id của job để run_dir khớp job")
@@ -106,7 +112,7 @@ def _run(args) -> int:
         raise PlanError("--trigger manual can --workers")
     if bool(args.plan) == bool(args.project):
         raise PlanError("cần đúng một trong --plan hoặc --project (chỉ được bỏ cả hai khi dùng --rerender)")
-    common = dict(run_id=args.run_id, only=args.only, yellow_exit=args.yellow_exit, sut_ref=args.sut_ref,
+    common = dict(run_id=args.run_id, only=args.only, yellow_exit=args.warn_exit, sut_ref=args.sut_ref,
                   workers_dirs=[Path(d) for d in args.workers_dir] if args.workers_dir else None)
     if args.plan:
         result = engine.run_plan(args.plan, Path(args.runs_dir), on_skipped_gate_task=args.on_skipped_gate_task or "yellow",
@@ -165,8 +171,17 @@ def _rerender(args) -> int:
     }
     plan_id = signature.plan_id(plan["text"])
     sut = signature.sut_id(_read_json(run_dir / "sut_identity.json"))
-    signature_hex, gate = engine.judge(specs, results, plan_id, sut, args.yellow_exit, args.on_skipped_gate_task or "yellow",
-                                      yellow_on_fail=frozenset(plan["yellow_on_fail"]))
+    try:
+        details = _read_json(run_dir / "report.json").get("details") or {}
+    except PlanError:
+        details = {}
+    severity_policy = details.get("severity_policy") or {}
+    task_suite = details.get("task_suite") or {}
+    skipped_policy = args.on_skipped_gate_task or details.get("on_skipped_gate_task") or "yellow"
+    normalization_policy = {**severity_policy, "on_skipped_gate_task": skipped_policy}
+    findings, blockers = normalize(results, specs, task_suite=task_suite, policy=normalization_policy)
+    signature_hex, gate = engine.judge(specs, results, plan_id, sut, args.warn_exit, skipped_policy,
+                                       severity_policy=severity_policy, task_suite=task_suite, normalized=(findings, blockers))
     try:
         wallclock = float(_read_json(run_dir / "report.json")["details"]["wallclock_s"])
     except (PlanError, KeyError, TypeError, ValueError):
@@ -178,7 +193,8 @@ def _rerender(args) -> int:
     run_ctx = report.RunContext(
         run_id=next(iter(specs.values()))["run_id"], plan_id=plan_id, plan_name=plan["name"],
         plan_path=f"{run_dir.name}/plan.yaml", plan_text=plan["text"], sut_id=sut, run_signature=signature_hex,
-        generated_at=engine.now(), wallclock_s=wallclock, specs=specs, results=results, gate=gate,
+        generated_at=engine.now(), wallclock_s=wallclock, specs=specs, results=results, gate=gate, findings=findings,
+        severity_policy=severity_policy, task_suite=task_suite, on_skipped_gate_task=skipped_policy,
         canary=canary_alerts(results, plan_only), selection=plan.get("selection"),
         selected_suite_count=(scope.get("selected_suites", len(set(plan["selection"].get("suites", [])) |
                                   set(plan["selection"].get("floor_enforced_by_core", [])))) if plan.get("selection") else None),

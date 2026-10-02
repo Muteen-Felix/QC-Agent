@@ -13,7 +13,7 @@ from qc_agent.adapters._base import AdapterParseError
 
 LEVELS = ("critical", "high", "medium", "low")
 MAX_FINDINGS = 200   # chặn result/comment phình to; METRIC vẫn đếm đủ, phần cắt được ghi vào adapter_notes (mất thông tin, không bịa)
-_HINT = {"critical": "high", "high": "high", "medium": "medium", "low": "low"}   # result.json không có severity_hint `critical`
+_HINT = {"critical": "critical", "high": "critical", "medium": "medium", "low": "low"}
 
 
 def severity_hint(level: str | None) -> str | None:

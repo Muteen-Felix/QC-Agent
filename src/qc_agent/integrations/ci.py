@@ -37,6 +37,8 @@ def context_from_env(env=None) -> dict:
         # pull_request: GITHUB_SHA là merge commit; Check Run phải gắn vào HEAD của PR mới hiện trên PR
         "sha": (pr.get("head") or {}).get("sha") or env.get("GITHUB_SHA"),
         "pr_number": number,
+        "author": (pr.get("user") or {}).get("login"),
+        "pr_url": pr.get("html_url"),
         "branch": (pr.get("head") or {}).get("ref") or env.get("GITHUB_REF_NAME"),
         "external_id": f"gh-{run_id}-{attempt}" if run_id else None,
         "run_url": f"{server}/{repo}/actions/runs/{run_id}" if repo and run_id else None,
@@ -51,6 +53,14 @@ def report_run(run_dir, *, project: str, mode: str, exit_code: int | None, env=N
     if run is None:
         return {"error": "không đọc được report.json", "ingest": "skipped", "check_run": "skipped", "comment": "skipped", "notify": "skipped"}
     link = ctx["run_url"]
+    out["severity_counts"] = run["report"].get("severity_counts") or {"critical": 0, "medium": 0, "low": 0}
+    try:
+        jira_status = json.loads((Path(run_dir) / "jira-status.json").read_text(encoding="utf-8"))
+        if str(jira_status.get("jira", "")).startswith("error:"):
+            out["jira_warning"] = str(jira_status["jira"])[:80]
+            run["report"]["jira_warning"] = out["jira_warning"]
+    except (OSError, ValueError, AttributeError):
+        pass
 
     # 1) lịch sử tập trung (trước để có link tới job cho các thông báo sau)
     api_url, api_token = env.get("QC_API_URL"), env.get("QC_API_TOKEN")

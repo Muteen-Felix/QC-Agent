@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from debtkit import MAIN_PY, PING, Repo
+from coveragekit import MAIN_PY, PING, Repo
 from qc_agent.adapters._base import Adapter, AdapterParseError
 from qc_agent.adapters.coverage_debt_adapter import OUT_NAME, PARSER_VERSION, CoverageDebtAdapter
 from qc_agent.core import engine, registry, schema
@@ -134,6 +134,13 @@ def test_parse_maps_findings_and_flat_metrics(tmp_path):
     assert {k for k, _ in out.evidence_paths} == {"raw_output", "stdout"}
 
 
+def test_parse_carries_source_location(tmp_path):
+    raw = item()
+    raw.update(path="toyapp/app.py", line=7)
+    out = parse(tmp_path, debt([raw]))
+    assert out.findings[0]["location"] == {"path": "toyapp/app.py", "line": 7}
+
+
 def test_parse_full_scan_and_ignored_count(tmp_path):
     out = parse(tmp_path, debt([item()], full=True, ignored=[{"finding_id": "x", "reason": "r"}]))
     assert out.metrics["debt.full_scan"] is True and "mode=full" in out.adapter_notes and "ignored=1" in out.adapter_notes
@@ -237,8 +244,6 @@ def test_lifecycle_missing_base_is_error_not_pass(tmp_path, monkeypatch):
 
 def project_dir(tmp_path, *, yellow: bool) -> Path:
     modes = {"pr": {"blocking_suites": ["core"], "advisory_suites": ["coverage-debt"]}}
-    if yellow:
-        modes["pr"]["advisory_yellow_suites"] = ["coverage-debt"]
     folder = tmp_path / "projects"
     folder.mkdir()
     (folder / "debt.yaml").write_text(yaml.safe_dump({"slug": "debt", "modes": modes}), encoding="utf-8")
@@ -257,15 +262,15 @@ def run_policy(tmp_path, monkeypatch, *, yellow, tested):
 
 
 @needs_git
-def test_policy_yellow_when_untested_endpoint_and_suite_listed_in_advisory_yellow(tmp_path, monkeypatch):
+def test_policy_warns_when_untested_endpoint(tmp_path, monkeypatch):
     result = run_policy(tmp_path, monkeypatch, yellow=True, tested=False)
-    assert (result.gate.value, result.exit_code) == ("YELLOW", 0)
+    assert (result.gate.value, result.exit_code) == ("PASSED_WITH_WARNINGS", 0)
 
 
 @needs_git
-def test_policy_stays_pass_without_advisory_yellow_or_when_covered(tmp_path, monkeypatch):
-    assert run_policy(tmp_path / "a", monkeypatch, yellow=False, tested=False).gate.value == "PASS"  # opt-in theo policy
-    assert run_policy(tmp_path / "b", monkeypatch, yellow=True, tested=True).gate.value == "PASS"
+def test_policy_warns_without_old_yellow_setting_and_passes_when_covered(tmp_path, monkeypatch):
+    assert run_policy(tmp_path / "a", monkeypatch, yellow=False, tested=False).gate.value == "PASSED_WITH_WARNINGS"
+    assert run_policy(tmp_path / "b", monkeypatch, yellow=True, tested=True).gate.value == "PASSED"
 
 
 # ───────────────────────── validate: cảnh báo suite yellow vắng mặt ─────────────────────────
@@ -278,8 +283,6 @@ def validate_with(tmp_path, *, yellow, with_suite):
     if with_suite:
         (suites / "coverage-debt.yaml").write_text(t.coverage_debt_suite(), encoding="utf-8")
     mode = {"blocking_suites": ["api-contract"], "advisory_suites": ["coverage-debt", "ui-explore"]}
-    if yellow:
-        mode["advisory_yellow_suites"] = ["coverage-debt"]
     projects = tmp_path / "projects"
     projects.mkdir()
     (projects / "_default.yaml").write_text(yaml.safe_dump({"modes": {"pr": mode}}), encoding="utf-8")
@@ -291,12 +294,10 @@ def levels(report, level):
     return [f.message for f in report.findings if f.level == level]
 
 
-def test_validate_warns_when_yellow_suite_is_not_declared_in_the_repo(tmp_path):
+def test_validate_notes_missing_advisory_suite(tmp_path):
     report = validate_with(tmp_path, yellow=True, with_suite=False)
-    warns = levels(report, v.WARN)
-    assert any("advisory_yellow_suites" in w and "coverage-debt" in w for w in warns)
     notes = " ".join(levels(report, v.NOTE))
-    assert "ui-explore" in notes and "coverage-debt" not in notes  # suite thường vẫn chỉ là ghi chú; không báo trùng
+    assert "ui-explore" in notes and "coverage-debt" in notes
 
 
 def test_validate_is_quiet_when_suite_present_or_not_yellow(tmp_path):

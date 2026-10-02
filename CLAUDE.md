@@ -30,7 +30,7 @@ pytest tests/test_engine.py::test_x  # one test
 - GT CI (`.github/workflows/qc-groundtruth.reusable.yml`, called by the `init`-generated `qc-groundtruth.yml`): the `generate` job picks the LLM key from the `model` input (`gemini-*` → secret `GEMINI_API_KEY`, else `ANTHROPIC_API_KEY`; empty model = image default `claude-sonnet-5`, pinned to `settings.gt_model` by a static test) and passes only that key into the container; optional string inputs `llm_min_interval_s`, `llm_max_retries`, `llm_fallback_models` become `QC_LLM_*` env for Gemini quota control. The pinned image must contain the Gemini provider (built from `main` after S1-09).
 - Measuring GT on a real SUT (not noteboard): `python tools/eval_gt_sut.py --config eval/<sut>.yaml [--llm real --runs 3 --yes | --skip-generate]` — config-driven (`sut.start.cmd` with `{port}`, mutants via `edits`/`patch`/`env`/`base_url`, applied only to a temp copy of `sut_root`). Guide: `docs/groundtruth-real-sut.md`.
 
-No linter/formatter is configured. Gate exit codes today: PASS 0 · YELLOW = `--yellow-exit` (default 0) · FAIL 1 · plan/system error 3. (S3 replaces the verdict with BLOCKED 1 · PASSED_WITH_WARNINGS = `--warn-exit` (default 0) · PASSED 0; not in code yet.)
+No linter/formatter is configured. Gate exit codes: BLOCKED 1 · PASSED_WITH_WARNINGS = `--warn-exit` (default 0) · PASSED 0 · plan/system error 3. `--yellow-exit` is a deprecated alias.
 
 ## Architecture
 
@@ -49,7 +49,7 @@ Read `docs/architecture.md` first (two nested loops; it is the v2 target design 
 - No worker-specific fields in the shared schemas.
 - Retry only `error` (infra), once. Never retry `fail`.
 - Do not edit contract files (`schemas/task_spec.json`, `schemas/result.json`, `workers/_template.yaml`) outside the SemVer process guarded by `schemas/CONTRACT.lock`, `tools/freeze_contract.py` and the `contract-check` workflow (reviewers: `.github/contract-reviewers.yaml`).
-- Severity v2 (S3, not in code yet): `severity_hint` ∈ low/medium/critical (contract 2.0.0); verdict `BLOCKED` (critical/medium, or a gate task error/skip) / `PASSED_WITH_WARNINGS` (Low only) / `PASSED`. Until S3 the code still uses low/medium/high and `FAIL > YELLOW > PASS`.
+- Severity v2: `severity_hint` ∈ low/medium/critical (contract 2.0.0); verdict `BLOCKED` (critical/medium, or a gate task error/skip) / `PASSED_WITH_WARNINGS` (Low only) / `PASSED`. Historical PASS/YELLOW/FAIL rows remain valid in the database.
 - Logs are structured JSON on stderr and must never include spec/inputs content, PRD/diff/prompt/LLM-response content, or secrets (`logging_setup.py`); off-machine data flow is recorded per worker-declared `data_egress` in `runs/<job>/egress.jsonl`. Record egress **before** every LLM/Jira call (`core/egress.record`); on `deny`, send nothing.
 - PR/PRD/diff/SUT data is untrusted: delimit it in prompts, force LLM output into schema + enum allowlist, sanitize before Markdown, never pass it to a shell or embed it in generated code. The gate never goes red because of an LLM, cost or Jira failure (LLM failure → FULL SET; Jira/GitHub failure → warning only).
 - In plan YAML, quote the retry key `"on":` (bare `on` parses as `True`).

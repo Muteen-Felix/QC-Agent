@@ -2,6 +2,7 @@ import copy
 import json
 
 from qc_agent.core.report import RunContext, render, write
+from qc_agent.core.findings import normalize
 from qc_agent.core.verdict import gate_verdict
 
 
@@ -51,11 +52,14 @@ def context(*, skipped=False):
     if skipped:
         results["t-ai"] = result("t-ai", gating=False, status="skipped", value="non_gating", source="heuristic")
         results["t-ai"]["verdict"]["rationale"] = "thiếu key"
-    gate = gate_verdict(results, specs)
+    findings, blockers = normalize(results, specs, policy={"on_skipped_gate_task": "yellow"})
+    gate = gate_verdict(findings, blockers)
+    gate.banner = [(tid, f"{r['status']}: {r['verdict'].get('rationale') or ''}") for tid, r in results.items()
+                   if r["status"] in ("skipped", "error")]
     return RunContext(
         run_id="r-0001", plan_id="plan-1a2b3c4d", plan_name="demo", plan_path="plans/demo.yaml",
         plan_text=PLAN, sut_id="sut-9f2c0a11", run_signature="sig-1", generated_at="2026-09-19 14:32",
-        wallclock_s=192, specs=specs, results=results, gate=gate,
+        wallclock_s=192, specs=specs, results=results, gate=gate, findings=findings,
     )
 
 
@@ -80,7 +84,7 @@ def test_low_llm_score_cannot_change_verdict_line():
     changed.results["t-ai"]["findings"][0]["confidence"] = 0.01
     after, _ = render(changed)
     verdict = lambda text: next(line for line in text.splitlines() if line.startswith("## VERDICT:"))
-    assert verdict(before) == verdict(after) == "## VERDICT: ✅ PASS"
+    assert verdict(before) == verdict(after) == "## VERDICT: ✅⚠ PASSED_WITH_WARNINGS"
 
 
 def test_skipped_banner_precedes_verdict():
@@ -102,7 +106,7 @@ def test_deterministic_view_excludes_non_gating_and_unstable_fields():
     assert all("metrics" not in item and "cost" not in item for item in view)
     assert set(data) == {
         "run_id", "plan_id", "run_signature", "sut_id", "gate_verdict", "exit_code",
-        "deterministic_view", "banner", "canary", "tickets_draft", "details",
+        "deterministic_view", "banner", "canary", "tickets_draft", "details", "findings", "severity_counts",
     }
 
 

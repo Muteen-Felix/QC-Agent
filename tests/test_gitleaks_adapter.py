@@ -66,7 +66,7 @@ def test_sample_counts_and_locates_without_any_secret_field(tmp_path, spec):
     parsed = parse(tmp_path, spec, fixture_json("gitleaks-sample.json"))
     assert parsed.metrics == {"gitleaks.count": 2}                       # CHỈ một metric
     assert sorted(f["title"] for f in parsed.findings) == ["gcp-api-key @ apps/api-server/app/config.py:2", "slack-bot-token @ scripts/deploy.sh:2"]
-    assert all(f["severity_hint"] == "high" and f["detected_by"] == "gitleaks" and f["verdict_source"] == "deterministic_assert" for f in parsed.findings)
+    assert all(f["severity_hint"] == "critical" and f["detected_by"].startswith("gitleaks:") and f["location"]["line"] == 2 and f["verdict_source"] == "deterministic_assert" for f in parsed.findings)
     assert oracle.evaluate(spec["oracle"], parsed.metrics, {}).value == "fail"
 
 

@@ -97,8 +97,9 @@ def test_sample_counts_by_level_and_puts_the_location_in_the_title(tmp_path, spe
     assert parsed.metrics == {"semgrep.critical": 0, "semgrep.high": 1, "semgrep.medium": 1, "semgrep.low": 0, "semgrep.total": 2, "semgrep.files_scanned": 2}
     by_title = {f["title"]: f for f in parsed.findings}
     high = by_title["opt.qc-rules.semgrep.python-subprocess-shell-true @ apps/api-server/app/api/jobs.py:6"]
-    assert high["severity_hint"] == "high" and high["detected_by"] == "semgrep" and high["verdict_source"] == "deterministic_assert" and high["confidence"] is None
-    assert {f["severity_hint"] for f in parsed.findings} == {"high", "medium"}
+    assert high["severity_hint"] == "critical" and high["detected_by"].startswith("semgrep:") and high["verdict_source"] == "deterministic_assert" and high["confidence"] is None
+    assert high["location"] == {"path": "apps/api-server/app/api/jobs.py", "line": 6, "end_line": 6}
+    assert {f["severity_hint"] for f in parsed.findings} == {"critical", "medium"}
     assert parsed.tokens == 0 and parsed.usd == 0.0 and [k for k, _ in parsed.evidence_paths] == ["raw_output", "stdout"]
     assert f"PARSER_VERSION={PARSER_VERSION}" in parsed.adapter_notes
 
@@ -122,7 +123,7 @@ def test_critical_is_counted_separately_and_hinted_high(tmp_path, spec):
     data["results"][0]["extra"]["severity"] = "CRITICAL"
     parsed = parse(tmp_path, spec, data)
     assert parsed.metrics["semgrep.critical"] == 1 and parsed.metrics["semgrep.high"] == 0
-    assert next(f for f in parsed.findings if "jobs.py:6" in f["title"])["severity_hint"] == "high"     # schema không có `critical`
+    assert next(f for f in parsed.findings if "jobs.py:6" in f["title"])["severity_hint"] == "critical"
     assert oracle.evaluate(spec["oracle"], parsed.metrics, {}).value == "fail"      # suite phải chặn cả critical: high == 0 một mình sẽ bỏ lọt
 
 

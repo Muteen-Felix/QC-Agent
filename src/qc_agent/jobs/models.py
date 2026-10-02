@@ -1,8 +1,8 @@
 """Mô hình dữ liệu vận hành (PostgreSQL): projects, jobs, job_tasks, artifacts, users, sessions, api_tokens.
 
 Trạng thái job: queued -> running -> {succeeded | failed | timed_out | cancelled}; queued -> cancelled.
-  succeeded = chạy xong, gate PASS hoặc YELLOW
-  failed    = chạy xong nhưng gate FAIL, hoặc lỗi hệ thống của executor/core (exit 3)
+  succeeded = chạy xong, gate PASSED hoặc PASSED_WITH_WARNINGS
+  failed    = chạy xong nhưng gate BLOCKED, hoặc lỗi hệ thống của executor/core (exit 3)
   timed_out = vượt timeout cấp job (executor giết cây tiến trình)
   cancelled = người dùng huỷ (khi còn queued: ngay; khi running: executor dừng và chuyển)
 Đây là trạng thái của JOB, không phải của result.json (contract của worker không đổi).
@@ -110,7 +110,7 @@ class Job(Base):
     finished_at: Mapped[datetime | None] = _ts(nullable=True)
     heartbeat_at: Mapped[datetime | None] = _ts(nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, server_default="false")
-    gate_verdict: Mapped[str | None] = mapped_column(String(8))
+    gate_verdict: Mapped[str | None] = mapped_column(String(24))
     exit_code: Mapped[int | None] = mapped_column(Integer)
     run_id: Mapped[str | None] = mapped_column(String(64))
     error: Mapped[str | None] = mapped_column(Text)
@@ -122,7 +122,7 @@ class Job(Base):
     __table_args__ = (
         CheckConstraint("status IN ('queued','running','succeeded','failed','cancelled','timed_out')", name="status_valid"),
         CheckConstraint("source IN ('web','ci')", name="source_valid"),
-        CheckConstraint("gate_verdict IS NULL OR gate_verdict IN ('PASS','YELLOW','FAIL')", name="gate_verdict_valid"),
+        CheckConstraint("gate_verdict IS NULL OR gate_verdict IN ('PASS','YELLOW','FAIL','PASSED','PASSED_WITH_WARNINGS','BLOCKED')", name="gate_verdict_valid"),
         UniqueConstraint("project_id", "external_id", name="uq_jobs_project_external"),
         Index("ix_jobs_project_created", "project_id", "created_at"),
         Index("ix_jobs_status_priority_created", "status", "priority", "created_at"),

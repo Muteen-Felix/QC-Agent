@@ -2,6 +2,9 @@
 # (gate CI đọc nó từ nhánh main lúc chạy, nên một merge ảnh hưởng ngay PR của MỌI team).
 # Không có slug/repo: tên bắt đầu bằng "_" nên không thể trùng slug thật. Project đăng ký (<slug>.yaml) kế thừa file này:
 # deep merge theo key, LIST THAY THẾ (không cộng dồn). modes.pr.blocking_suites không được rỗng.
+severity:
+  block_on: [critical, medium]
+  default_severity: {"*": medium}
 modes:
   pr:                                  # tự động, mỗi PR
     blocking_suites: [api-contract, sast, secrets, deps]   # mọi task lane=gate: chặn merge

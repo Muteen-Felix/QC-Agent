@@ -33,10 +33,10 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .row select { width: auto; max-width: 100%; }
 .row > * { flex: 0 0 auto; } .row .grow { flex: 1 1 auto; }
 .badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--neutral-bg); color: var(--neutral); }
-.badge[data-status="succeeded"], .badge[data-status="pass"], .badge[data-status="PASS"] { background: var(--ok-bg); color: var(--ok); }
-.badge[data-status="failed"], .badge[data-status="fail"], .badge[data-status="FAIL"], .badge[data-status="error"], .badge[data-status="timed_out"] { background: var(--bad-bg); color: var(--bad); }
+.badge[data-status="succeeded"], .badge[data-status="pass"], .badge[data-status="PASS"], .badge[data-status="PASSED"] { background: var(--ok-bg); color: var(--ok); }
+.badge[data-status="failed"], .badge[data-status="fail"], .badge[data-status="FAIL"], .badge[data-status="BLOCKED"], .badge[data-status="error"], .badge[data-status="timed_out"] { background: var(--bad-bg); color: var(--bad); }
 .badge[data-status="running"] { background: var(--info-bg); color: var(--info); }
-.badge[data-status="queued"], .badge[data-status="skipped"], .badge[data-status="YELLOW"] { background: var(--warn-bg); color: var(--warn); }
+.badge[data-status="queued"], .badge[data-status="skipped"], .badge[data-status="YELLOW"], .badge[data-status="PASSED_WITH_WARNINGS"] { background: var(--warn-bg); color: var(--warn); }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; }
 th, td { padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }

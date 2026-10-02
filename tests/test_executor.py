@@ -73,7 +73,7 @@ def test_successful_job_stores_verdict_tasks_and_artifacts(env):
     job_id = submit(env)
     assert env.executor.run_once() is True
     job = job_of(env, job_id)
-    assert (job.status, job.gate_verdict, job.exit_code, job.run_id) == ("succeeded", "PASS", 0, str(job_id))
+    assert (job.status, job.gate_verdict, job.exit_code, job.run_id) == ("succeeded", "PASSED", 0, str(job_id))
     assert job.started_at and job.finished_at and job.attempts == 1 and job.error is None
     assert {t.task_id: (t.status, t.lane, t.gating) for t in job.tasks} == {
         "t-1": ("pass", "gate", True), "t-2": ("pass", "gate", True), "t-9": ("pass", "discovery", False)}
@@ -88,7 +88,7 @@ def test_gate_fail_is_job_failed_with_verdict_not_an_error_message(env):
     job_id = submit(env)
     env.executor.run_once()
     job = job_of(env, job_id)
-    assert (job.status, job.gate_verdict, job.exit_code, job.error) == ("failed", "FAIL", 1, None)
+    assert (job.status, job.gate_verdict, job.exit_code, job.error) == ("failed", "BLOCKED", 1, None)
 
 
 def test_system_error_exit_3_is_failed_with_log_tail_and_no_verdict(env):
@@ -282,7 +282,7 @@ def test_on_finish_hook_gets_the_finished_job_and_run_dir(env):
     ex = Executor(env.engine, env.cfg)
     ex.run_once()
     ex.run_once()
-    assert seen == [("succeeded", "PASS", "demo", str(ok_id), True), ("failed", None, "demo", str(bad_id), False)]
+    assert seen == [("succeeded", "PASSED", "demo", str(ok_id), True), ("failed", None, "demo", str(bad_id), False)]
 
 
 def test_on_finish_hook_errors_never_affect_the_job_or_the_executor(env):

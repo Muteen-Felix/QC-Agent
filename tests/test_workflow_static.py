@@ -62,6 +62,17 @@ def test_select_runs_before_gate_and_cannot_make_job_red():
     assert "ANTHROPIC_API_KEY" in DATA[True]["workflow_call"]["secrets"]
 
 
+def test_pr_review_and_jira_are_advisory_steps_after_gate():
+    assert NAMES.index("Run qc-agent gate") < NAMES.index("PR review") < NAMES.index("Report (Check Run, PR comment, history, webhook)")
+    assert NAMES.index("PR review") < NAMES.index("Jira (Low)") < NAMES.index("Report (Check Run, PR comment, history, webhook)") < NAMES.index("Enforce gate result")
+    assert step("PR review")["continue-on-error"] is True
+    assert step("Jira (Low)")["continue-on-error"] is True
+    assert "qc_agent.integrations.pr_review" in step("PR review")["run"]
+    assert "qc_agent.integrations.jira" in step("Jira (Low)")["run"]
+    assert "Security review (gắn file:dòng lên PR)" not in NAMES
+    assert all(name in DATA[True]["workflow_call"]["secrets"] for name in ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"))
+
+
 def test_suggest_ui_only_with_an_ui_and_a_model_key():
     run = step("Refine (onboarding suggestions)")["run"]
     assert '[ -n "${UI_URL:-}" ] && [ -n "${MIDSCENE_MODEL_API_KEY:-}" ]' in run and "--suggest-ui --ui-url" in run

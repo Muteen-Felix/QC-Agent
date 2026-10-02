@@ -39,7 +39,7 @@ def test_reference_project_and_suites_load_and_build_both_modes():
     assert [t["task_id"] for t in pr["tasks"]] == ["t-001", "t-003", "t-030", "t-010", "t-011", "t-101", "t-canary-01", "t-102", "t-103"]
     assert meta["on_skipped_gate_task"] == "fail"
     assert set(meta["suite_sha256"]) == {"api-contract", "ai-eval", "gt-functional", "sast", "secrets", "ui-explore", "perf-smoke", "coverage-debt"}
-    assert meta["yellow_task_ids"] == ["t-103"]  # P2-8: coverage-debt bật advisory_yellow_suites ở noteboard.yaml
+    assert meta["task_suite"]["t-103"] == "coverage-debt"
     manual, _ = pj.build_plan(cfg, "manual", suites)
     assert "t-002" in {t["task_id"] for t in manual["tasks"]}  # perf-full chỉ chạy thủ công
     assert "t-002" not in {t["task_id"] for t in pr["tasks"]}
@@ -130,7 +130,7 @@ def test_only_suites_must_stay_inside_policy(tmp_path, sut):
 def test_run_project_runs_workers_with_cwd_sut_root_and_records_project_meta(tmp_path, sut):
     projects = write_project(tmp_path)
     result = engine.run_project("demo", "pr", tmp_path / "runs", projects_dir=projects, sut_root=sut)
-    assert result.exit_code == 0 and result.gate.value == "PASS"
+    assert result.exit_code == 0 and result.gate.value == "PASSED"
     # fixture chỉ tồn tại dưới SUT root: mock adapter đọc được => worker chạy với cwd = SUT root
     data = json.loads((result.run_dir / "report.json").read_text(encoding="utf-8"))
     assert data["project"] == "demo" and data["mode"] == "pr"
@@ -153,9 +153,9 @@ def test_mode_policy_on_skipped_gate_task_applies_and_can_be_overridden(tmp_path
     write_suite(sut, "core", [task("t-1"), task("t-3", capability="http.load", oracle={"kind": "threshold", "assertions": [{"metric": "m", "op": "<", "value": 1}]})])
     projects = write_project(tmp_path)
     blocked = engine.run_project("demo", "pr", tmp_path / "runs", projects_dir=projects, sut_root=sut)
-    assert blocked.exit_code == 1 and blocked.gate.value == "FAIL"  # policy mode pr: on_skipped_gate_task=fail
+    assert blocked.exit_code == 1 and blocked.gate.value == "BLOCKED"  # policy mode pr: on_skipped_gate_task=fail
     relaxed = engine.run_project("demo", "pr", tmp_path / "runs", projects_dir=projects, sut_root=sut, on_skipped_gate_task="yellow")
-    assert relaxed.gate.value == "YELLOW"
+    assert relaxed.gate.value == "PASSED_WITH_WARNINGS"
 
 
 def test_lane_conflict_leaves_no_run_dir(tmp_path, sut):
@@ -326,40 +326,27 @@ def test_absent_advisory_suite_is_skipped_but_absent_blocking_suite_is_an_error(
         pj.build_plan(pj.load_project("b", projects), "pr", suites)
 
 
-# ---- advisory_yellow_suites (nợ test → YELLOW) ----
+# ---- compatibility with old stored plans ----
 
-def test_advisory_yellow_suites_marks_only_those_tasks_in_plan_text(tmp_path, sut):
-    projects = write_project(tmp_path, modes={"pr": {"blocking_suites": ["core"], "advisory_suites": ["extra"], "advisory_yellow_suites": ["extra"]}})
-    cfg = pj.load_project("demo", projects)
-    suites = pj.load_suites(sut / ".qc-agent" / "suites")
-    plan, meta = pj.build_plan(cfg, "pr", suites)
-    extra_ids = [t["task_id"] for t in suites["extra"]["tasks"]]
-    assert plan["yellow_on_fail"] == extra_ids == meta["yellow_task_ids"]
-    assert "yellow_on_fail" in plan["text"]  # nằm trong plan text => hash vào plan_id, --rerender dựng lại đúng verdict
-
-
-def test_plan_text_unchanged_without_advisory_yellow_suites(tmp_path, sut):
-    plan, _ = build(tmp_path, sut)
-    assert plan["yellow_on_fail"] == [] and "yellow_on_fail" not in plan["text"]  # project cũ giữ nguyên plan_id
-
-
-def test_advisory_yellow_suites_must_be_subset_of_advisory(tmp_path):
-    projects = write_project(tmp_path, modes={"pr": {"blocking_suites": ["core"], "advisory_suites": ["extra"], "advisory_yellow_suites": ["core"]}})
-    with pytest.raises(PlanError, match="advisory_yellow_suites phải nằm trong advisory_suites"):
-        pj.load_project("demo", projects)
-
-
-def test_build_plan_rejects_yellow_outside_advisory_even_when_project_bypasses_load(tmp_path, sut):
-    projects = write_project(tmp_path, modes={"pr": {"blocking_suites": ["core"], "advisory_suites": ["extra"]}})
-    cfg = pj.load_project("demo", projects)
-    cfg["modes"]["pr"]["advisory_yellow_suites"] = ["core"]  # blocking, không phải advisory
-    with pytest.raises(PlanError, match="advisory_yellow_suites phải nằm trong advisory_suites"):
-        pj.build_plan(cfg, "pr", pj.load_suites(sut / ".qc-agent" / "suites"))
-
-
-def test_load_plan_rejects_unknown_yellow_task(tmp_path):
+def test_load_plan_ignores_legacy_yellow_on_fail(tmp_path):
     from qc_agent.core.plan import load_plan
     path = tmp_path / "p.yaml"
     path.write_text("name: x\nsut: {}\nyellow_on_fail: [nope]\ntasks:\n- {task_id: a}\n", encoding="utf-8")
-    with pytest.raises(PlanError, match="yellow_on_fail chứa task không có"):
-        load_plan(path)
+    with pytest.warns(UserWarning):
+        assert "yellow_on_fail" not in load_plan(path)
+
+
+def test_severity_policy_deep_merges_and_rejects_unknown_level(tmp_path):
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    (projects / "_default.yaml").write_text(
+        "modes:\n  pr:\n    blocking_suites: [core]\nseverity:\n  block_on: [critical, medium]\n  default_severity: {'*': medium}\n",
+        encoding="utf-8")
+    (projects / "demo.yaml").write_text(
+        "slug: demo\nseverity:\n  default_severity: {deps: low}\n", encoding="utf-8")
+    cfg = pj.load_project("demo", projects)
+    assert cfg["severity"]["block_on"] == ["critical", "medium"]
+    assert cfg["severity"]["default_severity"] == {"*": "medium", "deps": "low"}
+    (projects / "demo.yaml").write_text("slug: demo\nseverity:\n  block_on: [fatal]\n", encoding="utf-8")
+    with pytest.raises(PlanError):
+        pj.load_project("demo", projects)

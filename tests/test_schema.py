@@ -42,6 +42,13 @@ def test_examples_validate(res):
     assert schema.validate_result(res) == []
 
 
+def test_v2_location_and_critical_hint_validate():
+    result = copy.deepcopy(EV)
+    result["findings"][0]["severity_hint"] = "critical"
+    result["findings"][0]["location"] = {"path": "tests/eval/test_case.py", "line": 4, "end_line": 6}
+    assert schema.validate_result(result) == []
+
+
 @pytest.mark.parametrize("spec", [K6S, MS], ids=["k6", "midscene"])
 def test_task_examples_validate(spec):
     assert schema.validate_task(spec) == []

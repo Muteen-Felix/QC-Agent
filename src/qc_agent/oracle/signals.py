@@ -9,7 +9,7 @@ không nhận nguồn nào ngoài `detected` của adapter.
 from qc_agent.oracle import OracleError, OracleOutcome, register
 
 # Mức nghiêm trọng cố định trong code, không đọc từ spec: worker/plan không tự hạ được mức của một tín hiệu.
-_SEVERITY = {"http_5xx": "high", "dom_unchanged": "high", "element_not_found": "medium", "console_error": "medium"}
+_SEVERITY = {"http_5xx": "critical", "dom_unchanged": "critical", "element_not_found": "medium", "console_error": "medium"}
 
 
 @register("implicit_signals")

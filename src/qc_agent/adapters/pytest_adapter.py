@@ -137,7 +137,7 @@ class PytestAdapter(Adapter):
         root = _read_junit(junit)
         cases = []
         for element in root.iter("testcase"):
-            cases.append((element.get("classname") or "", element.get("name") or "", element.find("failure"), element.find("error"), element.find("skipped")))
+            cases.append((element.get("classname") or "", element.get("name") or "", element.find("failure"), element.find("error"), element.find("skipped"), element.get("file"), element.get("line")))
         cases.sort(key=lambda row: (row[0], row[1]))   # sort ổn định: thứ tự tất định => hậu tố chống trùng của finding_id ổn định
 
         failures = sum(1 for row in cases if row[2] is not None)
@@ -152,7 +152,7 @@ class PytestAdapter(Adapter):
             raise AdapterParseError("pytest exit 1 nhưng junit.xml không có failure/error nào: mâu thuẫn, không đoán bên nào đúng")
 
         findings, seen = [], {}
-        for classname, name, failure, error, _skipped in cases:
+        for classname, name, failure, error, _skipped, file, line in cases:
             bad_child = failure if failure is not None else error
             if bad_child is None:
                 continue
@@ -160,7 +160,12 @@ class PytestAdapter(Adapter):
             message = _one_line(bad_child.get("message") or "", TITLE_MAX)   # CHỈ thuộc tính message; text của phần tử là traceback nên bị bỏ
             title = _one_line(f"{where} — {message}" if message else where, TITLE_MAX)
             fid = sec.finding_id("pytest", where, seen)
-            findings.append(sec.finding(fid, title, f"pytest:{_rule_id(name)}", "medium"))
+            item = sec.finding(fid, title, f"pytest:{_rule_id(name)}", "medium")
+            if file:
+                item["location"] = {"path": file}
+                if line and line.isdecimal() and int(line) >= 1:
+                    item["location"]["line"] = int(line)
+            findings.append(item)
 
         metrics = _metrics(len(cases), len(cases) - bad - skipped, failures, errors, skipped)
         return ParsedOutput(

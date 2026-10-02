@@ -165,7 +165,7 @@ qc-agent run --project <slug> --mode manual --suites integration-live --sut-root
 Tier 3 fail là tín hiệu trang ngoài hoặc flow đã đổi: điều tra rồi ghi HAR mới. Nó là discovery, không chặn merge và không được thêm vào `advisory_suites` của mode `pr`.
 
 ## 4. Chặn merge
-Branch protection của repo SUT → *Require status checks* → chọn job `qc-agent / <project>` (chính job trong workflow). Job **xanh/đỏ theo exit code của gate**: `0` PASS, `1` FAIL, `3` lỗi cấu hình/hệ thống. Check Run, comment và lịch sử chỉ là phần báo cáo: lỗi ở đó không làm đổi kết quả.
+Branch protection của repo SUT → *Require status checks* → chọn job `qc-agent / <project>` (chính job trong workflow). Job **xanh/đỏ theo exit code của gate**: `0` PASSED hoặc PASSED_WITH_WARNINGS, `1` BLOCKED, `3` lỗi cấu hình/hệ thống. Có thể đặt `--warn-exit N` để đổi exit code của PASSED_WITH_WARNINGS.
 
 ### 4b. Bỏ qua một finding Security có lý do
 
@@ -183,17 +183,15 @@ Khi gate Security (`sast`, `secrets`, `deps`) đỏ vì một finding mà bạn 
 - `trivy.db_age_days` đỏ (báo cáo nói DB CVE quá 14 ngày) **không phải finding của bạn** và không bỏ qua được bằng cách trên: image qc-agent đang dùng đã cũ, hãy cập nhật digest `image:` trong `qc.yml` lên bản mới hơn.
 - Lỗi công cụ (`error`) hoặc công cụ thiếu (`skipped`) cũng làm gate đỏ nhưng là lỗi hạ tầng, không phải finding: báo cho phòng QC thay vì bỏ qua.
 
-### 4c. Nợ test (`coverage-debt`): không chặn, nhưng không được lờ
+### 4c. Bề mặt chưa có test (`coverage-debt`)
 
-Nếu policy của project bật `coverage-debt` trong `advisory_suites` **và** `advisory_yellow_suites`
-(mặc định của `noteboard`; xem `docs/architecture.md` §1.5), mỗi PR được dò bề mặt **mới thêm**
-(endpoint API, route UI, operation OpenAPI) mà **chưa có test nào chạm tới**. PR vẫn merge được —
-đây là nợ, không phải lỗi — nhưng bạn thấy ngay, không phải đoán:
+Nếu policy bật `coverage-debt` trong `advisory_suites`, mỗi PR dò bề mặt **mới thêm**
+(endpoint API, route UI, operation OpenAPI) mà **chưa có test nào chạm tới**. Worker phát
+finding Low có vị trí file/dòng khi tìm được. Finding Low không chặn merge:
 
-- Check Run: **⚪ `PASS hồi quy · N bề mặt mới chưa có test`** (kết luận `neutral`, không phải xanh
-  `success` trơn).
-- Comment dính có thêm mục **"⚠️ Nợ test mới phát sinh (Không chặn merge)"**, liệt kê từng bề mặt
-  (`kind` — `surface`).
+- Check Run: **`PASSED_WITH_WARNINGS`** (kết luận `success`, kèm số cảnh báo Low).
+- Finding trong diff được gắn vào đúng dòng PR; finding ngoài diff nằm trong thân review.
+- Nếu cấu hình Jira, mỗi fingerprint Low tạo tối đa một ticket. Jira lỗi chỉ hiện cảnh báo, không đổi verdict.
 - Reusable workflow checkout với `fetch-depth: 0` để Select tính đúng merge-base của PR;
   bạn không cần cấu hình gì để có bước này; workflow tái sử dụng phiên bản mới hơn tự có sẵn.
 
@@ -219,11 +217,23 @@ test_globs:                                    # mặc định, chỉ khai khi t
   lối tắt để im lặng tắt cảnh báo.
 - `test_globs` là danh sách glob quyết định file nào được coi là "test" khi bộ dò kiểm "đã có test
   chưa" (khớp tên đường dẫn theo mẫu, ví dụ `spec/**` cho repo dùng Playwright ở thư mục `spec/`).
-- Nợ **thuộc về repo**, không thuộc về một PR: nợ mở ở PR này mà không có test theo kịp thì vẫn nằm
-  trong sổ, không tự hết hạn. Nợ chỉ đóng khi **full-scan** (chạy `qc-agent run --mode manual`, hoặc
-  Mode 2 qua executor của dashboard) không còn thấy bề mặt đó thiếu test nữa.
-- Xem sổ nợ hiện có: `GET /api/v1/projects/<slug>/debt?open=true` (cần đăng nhập; API của dashboard,
-  không phải endpoint của SUT).
+Lịch sử cũ trong Postgres vẫn được giữ; luồng PR/manual mới không ghi sổ nợ và không cần database.
+
+Để tạo Jira ticket cho finding Low, cấu hình project trong `configs/projects/<slug>.yaml`:
+
+```yaml
+jira:
+  project_key: QCSB
+  issue_type: Task
+  user_map:
+    github-login: jira-account-id
+  max_new_per_run: 20
+```
+
+Đặt `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` trong secret của workflow gọi lại.
+`user_map` ánh xạ tác giả PR sang Jira account ID; nếu không có ánh xạ, ticket vẫn được
+tạo nhưng không gán người. Worker tìm ticket theo fingerprint trước khi tạo nên chạy lại
+không tạo ticket trùng. Lỗi Jira được ghi trong `jira-status.json` và không đổi verdict.
 
 ## 5. Kết quả ở đâu
 
@@ -249,6 +259,12 @@ vẫn dùng `HEAD^1` như trước. Chi phí trung bình của Select: sẽ đo 
 - **Check Run** `qc-agent / <project>`.
 - **Lịch sử** trên dashboard (nếu bật `qc_api_url`), link nằm trong comment.
 - **Artifact** `qc-runs-<project>-<attempt>` (14 ngày).
+
+Trên PR, workflow chạy `gate → PR review → Jira (Low) → Report → upload → enforce`.
+Jira chạy trước Report để lỗi 401/5xx được ghi thành cảnh báo trong Check Run cùng lượt;
+Jira và PR review không đổi verdict. Check Run liệt kê số finding Critical/Medium/Low
+và những finding đầu tiên. Giá trị mới là `BLOCKED`, `PASSED_WITH_WARNINGS`, `PASSED`;
+dashboard vẫn đọc được các giá trị lịch sử `FAIL`, `YELLOW`, `PASS`.
 
 ## 6. Rủi ro còn lại (biết trước)
 - Worker eval của **chính repo SUT** (ví dụ `pytest tests/eval`) chạy mã của PR với các key LLM trong môi trường. Với PR cùng repo, tác giả là người có quyền ghi; hãy dùng key riêng cho CI với **giới hạn ngân sách**.

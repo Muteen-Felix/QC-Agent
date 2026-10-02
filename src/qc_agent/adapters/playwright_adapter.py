@@ -186,7 +186,7 @@ class PlaywrightAdapter(Adapter):
 
 def _finding(kind: str, title: str) -> dict:
     return {"finding_id": f"f-pw-{kind}", "title": title[:300], "detected_by": f"playwright:{kind}",
-            "verdict_source": "deterministic_assert", "confidence": None, "severity_hint": "high"}
+            "verdict_source": "deterministic_assert", "confidence": None, "severity_hint": "critical"}
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@
                 Đã có test = path HOẶC tên component xuất hiện trong file khớp test_globs (flow Midscene, e2e).
 
 Không đoán (§1.1): base thiếu / checkout nông / cấu hình sai / file không parse được => status "error", findings rỗng.
-Không QC_DIFF_BASE (--base) => full-scan: mọi bề mặt hiện có chưa có test (cơ sở để ĐÓNG nợ, D4).
+Không QC_DIFF_BASE (--base) => full-scan: mọi bề mặt hiện có chưa có test.
 
 Giới hạn đã biết (chấp nhận, xem plan §5): include_router giữa các file khác nhau không được nối prefix; route JS chỉ bắt được
 dạng literal bắt đầu bằng '/'; "/" không bao giờ là nợ; khớp test theo chuỗi nên có thể sót (báo thiếu nợ), không bịa nợ.
@@ -432,6 +432,22 @@ def _ignore_reason(config: Config, kind: str, surface: str) -> str | None:
     return None
 
 
+def _location(root: Path, kind: str, surface: str, is_test) -> tuple[str, int] | None:
+    """Tìm dòng khai báo bề mặt trong file hiện tại để review có thể gắn vào diff."""
+    route = surface.split(" ", 1)[1] if kind != KIND_UI else surface
+    tail = "/" + route.rsplit("/", 1)[-1] if "/" in route[1:] else route
+    for rel, full in _walk(root):
+        if is_test(rel) or PurePosixPath(rel).suffix not in {".py", ".json", *UI_SUFFIXES}:
+            continue
+        source = _read_small(full)
+        if source is None or (kind, surface) not in surfaces_of(rel, source):
+            continue
+        for number, line in enumerate(source.splitlines(), 1):
+            if route in line or tail in line:
+                return rel, number
+    return None
+
+
 def scan(root: Path, base: str | None, suites_dir: str = SUITES_DIR) -> dict:
     config = load_config(root)
     index = CoverageIndex(root, config, suites_dir)
@@ -445,7 +461,10 @@ def scan(root: Path, base: str | None, suites_dir: str = SUITES_DIR) -> dict:
         if reason is not None:
             ignored.append({"finding_id": finding_id, "reason": reason})  # hiện ra để reviewer thấy, không thành nợ
         else:
-            findings.append({"finding_id": finding_id, "kind": kind, "surface": surface})
+            item = {"finding_id": finding_id, "kind": kind, "surface": surface}
+            if location := _location(root, kind, surface, index.is_test):
+                item.update(path=location[0], line=location[1])
+            findings.append(item)
     return report("ok", base, findings, ignored)
 
 

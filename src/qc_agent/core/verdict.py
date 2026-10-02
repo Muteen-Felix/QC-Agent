@@ -1,66 +1,32 @@
-"""Gộp verdict. Hàm THUẦN: không I/O, không LLM. Luật: architecture.md §6.3.
-FAIL > YELLOW > PASS.  exit_code: FAIL=1, YELLOW=0 (D-02), PASS=0.
-"""
+"""Pure severity based gate verdict; worker results are normalized first."""
 from dataclasses import dataclass, field
 
-PASS, YELLOW, FAIL = "PASS", "YELLOW", "FAIL"
+BLOCKED, PASSED_WITH_WARNINGS, PASSED = "BLOCKED", "PASSED_WITH_WARNINGS", "PASSED"
 
 
 @dataclass
 class GateVerdict:
     value: str
     exit_code: int
-    reasons: list = field(default_factory=list)  # mỗi phần tử: (task_id, lý do)
-    banner: list = field(default_factory=list)  # in Ở ĐẦU report: skipped / error
+    reasons: list = field(default_factory=list)
+    banner: list = field(default_factory=list)
+    counts: dict = field(default_factory=lambda: {"critical": 0, "medium": 0, "low": 0})
 
 
-def gate_verdict(results: dict, specs: dict, skipped_gate_is_fail: bool = False,
-                 yellow_on_fail: frozenset | set = frozenset()) -> GateVerdict:
-    """results: {task_id: result_dict}; specs: {task_id: spec_dict} — chỉ gồm task ĐƯỢC CHỌN.
-    skipped_gate_is_fail: task lane gate bị skipped (thiếu tool/probe hỏng/phụ thuộc không đạt) => FAIL thay vì YELLOW,
-    để gate không xanh giả khi một phần gate không chạy (mặc định False để giữ hành vi cũ).
-    yellow_on_fail: task_id do policy chỉ định (advisory_yellow_suites, vd. nợ test): status=fail => YELLOW, không bao giờ FAIL.
-    Chỉ có tác dụng với task lane discovery; task gate luôn đi đường FAIL."""
-    reasons, banner, skipped_gate = [], [], []
-    fail = yellow = False
-    gating_seen = 0
-    for tid, spec in specs.items():
-        r = results.get(tid)
-        lane = spec["lane"]
-        if r is None:  # task được chọn mà không có result
-            (reasons if lane == "gate" else banner).append((tid, "không có result"))
-            fail = fail or lane == "gate"
-            continue
-        st = r["status"]
-        if tid in yellow_on_fail and lane != "gate" and st == "fail":
-            yellow = True
-            reasons.append((tid, "nợ/cảnh báo (advisory_yellow_suites), không chặn"))
-        elif st == "error":
-            banner.append((tid, "error: " + str((r["verdict"].get("rationale") or ""))[:120]))
-            if lane == "gate":
-                fail = True
-                reasons.append((tid, "error (hạ tầng)"))
-        elif st == "skipped":
-            banner.append((tid, "skipped: " + str((r["verdict"].get("rationale") or ""))[:120]))
-            if lane == "gate":
-                yellow = True
-                skipped_gate.append(tid)
-        elif r["verdict"]["gating"]:
-            gating_seen += 1
-            if r["verdict"]["value"] != "pass":
-                fail = True
-                reasons.append((tid, "assert tất định fail"))
-    if lane_has_gate(specs) and gating_seen == 0 and not fail:
-        fail = True
-        reasons.append(("*", "không có result gating nào — không có gate"))  # chặn AND-rỗng
-    if skipped_gate_is_fail and skipped_gate:
-        fail = True
-        reasons.extend((tid, "skipped ở gate lane (on_skipped_gate_task=fail)") for tid in skipped_gate)
-    if fail:
-        return GateVerdict(FAIL, 1, reasons, banner)
-    if yellow:
-        return GateVerdict(YELLOW, 0, reasons, banner)
-    return GateVerdict(PASS, 0, reasons, banner)
+def gate_verdict(findings, infra_blockers, block_on=("critical", "medium")) -> GateVerdict:
+    counts = {"critical": 0, "medium": 0, "low": 0}
+    reasons = list(infra_blockers)
+    for finding in findings:
+        counts[finding.severity] += 1
+        if (finding.severity in block_on and finding.lane == "gate" and
+                finding.verdict_source != "llm_judgment" and
+                not (finding.source == "task_default" and finding.title == "skipped gate task")):
+            reasons.append((finding.task_id, f"{finding.severity}: {finding.title}"))
+    if reasons:
+        return GateVerdict(BLOCKED, 1, reasons, counts=counts)
+    if findings:
+        return GateVerdict(PASSED_WITH_WARNINGS, 0, reasons, counts=counts)
+    return GateVerdict(PASSED, 0, reasons, counts=counts)
 
 
 def canary_alerts(results: dict, plan_only: dict) -> list[dict]:
@@ -81,13 +47,7 @@ def canary_alerts(results: dict, plan_only: dict) -> list[dict]:
                 f"CANARY HỎNG: {task_id} báo {shown_actual} cho task chắc chắn phải {expected} "
                 "— worker tự hành không đáng tin"
             )
-        alerts.append({
-            "task_id": task_id,
-            "expected": expected,
-            "actual": actual,
-            "ok": ok,
-            "message": message,
-        })
+        alerts.append({"task_id": task_id, "expected": expected, "actual": actual, "ok": ok, "message": message})
     return alerts
 
 

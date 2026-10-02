@@ -1,5 +1,6 @@
 from qc_agent.core.report import RunContext, render
 from qc_agent.core.verdict import canary_alerts, gate_verdict
+from qc_agent.core.findings import normalize
 
 
 def result(status, *, gating=False):
@@ -37,7 +38,7 @@ def test_pass_expected_fail_is_broken_and_banner_precedes_verdict():
         run_id="r-0001", plan_id="plan-1", plan_name="demo", plan_path="plan.yaml",
         plan_text="tasks:\n  - task_id: t-canary\n", sut_id="sut-1", run_signature="sig-1",
         generated_at="2026-09-22T00:00:00+00:00", wallclock_s=0, specs=specs,
-        results=results, gate=gate_verdict(results, specs), canary=alerts,
+        results=results, gate=gate_verdict(*normalize(results, specs)), canary=alerts,
     )
     md, _ = render(ctx)
     assert alerts[0]["ok"] is False
@@ -59,8 +60,8 @@ def test_broken_canary_does_not_change_gate_verdict():
         "t-gate": result("pass", gating=True),
         "t-canary": result("pass"),
     }
-    before = gate_verdict(results, specs)
+    before = gate_verdict(*normalize(results, specs))
     alerts = canary_alerts(results, {"t-canary": {"expect_status": "fail"}})
-    after = gate_verdict(results, specs)
+    after = gate_verdict(*normalize(results, specs))
     assert alerts[0]["ok"] is False
-    assert (before.value, before.exit_code) == (after.value, after.exit_code) == ("PASS", 0)
+    assert (before.value, before.exit_code) == (after.value, after.exit_code) == ("PASSED", 0)

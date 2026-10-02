@@ -43,5 +43,5 @@ def test_all_injections_keep_floor_even_if_fake_llm_selects_nothing(monkeypatch,
 def test_eval_formula_and_fake_verdict_are_sensitive_to_omission():
     assert _ratio(9, 10) == .9
     assert _ratio(0, 0) == 1.0
-    assert _fake_gate_verdict({"semgrep", "schemathesis"}) == "FAIL"
-    assert _fake_gate_verdict({"semgrep"}) == "PASS"
+    assert _fake_gate_verdict({"semgrep", "schemathesis"}) == "BLOCKED"
+    assert _fake_gate_verdict({"semgrep"}) == "PASSED"

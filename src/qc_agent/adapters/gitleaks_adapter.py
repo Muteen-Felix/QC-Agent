@@ -91,7 +91,9 @@ class GitleaksAdapter(Adapter):
         for file, line, rule in rows:
             where = f"{file}:{line}"
             # Không đưa Secret/Match/Description vào finding: title chỉ có luật + vị trí
-            findings.append(sec.finding(sec.finding_id("gitleaks", f"{rule}{where}", seen), f"{rule} @ {where}", "gitleaks", "high"))
+            item = sec.finding(sec.finding_id("gitleaks", f"{rule}{where}", seen), f"{rule} @ {where}", f"gitleaks:{rule}", "high")
+            item["location"] = {"path": file, "line": line}
+            findings.append(item)
 
         stdout_path = workdir / STDOUT_NAME
         stdout_path.write_text(proc.stdout or "", encoding="utf-8")   # chỉ ghi SAU khi đã xác nhận redact; không ghi stderr

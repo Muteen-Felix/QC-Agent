@@ -81,7 +81,7 @@ def load_run(run_dir) -> dict | None:
     return {"report": report, "findings": findings}
 
 
-_EMOJI = {"PASS": "🟢", "FAIL": "🔴", "YELLOW": "🟡"}
+_EMOJI = {"PASS": "🟢", "FAIL": "🔴", "YELLOW": "🟡", "PASSED": "🟢", "BLOCKED": "🔴", "PASSED_WITH_WARNINGS": "🟡"}
 
 
 def build_message(run: dict, *, label: str, exit_code: int | None = None, status: str | None = None,

@@ -468,7 +468,7 @@ def test_init_from_a_live_sut_produces_a_gate_that_passes_clean_and_fails_on_a_s
             return proc.returncode, proc.stdout
 
         code, report = gate("clean")
-        assert code == 0 and "VERDICT: ✅ PASS" in report, report[-800:]
+        assert code == 0 and "VERDICT: ✅ PASSED" in report, report[-800:]
         assert "t-102" in report  # perf-smoke (discovery) cũng chạy được, k6 thật
     finally:
         server.should_exit = True

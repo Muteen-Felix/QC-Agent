@@ -39,7 +39,7 @@ def test_threshold_violation_is_fail_with_exactly_one_matching_finding():
     assert f["finding_id"] == "f-thr-http_req_duration.p95"
     assert f["title"] == "http_req_duration.p95 = 412.5 ms vi phạm < 300 ms"
     assert f["detected_by"] == "threshold:http_req_duration.p95"
-    assert f["verdict_source"] == "deterministic_assert" and f["confidence"] is None and f["severity_hint"] == "high"
+    assert f["verdict_source"] == "deterministic_assert" and f["confidence"] is None and f["severity_hint"] == "critical"
     assert "gating" not in f  # gating thuộc verdict do adapter gán, không thuộc finding
     assert_valid_findings(out.findings)
 
@@ -97,7 +97,7 @@ def test_signals_keep_only_named_signals_and_note_the_dropped_ones():
     assert out.findings[0]["title"] == "POST /api/notes -> 502"
     assert out.findings[1]["title"]  # thiếu title thì có tiêu đề dự phòng, không rỗng
     # mức nghiêm trọng theo bảng cố định trong code; mọi finding tất định, không confidence
-    assert [f["severity_hint"] for f in out.findings] == ["high", "medium"]
+    assert [f["severity_hint"] for f in out.findings] == ["critical", "medium"]
     assert all(f["verdict_source"] == "deterministic_assert" and f["confidence"] is None for f in out.findings)
     assert len(out.notes) == 1 and "mystery" in out.notes[0] and "dom_unchanged" in out.notes[0]
     assert_valid_findings(out.findings)
@@ -108,7 +108,7 @@ def test_signals_never_judge_and_severity_table_is_fixed():
     out = oracle.evaluate(sig(*names), {}, {"detected": [{"name": n} for n in names]})
     assert out.value is None  # có 4 phát hiện mà vẫn không phán: discovery không chặn gate
     assert {f["detected_by"].split(":")[1]: f["severity_hint"] for f in out.findings} == {
-        "http_5xx": "high", "dom_unchanged": "high", "element_not_found": "medium", "console_error": "medium"}
+        "http_5xx": "critical", "dom_unchanged": "critical", "element_not_found": "medium", "console_error": "medium"}
     assert oracle.evaluate(sig("http_5xx"), {}, {"detected": []}) == oracle.OracleOutcome(value=None)
     for spec, signals in [(sig("http_5xx"), {}),  # adapter không báo 'detected' khác với "báo rỗng"
                           (sig("http_5xx"), {"detected": [{"title": "thiếu name"}]}),

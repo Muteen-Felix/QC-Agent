@@ -298,11 +298,11 @@ def test_web_job_runs_and_results_are_readable_through_the_api(user, env):
     job_id = user.post("/api/v1/projects/demo/jobs", json={"mode": "pr", "environment": "local"}).json()["id"]
     assert executor_for(env).run_once() is True
     job = user.get(f"/api/v1/jobs/{job_id}").json()
-    assert (job["status"], job["gate_verdict"], job["exit_code"], job["error"]) == ("succeeded", "PASS", 0, None)
+    assert (job["status"], job["gate_verdict"], job["exit_code"], job["error"]) == ("succeeded", "PASSED", 0, None)
     assert {t["task_id"]: (t["status"], t["gating"]) for t in job["tasks"]} == {"t-1": ("pass", True), "t-2": ("pass", True), "t-9": ("pass", False)}
     assert {a["path"] for a in job["artifacts"]} >= {"report.json", "executor.log"}
     report = user.get(f"/api/v1/jobs/{job_id}/report.json")
-    assert report.status_code == 200 and report.json()["gate_verdict"] == "PASS"
+    assert report.status_code == 200 and report.json()["gate_verdict"] == "PASSED"
     assert "QC Gate Report" in user.get(f"/api/v1/jobs/{job_id}/report.md").text
     art = user.get(f"/api/v1/jobs/{job_id}/artifacts/report.json")
     assert art.status_code == 200 and art.headers["content-type"].startswith("application/json") and art.headers["x-content-type-options"] == "nosniff"

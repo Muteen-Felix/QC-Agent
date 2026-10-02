@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qc-agent.local/schemas/result.json",
-  "title": "Quality Result Schema v1.0.0",
+  "title": "Quality Result Schema v2.0.0",
   "type": "object",
   "required": [
     "task_id",
@@ -178,7 +178,7 @@
             "enum": [
               "low",
               "medium",
-              "high",
+              "critical",
               null
             ],
             "default": null
@@ -188,6 +188,16 @@
             "default": [],
             "items": {
               "$ref": "#/$defs/evidence_item"
+            }
+          },
+          "location": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "line": {"type": "integer", "minimum": 1},
+              "end_line": {"type": "integer", "minimum": 1}
             }
           },
           "promote_candidate": {

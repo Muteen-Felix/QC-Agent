@@ -202,8 +202,7 @@ ngoài). Selector đánh đổi một phần độ bảo thủ để chạy ít 
   trường, checkout SUT, trỏ vào staging) đã chạy, phạm vi = toàn bộ policy.
 - Diff của PR phải lấy từ **merge-base** (`base...head`, không phải `base..head`), nên bước Select cần
   `fetch-depth: 0`.
-- Hộp VERDICT và PHẢN HỒI là đích của **S3** (contract 2.0.0: `severity_hint` ∈ low/medium/critical).
-  Hôm nay `core/verdict.py` vẫn là bản ba mức cũ, comment gắn dính, review riêng cho security.
+- Hộp VERDICT chuẩn hoá finding theo contract 2.0.0 (`severity_hint` ∈ low/medium/critical), áp severity policy rồi trả `BLOCKED` / `PASSED_WITH_WARNINGS` / `PASSED`. PR review gắn finding có vị trí vào diff; finding ngoài diff nằm trong thân review.
 - Khối *Gt-functional* (pytest) là *Đang triển khai — S1*. Chi tiết từng khâu ở §2.
 - `core/` **không** gọi LLM và **không** import `qc_agent.llm` / `groundtruth` / `selector` ở top-level.
   Lệnh CLI mới dùng import lười, để chạy `--trigger manual` không kéo LLM vào tiến trình.
@@ -306,8 +305,8 @@ v2 thu hẹp khoảng trống này ở **đầu nguồn**, không ở gate:
 > Nguồn để điền: doc 19 §1.1. Không ô nào được để trống hay ghi "…".
 
 Cột "Mode 1 — PR" là mode `pr` của policy (trigger `pr`); cột "Mode 2 — Thủ công" là mode `manual`
-(trigger `manual`, hoặc dashboard/API). Chữ "chặn" trong bảng là hành vi hôm nay; từ S3 chặn theo
-severity (Critical/Medium chặn, Low không).
+(trigger `manual`, hoặc dashboard/API). Chữ "chặn" trong bảng tuân theo severity policy:
+Critical/Medium chặn, Low chỉ cảnh báo.
 
 | Khâu | Mode 1 — PR | Mode 2 — Thủ công | Công cụ | Trạng thái |
 |---|---|---|---|---|
@@ -363,9 +362,8 @@ Ba công cụ **tất định** chạy ở lane gate, mỗi công cụ là một
 | `secrets` | gitleaks | secret/token nằm trong mã | `gitleaks.count == 0` | fingerprint trong `.gitleaksignore` |
 | `deps` | Trivy | dependency có CVE đã công bố | `trivy.critical == 0`, `trivy.high == 0`, `trivy.db_age_days <= 14` | dòng trong `.trivyignore` |
 
-> Ngưỡng ở cột "Chặn merge khi" là hành vi **hiện tại** (oracle `threshold` đếm theo mức `high` /
-> `critical`). Từ **S3** (contract 2.0.0) severity đổi thành low/medium/critical và chặn theo bảng
-> severity của policy: Critical/Medium chặn, Low không — xem `implementation-plan.md`, Sprint 3.
+> Metric `high` / `critical` vẫn giữ mức gốc của công cụ. Contract 2.0.0 chuẩn hoá finding thành
+> Critical/Medium/Low; policy chặn Critical/Medium và chỉ cảnh báo Low.
 
 **PR bị chặn vì sao.** Adapter chỉ *đếm* finding theo mức thành metric phẳng (`semgrep.high`, `trivy.critical`, `gitleaks.count`…); oracle `threshold` (đã có sẵn) so metric với ngưỡng ghi trong file suite. Muốn biết vì sao PR đỏ: mở `.qc-agent/suites/<suite>.yaml`, đọc `oracle.assertions`, rồi xem finding `rule @ file:dòng` trong comment PR (một review riêng gắn đúng dòng nếu dòng đó nằm trong diff; ngoài diff và mọi lỗ hổng thư viện thì nằm ở thân review). Đổi ngưỡng = sửa một dòng YAML, không sửa code. Mọi dòng bỏ qua (`nosemgrep`, `.gitleaksignore`, `.trivyignore`) nằm trong repo SUT nên **hiện trong diff của PR** để người review thấy.
 

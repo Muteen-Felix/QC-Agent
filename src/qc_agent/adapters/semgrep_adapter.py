@@ -78,16 +78,22 @@ class SemgrepAdapter(Adapter):
                 raise AdapterParseError("một finding của semgrep thiếu check_id/path/start.line/extra.severity") from None
             if not isinstance(check_id, str) or not isinstance(path, str) or raw_severity not in SEVERITY:
                 raise AdapterParseError(f"một finding của semgrep có kiểu/mức nghiêm trọng lạ (severity={raw_severity!r}): không đoán mức")
-            rows.append((path, line, result["start"].get("col") if isinstance(result["start"].get("col"), int) else 0, check_id, SEVERITY[raw_severity]))
+            end_line = (result.get("end") or {}).get("line")
+            rows.append((path, line, result["start"].get("col") if isinstance(result["start"].get("col"), int) else 0,
+                         check_id, SEVERITY[raw_severity], end_line if isinstance(end_line, int) and end_line >= line else None))
         rows.sort()   # thứ tự tất định => hậu tố chống trùng của finding_id ổn định
 
         counts = {f"semgrep.{level}": 0 for level in sec.LEVELS}
         findings, seen, notes = [], {}, [f"PARSER_VERSION={PARSER_VERSION}", f"semgrep exit_code={proc.returncode}"]
-        for path, line, _col, check_id, level in rows:
+        for path, line, _col, check_id, level, end_line in rows:
             counts[f"semgrep.{level}"] += 1
             where = f"{path}:{line}"
             # title CHỈ có id luật + vị trí: đoạn mã (`extra.lines`) do người gửi PR kiểm soát, sẽ đi vào comment PR
-            findings.append(sec.finding(sec.finding_id("semgrep", f"{check_id}{where}", seen), f"{check_id} @ {where}", "semgrep", level))
+            item = sec.finding(sec.finding_id("semgrep", f"{check_id}{where}", seen), f"{check_id} @ {where}", f"semgrep:{check_id}", level)
+            item["location"] = {"path": path, "line": line}
+            if end_line is not None:
+                item["location"]["end_line"] = end_line
+            findings.append(item)
         metrics = {**counts, "semgrep.total": len(rows), "semgrep.files_scanned": len(scanned)}
         return ParsedOutput(
             metrics=metrics, findings=sec.cap_findings(findings, notes), evidence_paths=[("raw_output", out), ("stdout", stdout_path)],
