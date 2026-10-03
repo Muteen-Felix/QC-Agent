@@ -35,7 +35,7 @@ workflow qc-groundtruth (agent: true)                              bật/tắt S
 
 ## 2. Điều kiện trước khi bắt đầu (checklist)
 
-- [ ] **Được phép gửi mã nguồn ra Anthropic.** Câu hỏi #3 trong `architecture.md` §5.5 chưa chốt. Xin xác nhận bằng văn bản từ bảo mật/pháp chế của công ty. Chưa có thì **dừng**.
+- [ ] **Được phép gửi mã nguồn ra Anthropic.** Câu hỏi #3 trong `implementation-plan.md` (mục "Các câu hỏi chờ chốt") chưa chốt. Xin xác nhận bằng văn bản từ bảo mật/pháp chế của công ty. Chưa có thì **dừng**.
 - [ ] **Quét bí mật trước:** chạy `gitleaks` trên repo SUT và xoá bí mật đã commit. Agent có lớp che bí mật nhưng đó chỉ là lớp phụ.
 - [ ] **Đã onboarding xong** theo user-guide mục 3 và 4: `qc-groundtruth.yml` đã nằm trên `main`, secret `ANTHROPIC_API_KEY` đã đặt, đã bật *Allow GitHub Actions to create and approve pull requests*.
 - [ ] **Đặt spend limit trên Anthropic Console** (ví dụ tổng $5). Đây là lớp bảo vệ thứ hai, vì giá trong code chỉ là ước tính.

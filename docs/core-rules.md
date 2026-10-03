@@ -1,5 +1,5 @@
 `core/` chỉ nối plan → worker → verdict → report. Không LLM, không biết tên worker nào: orchestrator "ngu" là orchestrator đúng.
-Từ v2, `core/` còn đọc `selection.json` và `floor_workers` từ policy (dữ liệu, không hardcode tên worker), và **không import** `qc_agent.llm` / `qc_agent.groundtruth` / `qc_agent.selector` ở top-level (xem mục "Cấm"). Kiến trúc v2 và nhãn trạng thái từng thành phần: [architecture.md](architecture.md).
+Từ v2, `core/` còn đọc `selection.json` và `floor_workers` từ policy (dữ liệu, không hardcode tên worker), và **không import** `qc_agent.llm` / `qc_agent.groundtruth` / `qc_agent.selector` ở top-level (xem mục "Cấm"). Kiến trúc v2: [architecture.md](architecture.md); trạng thái từng thành phần: [implementation-plan.md](implementation-plan.md).
 
 ## Chạy
 
@@ -14,8 +14,7 @@ qc-agent --plan tests/fixtures/plans/demo.yaml                             # 4. 
 
 Ground-Truth (S1, lệnh dùng import lười, không nằm trong gate): `qc-agent gt generate --prd FILE --sut-root DIR [--openapi FILE|URL] [--egress-dir DIR] [--summary-json FILE]` sinh catalog + `tests_gt/` + suite `gt-functional` từ PRD (cần `ANTHROPIC_API_KEY`, hoặc `GEMINI_API_KEY` khi `QC_GT_MODEL=gemini-*`); `gt regen` (PRD đổi) merge theo `tc_id` và giữ nguyên TC `approved`/`rejected`/`origin: qa`; `gt validate` là cổng HITL: exit **1** còn TC `draft`, drift của `tests_gt/`, `rejected` thiếu lý do, trùng `tc_id`, module-map chưa duyệt; exit **3** file không đọc được/sai schema. `qc-agent validate` chạy cùng bộ kiểm khi repo có `.qc-agent/ground-truth/` và đòi CODEOWNERS có quy tắc `/.qc-agent/`. Workflow, khoá QA và checklist: [groundtruth.md](groundtruth.md).
 
-Exit code **hiện tại**: `PASS` 0 · `YELLOW` = `--yellow-exit` (mặc định 0) · `FAIL` 1 · lỗi plan/hệ thống **3**.
-**Từ S3** đổi thành: `BLOCKED` 1 · `PASSED_WITH_WARNINGS` = `--warn-exit` (mặc định 0; `--yellow-exit` còn làm alias deprecated) · `PASSED` 0 · lỗi plan/hệ thống 3.
+Exit code: `BLOCKED` 1 · `PASSED_WITH_WARNINGS` = `--warn-exit` (mặc định 0; `--yellow-exit` còn làm alias deprecated) · `PASSED` 0 · lỗi plan/hệ thống 3.
 `demo.yaml` dùng worker giả nên bước 2 chỉ cần khi plan trỏ vào toy app. Cờ khác: `--only t-a,t-b`, `--runs-dir`, `--rerender RUN_DIR`.
 
 ## Thêm worker

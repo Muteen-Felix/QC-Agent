@@ -1,6 +1,6 @@
 # Ground-Truth: từ PRD tới test case được QA duyệt
 
-Bài toán: BA viết PRD, nhưng nếu để LLM tự viết *và* tự chấm test thì gate xanh không còn nghĩa gì. Ground-Truth tách hai việc: **LLM chỉ đề xuất test case (dạng dữ liệu)**, **QA duyệt**, còn gate chỉ chạy những test case đã được người duyệt. Tài liệu này là hướng dẫn vận hành; thiết kế nằm ở [architecture.md](architecture.md) §5.
+Bài toán: BA viết PRD, nhưng nếu để LLM tự viết *và* tự chấm test thì gate xanh không còn nghĩa gì. Ground-Truth tách hai việc: **LLM chỉ đề xuất test case (dạng dữ liệu)**, **QA duyệt**, còn gate chỉ chạy những test case đã được người duyệt. Tài liệu này là hướng dẫn vận hành; thiết kế nằm ở [architecture.md](architecture.md) §2 và [ADR 0003](adr/0003-gt-llm-sinh-du-lieu-khong-sinh-code.md).
 
 ## 1. Luồng
 
@@ -320,7 +320,7 @@ Không có lớp nào ngăn người khác *mở* PR sửa `.qc-agent/**`; chún
 - **PRD (và danh sách endpoint OpenAPI) được gửi tới nhà cung cấp LLM đã chọn** (Anthropic API hoặc Google Gemini API, theo model). Gói miễn phí của Gemini cho phép Google dùng nội dung để cải thiện sản phẩm: PRD nhạy cảm nên dùng khoá trả phí. Mọi lời gọi ghi `egress.jsonl` (loại dữ liệu `prd_text`, `api_spec`, host đích) **trước khi gửi**; chính sách `deny` thì không có request nào.
 - `egress.jsonl` và `summary.json` là **artifact của workflow** (giữ 14 ngày), không bao giờ được commit. Không file nào ghi nội dung PRD, prompt hay response vào log.
 - **Với `--agent`, MÃ NGUỒN của SUT cũng rời máy** (loại dữ liệu mới `source_code` trong `egress.jsonl`, ghi trước mỗi request; cùng với `prd_text` và `api_spec`). Chỉ file qua sandbox (mục 5c) được gửi, nhưng việc che bí mật là best-effort: **chạy `gitleaks` trên repo SUT và xoá bí mật đã commit trước khi bật agent**, và chỉ bật khi đã được phép gửi mã nguồn ra Anthropic (cùng câu hỏi #3 bên dưới, nay gồm cả mã).
-- **Câu hỏi #3 ở [architecture.md](architecture.md) §5.5 chưa được chốt** ("có được gửi PRD ra LLM bên ngoài không"): nó chặn mọi lượt chạy LLM thật. Cho tới khi có câu trả lời, chỉ chạy bằng PRD mẫu/PRD không nhạy cảm.
+- **Câu hỏi #3 ở [implementation-plan.md](implementation-plan.md) (mục "Các câu hỏi chờ chốt") chưa được chốt** ("có được gửi PRD ra LLM bên ngoài không"): nó chặn mọi lượt chạy LLM thật. Cho tới khi có câu trả lời, chỉ chạy bằng PRD mẫu/PRD không nhạy cảm.
 - Chi phí một lần sinh: một lời gọi (tối đa 16 000 token ra), cộng tối đa một lần sửa khi đầu ra sai schema. Số token nằm trong `summary.json`.
 - Chi phí bộ sinh agent: tới 40 lượt, mỗi lượt gửi lại cả lịch sử (được prompt cache). Ước tính ban đầu vài USD tới chục USD mỗi PRD với Opus (**chưa đo bằng API thật**); `agent.cost_usd_est` trong `summary.json` là ước tính theo bảng giá trong `llm/agent_loop.py` và `QC_GT_AGENT_MAX_COST_USD` là trần cứng.
 
