@@ -4,6 +4,26 @@ Tài liệu này xác định chi tiết lộ trình kỹ thuật, các quyết 
 
 ---
 
+## Trạng thái hiện tại (cập nhật 2026-10-03)
+
+Kiến trúc đích nằm ở [architecture.md](architecture.md); bảng này ghi code đã tới đâu. Nhãn:
+*Đã chạy* (có code + test) · *Đã chạy — chưa đo bằng model thật* (DoD phần LLM chờ số đo) · *Chưa làm* (đã chốt trong plan).
+
+| Thành phần | Trạng thái | Ghi chú |
+|---|---|---|
+| Gate tất định `core/` (plan → worker → verdict → report) | *Đã chạy* | Verdict mới `BLOCKED` / `PASSED_WITH_WARNINGS` / `PASSED` (S3, commit `c883532`) |
+| Worker `schemathesis`, `k6`, `midscene`, `pytest`, `semgrep`, `gitleaks`, `trivy`, `coverage-debt` | *Đã chạy* | Security chạy trong image, chưa có PR thật. `deepeval` chưa chạy trên sản phẩm thật |
+| Worker `playwright` (integration) | Worker + scaffold đã có | Chưa spike với extension thật, chưa có PR thật ([worker.md](worker.md)) |
+| `llm/client.py` + `agent_loop.py` (Claude, Gemini) | *Đã chạy — chưa đo bằng model thật* | Agent GT chưa từng gọi API Anthropic thật. `count_tokens`, prompt caching, trần token: chưa làm (S4) |
+| Ground-Truth: parse PRD, sinh catalog, render, `gt generate / validate / regen`, agent đọc repo, bộ chấm coverage, Excel | *Đã chạy — chưa đo bằng model thật* | DoD S1 còn 2 mục PENDING bên dưới |
+| Workflow sinh GT + khoá `.qc-agent/**` | Đã có workflow, mẫu CODEOWNERS, `tools/protect_ground_truth.py` | Chưa chạy trên GitHub thật, chưa bật protection trên repo thật |
+| Trigger `manual` + `--trigger`; Selector (prune, path rules, Diff Agent, floor); Task Runner song song | *Đã chạy* (S2) | Recall/precision/P95 với Haiku thật chưa đo. Executor/dashboard chưa nối `--trigger manual --workers` (phạm vi = toàn bộ policy). `max_parallel` mặc định 1 |
+| Contract 2.0.0, normalizer (`core/findings.py`), `pr_review`, Jira cho finding Low, gỡ sổ nợ | Đã có code + test (S3) | DoD S3 chưa tick; cần bằng chứng harness fake GitHub/Jira như S1/S2 |
+| Cache selection + GT, prompt caching, trần token, E2E trên CI thật, runbook | *Chưa làm* (S4) | |
+| Bước `refine` trên PR (`continue-on-error`, chỉ đề xuất) | Giữ nguyên | Ngoài v2, không có quyền chặn |
+
+---
+
 ## 0. Chốt lại quyết định và hệ quả kỹ thuật
 
 | # | Bạn chốt | Hệ quả khi làm |
@@ -335,3 +355,9 @@ def gate_verdict(findings, infra_blockers, block_on=("critical", "medium")) -> G
 3. **ANTHROPIC_API_KEY:** Có giới hạn ngân sách, để đo các chỉ số LLM thật ở S1, S2, S4.
 4. **QA gán nhãn Golden Set:** `noteboard-golden.yaml` (AC) và `labels.yaml` ($\ge 30$ diffs). Nếu nhãn này do dev tự gán thì con số 90% không còn khách quan.
 5. **Approval của nhóm Core cho contract 2.0.0 ở S3.1:** Cần các thành viên trong `.github/contract-reviewers.yaml` sẵn sàng approve PR nâng version MAJOR.
+3. **Các câu hỏi chờ chốt** (chuyển từ `architecture.md`):
+   1. Tiếp tục pilot trên vahan-rpa, hay đổi sang sản phẩm khác?
+   2. GitHub hay GitLab đi trước?
+   3. **Câu hỏi #3: có được gửi PRD, mã nguồn, diff hoặc nhãn giao diện qua LLM bên ngoài (Anthropic/Gemini API) không?** Câu này chặn mọi lượt chạy LLM thật: S1 gửi PRD (và mã nguồn nếu bật agent), S2 gửi diff. Mọi lời gọi ghi egress trước khi gửi; policy `deny` thì không có request nào. Cần xác nhận bằng văn bản từ bảo mật/pháp chế.
+   4. ~~Gate có chặn PR vì thiếu test?~~ **Đã đóng:** gate chỉ chặn vì finding Critical/Medium hoặc task gate lỗi/bị bỏ qua; không chặn vì thiếu test.
+   5. Chấp nhận cách đo 80–90% bằng golden set do QA gán nhãn (chỉ áp cho phần có LLM; phần tất định phải đạt 100%) không? Hiện chưa có baseline thời gian QC, nên không hứa con số tiết kiệm thời gian nào.
