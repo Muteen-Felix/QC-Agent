@@ -13,7 +13,7 @@ Kiến trúc đích nằm ở [architecture.md](architecture.md); bảng này gh
 |---|---|---|
 | Gate tất định `core/` (plan → worker → verdict → report) | *Đã chạy* | Verdict mới `BLOCKED` / `PASSED_WITH_WARNINGS` / `PASSED` (S3, commit `c883532`) |
 | Worker `schemathesis`, `k6`, `midscene`, `pytest`, `semgrep`, `gitleaks`, `trivy`, `coverage-debt` | *Đã chạy* | Security chạy trong image, chưa có PR thật. `deepeval` chưa chạy trên sản phẩm thật |
-| Worker `playwright` (integration) | Worker + scaffold đã có | Chưa spike với extension thật, chưa có PR thật ([worker.md](worker.md)) |
+| Worker `playwright` (integration) | Worker + scaffold đã có | Chưa spike với SUT có browser extension (request từ service worker), chưa có PR thật ([worker.md](worker.md)) |
 | `llm/client.py` + `agent_loop.py` (Claude, Gemini) | *Đã chạy — chưa đo bằng model thật* | Agent GT chưa từng gọi API Anthropic thật. `count_tokens`, prompt caching, trần token: chưa làm (S4) |
 | Ground-Truth: parse PRD, sinh catalog, render, `gt generate / validate / regen`, agent đọc repo, bộ chấm coverage, Excel | *Đã chạy — chưa đo bằng model thật* | DoD S1 còn 2 mục PENDING bên dưới |
 | Workflow sinh GT + khoá `.qc-agent/**` | Đã có workflow, mẫu CODEOWNERS, `tools/protect_ground_truth.py` | Chưa chạy trên GitHub thật, chưa bật protection trên repo thật |

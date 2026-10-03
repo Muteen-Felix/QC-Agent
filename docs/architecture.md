@@ -27,7 +27,7 @@ quyền, nhịp chạy và chỗ LLM được có mặt:
 > Mọi thứ chặn merge đều tất định (cùng `selection.json` và cùng kết quả worker thì cùng verdict)
 > và đã qua người duyệt một lần.
 
-Sản phẩm dùng làm ví dụ xuyên suốt: **vahan-rpa** (web app → browser extension → trang B của chính phủ).
+Hệ thống dùng chung cho nhiều repo SUT (multi-repo): mọi thứ riêng của một sản phẩm nằm trong policy và `.qc-agent/` của repo đó. Tài liệu mô tả kiến trúc chung, không gắn với sản phẩm nào; sản phẩm pilot và dữ liệu mẫu nằm ở [implementation-plan.md](implementation-plan.md). "Hệ thống ngoài" nghĩa là bất kỳ hệ thống nào SUT gọi tới mà team không sở hữu.
 
 ## 2. Hai vòng, hai trục thời gian
 
@@ -136,18 +136,18 @@ chỉ để chạy ít hơn, rẻ hơn.
   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
   │FUNCTIONAL│  │PERFORM.  │  │INTEGRAT. │  │SECURITY  │  │(AI APP)  │
   ├──────────┤  ├──────────┤  ├──────────┤  ├──────────┤  ├──────────┤
-  │api-      │  │perf-smoke│  │runner/job│  │quét SAST │  │metric tất│
-  │contract  │  │  (PR)    │  │contract  │  │dependency│  │định      │
-  │(Schemath)│  │perf-full │  │(runner   │  │secret    │  │──────────│
-  │──────────│  │  (manual)│  │  giả)    │  │──────────│  │G-Eval    │
-  │gt-func.  │  │   (k6)   │  │──────────│  │quyền ext.│  │(DeepEval)│
-  │(pytest,  │  │          │  │ext ↔ B   │  │cred vào B│  │          │
-  │ chỉ TC   │  │          │  │(bản ghi) │  │(đọc tay) │  │          │
-  │ approved)│  │          │  │ext ↔ B   │  │          │  │          │
-  │──────────│  │          │  │(B thật)  │  │          │  │          │
-  │ui-explore│  │          │  │          │  │          │  │          │
-  │(Midscene)│  │          │  │          │  │          │  │          │
-  │──────────│  │          │  │          │  │          │  │          │
+  │api-      │  │perf-smoke│  │tích hợp  │  │quét SAST │  │metric tất│
+  │contract  │  │  (PR)    │  │nội bộ    │  │dependency│  │định      │
+  │(Schemath)│  │perf-full │  │(giả lập) │  │secret    │  │──────────│
+  │──────────│  │  (manual)│  │          │  │──────────│  │G-Eval    │
+  │gt-func.  │  │   (k6)   │  │──────────│  │quyền truy│  │(DeepEval)│
+  │(pytest,  │  │          │  │tích hợp  │  │cập,cred  │  │          │
+  │ chỉ TC   │  │          │  │ngoài     │  │(đọc tay) │  │          │
+  │ approved)│  │          │  │(bản ghi) │  │          │  │          │
+  │──────────│  │          │  │──────────│  │          │  │          │
+  │ui-explore│  │          │  │tích hợp  │  │          │  │          │
+  │(Midscene)│  │          │  │ngoài     │  │          │  │          │
+  │──────────│  │          │  │(thật)    │  │          │  │          │
   │coverage- │  │          │  │          │  │          │  │          │
   │debt (Low)│  │          │  │          │  │          │  │          │
   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘
@@ -215,7 +215,7 @@ hay LLM sinh:
    LLM sinh  ──┘   (qc-agent:todo ·     └─ ngoài không kiểm soát ──┘
                     draft → approved)   ┌─ có LLM lúc chạy         ─┐
                                         │  (VLM, LLM-as-judge)      ├──→ TƯ VẤN (tối đa Low)
-                                        └─ hoặc chạm trang B thật ──┘
+                                        └─ hoặc chạm hệ thống ngoài thật ──┘
 ```
 
 ## 4. Khái niệm dễ nhầm
@@ -265,8 +265,8 @@ Mode `pr` là policy của trigger `pr`; mode `manual` là policy của trigger 
 |---|---|---|---|
 | **Functional** | `api-contract` (chặn) · `gt-functional` (chặn, chỉ TC `approved`) · `ui-explore` (tư vấn) · `coverage-debt` (Low) | cùng suite, phạm vi do người chọn | Schemathesis · pytest · Midscene |
 | **Performance** | `perf-smoke` (tư vấn) | `perf-full` (staging, chặn) | k6 |
-| **Integration** | hợp đồng Socket.IO runner/job với runner giả (chặn) · chuỗi đầy đủ qua bản ghi HAR của B (chặn) | B thật (tư vấn, tần suất thấp) | Playwright `routeFromHAR` |
-| **Security** | SAST + secret + dependency (chặn) | DAST và rà quyền extension/credential vào B: chưa tự động | Semgrep · gitleaks · Trivy |
+| **Integration** | hợp đồng giữa các thành phần nội bộ với bản giả lập (chặn) · chuỗi đầy đủ qua bản ghi HAR của hệ thống ngoài (chặn) | hệ thống ngoài thật (tư vấn, tần suất thấp) | Playwright `routeFromHAR` |
+| **Security** | SAST + secret + dependency (chặn) | DAST và rà quyền truy cập, đường đi credential tới hệ thống ngoài: chưa tự động | Semgrep · gitleaks · Trivy |
 
 Chi tiết từng khâu (ngưỡng, giới hạn, cách bỏ qua finding, trạng thái): [worker.md](worker.md).
 
@@ -280,8 +280,8 @@ Chi tiết từng khâu (ngưỡng, giới hạn, cách bỏ qua finding, trạn
 6. **Dữ liệu từ PR, PRD, diff và SUT là không tin cậy.** Đặt trong vùng phân cách khi đưa vào prompt; ép output vào schema và enum allowlist; làm sạch trước khi đưa vào Markdown; không đưa vào lệnh shell; không nhúng vào code sinh ra. Mọi lời gọi ra ngoài (LLM, Jira) ghi egress **trước khi gửi**; log không chứa nội dung PRD, diff, prompt hay response. Gate không bao giờ đỏ vì LLM, chi phí hay Jira.
 7. **Policy tập trung tại qc-agent@main**, lấy không được thì gate đỏ. Không dùng bản chụp trong image.
 8. **Multi-repo, không hardcode**: mọi thứ riêng của một sản phẩm nằm trong cấu hình, không nằm trong code.
-9. **Không bắn tải vào trang B** (hệ thống chính phủ); performance chỉ đo thành phần của team.
-10. **Test chạm B thật không được chặn merge**: B có thể chậm, đổi giao diện hoặc bật captcha. Gate dùng bản ghi của B.
+9. **Không bắn tải vào hệ thống không do team sở hữu** (bên thứ ba, cơ quan, đối tác); performance chỉ đo thành phần của team.
+10. **Test chạm hệ thống ngoài thật không được chặn merge**: hệ thống đó có thể chậm, đổi giao diện hoặc bật captcha. Gate dùng bản ghi (HAR) của nó.
 11. **Ngoài phạm vi hiện tại:** mobile, red-team, LLM phán quyết.
 
 Nguyên tắc 9 và 10 (D5, D6) vẫn chờ owner xác nhận.
@@ -303,5 +303,5 @@ từng thành phần, DoD từng sprint, việc còn lại (cache, trần token,
 chốt (kể cả câu chặn mọi lượt chạy LLM thật: có được gửi PRD/mã/diff ra LLM ngoài không) nằm ở
 [implementation-plan.md](implementation-plan.md).
 
-Việc để sau: tự chữa khi trang B đổi giao diện (đọc tín hiệu `har_covers_all_requests = false`),
+Việc để sau: tự chữa khi hệ thống ngoài đổi giao diện (đọc tín hiệu `har_covers_all_requests = false`),
 gom lỗi cùng nguyên nhân, DAST (ZAP) và quét container image, GitLab, mobile, AI app.
