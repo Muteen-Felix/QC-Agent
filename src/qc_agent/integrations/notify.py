@@ -44,10 +44,6 @@ def channel_for(url: str | None) -> str:
     return "generic"
 
 
-def current_channel() -> str:
-    return channel_for(os.environ.get("ALERT_WEBHOOK_URL"))
-
-
 def clean(value, channel: str = "generic", limit: int = MAX_ITEM) -> str:
     """Làm sạch một mẩu văn bản không tin cậy để chèn vào message."""
     text = " ".join(_CONTROL.sub("", str(value)).split())  # một dòng: không chèn được dòng giả (vd. "VERDICT: PASS")

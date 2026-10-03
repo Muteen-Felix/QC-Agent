@@ -1,7 +1,6 @@
 """Chuyển bản ghi DB thành JSON trả về. Không bao giờ đưa ra: password_hash, token_hash, params.env, đường dẫn máy chủ."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import yaml
@@ -53,7 +52,3 @@ def job_json(job: Job, slug: str, creators: dict[int, str], *, runs_root: Path |
         out["artifacts"] = [{"path": a.path, "size_bytes": a.size_bytes, "sha256": a.sha256} for a in job.artifacts]
         out["progress"] = progress(runs_root, slug, job) if runs_root else None
     return out
-
-
-def loads_json(data: bytes):
-    return json.loads(data.decode("utf-8-sig"))

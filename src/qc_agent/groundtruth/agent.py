@@ -72,10 +72,6 @@ DESCRIPTIONS = {
 }
 
 
-class GTAgentError(RuntimeError):
-    pass
-
-
 @dataclass(frozen=True)
 class AgentResult(gen.GenerateResult):
     agent: dict = field(default_factory=dict)             # thống kê chạy (chỉ số/chuỗi định danh), đi vào summary.json
