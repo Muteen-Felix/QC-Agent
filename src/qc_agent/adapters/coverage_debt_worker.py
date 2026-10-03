@@ -1,4 +1,4 @@
-"""Worker tất định dò "nợ test": bề mặt code MỚI THÊM mà chưa có test nào chạm tới (docs/phase2/plan-debt.md, P2-2).
+"""Worker tất định dò "nợ test": bề mặt code MỚI THÊM mà chưa có test nào chạm tới (thiết kế gốc: docs/phase2/plan-debt.md, P2-2; file đã xóa, xem `git log -- docs/phase2`).
 
   git diff base..HEAD  ->  bề mặt mới (head − base)  ->  đã có test chưa?  ->  debt.json (findings "debt:<kind>:<surface>")
 

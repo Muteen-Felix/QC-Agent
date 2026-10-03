@@ -75,7 +75,7 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
 - `docs/groundtruth.md`
 
 #### File Sửa:
-- `docs/architecture.md`, `docs/core-rules.md`, `CLAUDE.md` (áp Phần 1), `docs/phase2/plan-debt.md` (gắn nhãn Superseded).
+- `docs/architecture.md`, `docs/core-rules.md`, `CLAUDE.md` (áp Phần 1). `docs/phase2/plan-debt.md` (đã Superseded) nay đã xóa khỏi repo, xem `git log -- docs/phase2`.
 - `src/qc_agent/core/cli.py`: thêm lệnh `gt`, import lười như init để `core/` không kéo LLM vào.
 - `src/qc_agent/scaffold/{validate.py, init.py, templates.py}`
 - `schemas/capabilities.json` (thêm `api.functional`).
