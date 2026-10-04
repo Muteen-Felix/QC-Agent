@@ -79,7 +79,7 @@ Tất cả lần gọi API thật đều dùng cùng PRD (sha256 ở mục 7), c
 
 Hai thay đổi giữa lần 1 và lần 3 là **thay đổi môi trường đo**, không phải tinh chỉnh để ra số đẹp: (i) thay lớp bọc token bằng hồ sơ tắt auth ngay trong mã bản sao, (ii) đặt trần/timeout. PRD, nhãn và danh sách mutant giữ nguyên giữa các lần chạy.
 
-Tool đo cũng được sửa trong quá trình (không đổi cách tính các chỉ số): lưu bộ vừa sinh ra đĩa trước khi đo, mutant lỗi khi đo không làm mất cả lượt, in mã loại lỗi, ghi chi phí khi lỗi giữa chừng. Các thay đổi này có test (109 test đạt) nhưng **chưa được commit** vào repo QC-Agent tại thời điểm viết báo cáo.
+Tool đo cũng được sửa trong quá trình (không đổi cách tính các chỉ số): lưu bộ vừa sinh ra đĩa trước khi đo, mutant lỗi khi đo không làm mất cả lượt, in mã loại lỗi, ghi chi phí khi lỗi giữa chừng. Các thay đổi này có test (109 test đạt) và nằm ở commit `4fa7adc`. **Lần 1 và lần 2 chạy trước các thay đổi đó** (lần 3 chạy sau khi vá phần lưu kết quả và ghi chi phí khi lỗi), nên số liệu `turns/cost` của lần 2 là 0 trong `real-run2-timeout.json`.
 
 ## 6. Giới hạn của phép đo
 
@@ -100,7 +100,8 @@ Tool đo cũng được sửa trong quá trình (không đổi cách tính các 
 | PRD | `docs/prd/vahan.md`, sha256 `9d0957be7ef70b3926102b76b286db934a2f52ed0233208650d2fae6831d265c` (**chưa được commit** ở repo SUT) |
 | OpenAPI | `eval/vahan/openapi.json`, sha256 `cf446b9f9cc94fe5f0c83a74019166d03d4283dbc03919e8353ceda103aab1c4` (xuất từ mã bản sao) |
 | Cấu hình đo | `eval/vahan.yaml`, sha256 `377dfdf556c7c91b41ae2018b5c2506897877cafcf17db6f7aa289e64a27da1c`; ngưỡng 0,9 / 0,9 / 0,9 |
-| QC-Agent | HEAD `de31da5` **cộng các thay đổi chưa commit** ở `src/qc_agent/groundtruth/agent.py`, `src/qc_agent/llm/agent_loop.py`, `tools/eval_gt_sut.py` và hai file test |
+| QC-Agent | commit `4fa7adc` (tool đo đã vá) trên nền `de31da5`. **Lần 3 chạy trên mã này nhưng chưa được commit lúc chạy**: sau đó mã được commit nguyên trạng, không sửa thêm logic. Lần 1 và 2 chạy trên `de31da5` cộng bản vá chưa hoàn chỉnh (chưa có lưu kết quả/ghi chi phí khi lỗi) |
+| Lưu ý hash | `openapi.json` trên Windows có CRLF trong working copy; Git chuẩn hóa về LF, nên sha256 trên máy khác (Linux/CI) sẽ khác. So bằng nội dung đã chuẩn hóa dòng nếu cần |
 | Môi trường | Python 3.11.16 (venv lab riêng cho SUT ở `runs/vahan-venv`) |
 
 Lệnh chạy lần 3 (đặt khóa API qua biến môi trường, không đọc từ file `.env`):
@@ -121,5 +122,5 @@ Kiểm khô miễn phí (không gọi LLM): `python tools/eval_gt_sut.py --confi
 
 1. Một QA đọc lại `non_testable` và 15 mutant, rồi cập nhật `labeled_by`.
 2. Đối chiếu chi phí thật trên Console và điền vào mục 5.
-3. Commit các thay đổi của tool (kèm test) để mốc tái lập không còn "HEAD + chưa commit"; commit PRD ở repo SUT hoặc giữ sha256 làm mốc.
+3. Commit PRD ở repo SUT (hoặc giữ sha256 làm mốc): `docs/` của repo SUT vẫn là untracked nên commit SHA của SUT không ghim được PRD.
 4. Nếu còn ngân sách: chạy thêm lượt để có độ biến thiên, và đo baseline single sau khi xác minh nguyên nhân lỗi ở lần B.
