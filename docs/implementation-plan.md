@@ -330,6 +330,7 @@ def gate_verdict(findings, infra_blockers, block_on=("critical", "medium")) -> G
 - [ ] **S4.3:** Prompt caching cho phần prefix tĩnh. Đặt trần token: vượt trần thì chạy FULL SET, không bao giờ làm gate đỏ vì chi phí.
 - [ ] **S4.4:** Tinh chỉnh pruner bằng `eval_cost.py` trên golden set của S2, và chạy lại `eval_selector` để chắc recall không tụt.
 - [ ] **S4.5:** Harness local chạy trọn chuỗi (Docker + fake GitHub + fake Jira + fake LLM).
+- [ ] **S4.5b (nợ từ S2.10):** test tích hợp đường Select **thành công** trong container. `tests/test_reusable_workflow.py` dùng SHA giả nên bước Select luôn lùi về full set; cần SUT mẫu là git repo thật với `base`/`head` thật (sửa `tools/run_reusable_locally.py` để truyền SHA thật), khẳng định: không có cảnh báo `Select failed`, diff chỉ docs thì chỉ chạy floor (`sast`, `secrets`), báo cáo ghi nguồn `rules`. Không gọi LLM nên không tốn tiền.
 - [ ] **S4.6 (E2E trên repo sandbox thật gồm 5 kịch bản):**
   - **(A)** BA commit PRD $\to$ PR sinh GT được mở.
   - **(B)** QA duyệt $\to$ merge; người không phải QA push vào `.qc-agent/` thì bị từ chối.
