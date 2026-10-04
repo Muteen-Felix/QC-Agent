@@ -2,6 +2,7 @@
 báo cáo vào GitHub GIẢ và ghi lịch sử vào API THẬT (PostgreSQL). CHỈ chạy khi có docker + QC_TEST_DOCKER_IMAGE (tên image qc-agent đã build,
 vd. qc-agent:dev) + QC_TEST_DATABASE_URL. Chậm (build SUT + hai lần chạy gate thật): dùng để kiểm chứng workflow, không chạy mặc định."""
 import os
+import re
 import shutil
 import socket
 import sys
@@ -12,6 +13,7 @@ from pathlib import Path
 
 import pytest
 import uvicorn
+import yaml
 from sqlalchemy import text
 
 from qc_agent.api.app import create_app
@@ -30,6 +32,16 @@ SUT = ROOT / "tests" / "fixtures" / "sut" / "noteboard"
 POLICY = ROOT / "configs" / "projects"   # thay bước Fetch policy trong các test không nhắm vào việc fetch
 pytestmark = [requires_pg, pytest.mark.skipif(not IMAGE or shutil.which("docker") is None, reason="needs docker + QC_TEST_DOCKER_IMAGE")]
 GITHUB_TOKEN = "ghs_local_test_token"
+# Số suite chặn của noteboard đọc từ policy hiện hành (S1 thêm gt-functional, S2 thêm sast/secrets): không ghi cứng để khỏi lệch lần nữa.
+N_GATE = len(yaml.safe_load((POLICY / "noteboard.yaml").read_text(encoding="utf-8"))["modes"]["pr"]["blocking_suites"])
+
+
+GATE_MIN = 3   # api-contract + floor (sast, secrets)
+
+
+def _contract_and_floor(text: str) -> str:
+    """Thu gọn suite chặn về api-contract + floor (lần khớp đầu tiên = mode pr). Floor (gitleaks/semgrep => secrets/sast) bắt buộc phải còn trong policy (S2), nên không được bỏ."""
+    return re.sub(r"blocking_suites: \[[^\]]*\]", "blocking_suites: [api-contract, sast, secrets]", text, count=1)
 
 
 def free_port():
@@ -86,7 +98,7 @@ def test_pr_flow_pass_then_fail_with_sticky_comment_check_runs_and_history(stack
     assert ok["Enforce gate result"]["returncode"] == 0, log  # job xanh theo exit code của gate
     assert len(stack.gh.check_runs) == 1 and stack.gh.check_runs[0]["conclusion"] == "success"
     assert stack.gh.check_runs[0]["name"] == "qc-agent / noteboard" and stack.gh.check_runs[0]["head_sha"] == "abc1234def5678"
-    assert len(stack.gh.comments) == 1 and "PASS" in stack.gh.comments[0]["body"] and "gate 2/2" in stack.gh.comments[0]["body"]
+    assert len(stack.gh.comments) == 1 and "PASS" in stack.gh.comments[0]["body"] and f"gate {N_GATE}/{N_GATE}" in stack.gh.comments[0]["body"]
     assert all(r["auth"] == f"Bearer {GITHUB_TOKEN}" for r in stack.gh.requests)
 
     bad, log = run(stack, bugs="1,3", run_id="2002")  # push tiếp vào PR có lỗi cài sẵn
@@ -94,7 +106,8 @@ def test_pr_flow_pass_then_fail_with_sticky_comment_check_runs_and_history(stack
     assert bad["Enforce gate result"]["returncode"] == 1, log  # job đỏ
     assert len(stack.gh.comments) == 1, "comment phải được cập nhật tại chỗ, không tạo thêm"
     body = stack.gh.comments[0]["body"]
-    assert "BLOCKED" in body and "gate 0/2" in body and "schemathesis" in body and "deepeval" in body
+    passed = int(re.search(rf"gate (\d+)/{N_GATE}", body).group(1))
+    assert "BLOCKED" in body and passed <= N_GATE - 2 and "schemathesis" in body and "deepeval" in body   # ít nhất api-contract và ai-eval đỏ
     assert [c["conclusion"] for c in stack.gh.check_runs] == ["success", "failure"]
 
     with session_scope(stack.engine) as s:
@@ -203,19 +216,19 @@ def _policy_copy(tmp_path, *, edit=None, drop=()):
 
 
 def test_gate_uses_the_mounted_policy_not_the_snapshot_baked_into_the_image(stack, tmp_path):
-    """Image chứa noteboard với 2 suite chặn (gate 2/2). Policy mount vào chỉ chặn api-contract => kết quả phải là gate 1/1."""
-    only_contract = _policy_copy(tmp_path, edit={"noteboard.yaml": lambda t: t.replace("[api-contract, ai-eval]", "[api-contract]")})
+    """Image chứa noteboard với N_GATE suite chặn. Policy mount vào chỉ chặn api-contract + floor => kết quả phải là gate 3/3."""
+    only_contract = _policy_copy(tmp_path, edit={"noteboard.yaml": _contract_and_floor})
     ok, log = run(stack, bugs="none", run_id="3001", policy_dir=only_contract)
     assert ok["Run qc-agent gate"]["outputs"] == {"exit_code": "0"}, log
-    assert "gate 1/1" in stack.gh.comments[0]["body"] and "gate 2/2" not in stack.gh.comments[0]["body"]
+    assert f"gate {GATE_MIN}/{GATE_MIN}" in stack.gh.comments[0]["body"] and f"gate {N_GATE}/{N_GATE}" not in stack.gh.comments[0]["body"]
     assert "policy: noteboard @ main 0123456" in stack.gh.comments[0]["body"]   # policy_ref do bước fetch truyền qua QC_POLICY_REF
 
 
 def test_unregistered_project_runs_with_the_default_policy(stack, tmp_path):
-    only_default = _policy_copy(tmp_path, drop=("noteboard.yaml", "vahan-rpa.yaml"))
+    only_default = _policy_copy(tmp_path, drop=("noteboard.yaml", "vahan-rpa.yaml"), edit={"_default.yaml": _contract_and_floor})   # SUT mẫu không có suite `deps` mà _default đòi
     ok, log = run(stack, bugs="none", run_id="3002", project="brand-new-team", policy_dir=only_default)
     assert ok["Run qc-agent gate"]["outputs"] == {"exit_code": "0"}, log
-    assert "policy: _default @ main 0123456" in stack.gh.comments[0]["body"] and "gate 1/1" in stack.gh.comments[0]["body"]
+    assert "policy: _default @ main 0123456" in stack.gh.comments[0]["body"] and f"gate {GATE_MIN}/{GATE_MIN}" in stack.gh.comments[0]["body"]
 
 
 def test_registered_project_run_from_another_repo_is_a_config_error_exit_3(stack, tmp_path):
@@ -233,7 +246,7 @@ def _host_api(stack):
 
 
 def test_fetch_policy_reads_main_over_the_github_api_and_reports_its_commit(stack, tmp_path):
-    stack.gh.policy_files = {"_default.yaml": (POLICY / "_default.yaml").read_text(encoding="utf-8")}
+    stack.gh.policy_files = {"_default.yaml": _contract_and_floor((POLICY / "_default.yaml").read_text(encoding="utf-8"))}
     stack.gh.main_sha = "b" * 40
     ok, log = run(stack, bugs="none", run_id="3005", project="brand-new-team", policy_dir=None, step_env=_host_api(stack))
     assert ok["Fetch policy"]["outputs"] == {"ref": "b" * 40}, log
