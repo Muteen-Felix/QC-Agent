@@ -20,7 +20,7 @@ BA viết PRD, QA ngồi chuyển từng tiêu chí chấp nhận (AC) thành te
 
 ### qc-agent giải quyết thế nào
 
-- **Từ PRD ra test case tự động.** Bạn push PRD lên `main`, một workflow GitHub Actions gọi LLM (Gemini hoặc Claude) đề xuất test case API. LLM chỉ sinh **dữ liệu** (request + kỳ vọng), không bao giờ sinh code; phần render ra file test do chương trình tất định làm.
+- **Từ PRD ra test case tự động.** Bạn push PRD lên `main`, một workflow GitHub Actions gọi LLM (Claude của Anthropic) đề xuất test case API. LLM chỉ sinh **dữ liệu** (request + kỳ vọng), không bao giờ sinh code; phần render ra file test do chương trình tất định làm.
 - **QA là người quyết định.** Test case ra dưới dạng **PR** với trạng thái `draft`. QA duyệt trong `test-cases.yaml` hoặc file **Excel** `test-cases.xlsx`, đổi sang `approved` (hoặc `rejected` kèm lý do), và thêm edge case của riêng mình.
 - **Quality Gate chặn merge.** Sau khi QA duyệt, gate trên mọi PR của dev chỉ chạy các test case `approved`. Fail thì không merge được. LLM **không bao giờ** là người phán xanh/đỏ.
 
@@ -57,7 +57,7 @@ BA/Dev sửa PRD ──push main──► Bot (LLM) ──► PR "Ground-Truth: 
 - [ ] File `openapi.json` đã commit trong repo (2.2).
 - [ ] Quyền **Admin** trên repo SUT (đặt secret, bật quyền workflow, branch protection).
 - [ ] Một **team QA** (hoặc username) có quyền **Write** trên repo, dùng làm code owner.
-- [ ] Một API key LLM: `GEMINI_API_KEY` **hoặc** `ANTHROPIC_API_KEY` (2.3).
+- [ ] Một API key của Anthropic (`ANTHROPIC_API_KEY`, 2.3), nên kèm spend limit trong Console.
 - [ ] Từ team qc-agent: **image digest** `ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12` (xem Job Summary của workflow `image` bên repo qc-agent, hoặc xin team qc-agent).
 
 ### 2.1. Quy chuẩn viết PRD để máy đọc được
@@ -168,10 +168,10 @@ Lưu ý:
 | Quyền **Admin** repo SUT | đặt secret, bật quyền workflow, branch protection (mục 4) |
 | Team QA có quyền **Write** | team này được ghi vào CODEOWNERS. Sai tên team thì GitHub báo "Unknown owner" và không ai bị ép duyệt. Repo cá nhân: dùng `@username` của cộng tác viên có quyền Write |
 | Image qc-agent kéo được | package `qc-agent` public thì bỏ qua. Private: xin team qc-agent cấp quyền *Manage Actions access* cho repo của bạn, hoặc đặt secret `GHCR_PULL_TOKEN` (PAT có `read:packages`) |
-| **API key LLM** (chọn một) | `GEMINI_API_KEY` (khoá Google AI Studio) **hoặc** `ANTHROPIC_API_KEY` (mặc định, model `claude-sonnet-5`) |
+| **API key LLM** | `ANTHROPIC_API_KEY` (khoá Anthropic). Model mặc định `claude-sonnet-5`; chế độ agent tuỳ chọn dùng `claude-sonnet-5-5` |
 | `qc_bot_token` (tuỳ chọn, nên có) | PAT/GitHub App của bot (Contents + Pull requests: Read and write). Giúp PR do bot mở **kích hoạt ngay** check `gt validate` (xem mục 5.1) |
 
-Chọn nhà cung cấp LLM theo tiền tố model: model `gemini-*` dùng `GEMINI_API_KEY`, mọi model khác dùng `ANTHROPIC_API_KEY`. Workflow chỉ đưa **đúng một** khoá vào container.
+Chỉ cần **một** khoá LLM (Anthropic). Workflow chỉ đưa khoá này vào container của job sinh test case.
 
 > **Gói GitHub Free + repo private:** branch protection và bắt buộc review **không dùng được** (cần Pro/Team/Enterprise, hoặc để repo public). Khi đó khoá QA chỉ còn là quy ước, không phải cơ chế cưỡng chế.
 
@@ -271,34 +271,70 @@ Làm theo đúng thứ tự. Tất cả ở **repo SUT**.
 
 Vào **Settings → Secrets and variables → Actions → New repository secret**:
 
-| Name | Value | Khi nào |
+| Name | Value | Bắt buộc? |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | khoá Anthropic | mặc định (model Claude) |
-| `GEMINI_API_KEY` | khoá Google AI Studio | khi dùng model `gemini-*` (xem bên dưới) |
+| `ANTHROPIC_API_KEY` | khoá API của Anthropic (lấy ở console.anthropic.com → API keys) | **Có.** Đây là khoá LLM duy nhất qc-agent dùng |
 | `qc_bot_token` | PAT/GitHub App của bot | nên có (mục 5.1, bẫy 1) |
 
-Chỉ cần **một** khoá LLM. Hoặc dùng GitHub CLI:
+Hoặc dùng GitHub CLI:
 
 ```bash
-gh secret set GEMINI_API_KEY --repo my-org/my-sut        # sẽ hỏi giá trị, không lưu vào lịch sử shell
+gh secret set ANTHROPIC_API_KEY --repo my-org/my-sut     # sẽ hỏi giá trị, không lưu vào lịch sử shell
 ```
 
-**Dùng Gemini thay Claude:** mở `.github/workflows/qc-groundtruth.yml`, bỏ comment các dòng trong khối `with:`:
+Khoá này dùng cho **mọi chế độ sinh** của workflow: chế độ mặc định (một lời gọi, model `claude-sonnet-5`) và chế độ agent tuỳ chọn (`agent: true`, model `claude-sonnet-5-5`, xem mục 6). Bạn không cần khai `model:` trong `qc-groundtruth.yml`; file `init` sinh ra đã dùng Claude. Chỉ khoá này được đưa vào container, và chỉ ở job `generate`; job `select` và `validate` không có khoá.
+
+**Nên làm khi đặt khoá:**
+- Dùng một khoá **riêng** cho qc-agent, và đặt **spend limit** trong Anthropic Console (Settings → Limits). Hạn mức này là lớp bảo vệ cuối cùng khi có lần chạy tốn nhiều hơn dự kiến.
+- Đặt secret **sau cùng** (sau khi merge workflow và bật quyền ở 4.2), ngay trước lần chạy đầu tiên của mục 5.1. Chưa có khoá thì dù workflow bị kích hoạt cũng không tốn tiền.
+
+Thiếu secret thì job `generate` dừng ngay với thông báo rõ (*thiếu secret ANTHROPIC_API_KEY …*), **trước khi gửi bất cứ thứ gì ra ngoài**.
+
+#### Khối `with:` trong `.github/workflows/qc-groundtruth.yml`
+
+Với Claude, bạn **không phải sửa gì** để chạy lần đầu: `init` đã điền sẵn. Sau `init` file có dạng:
+
+```yaml
+jobs:
+  groundtruth:
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: read
+    uses: Muteen-Felix/QC-Agent/.github/workflows/qc-groundtruth.reusable.yml@<SHA 40 ký tự>
+    with:
+      project: my-sut                                   # slug project, chỉ dùng đặt tên job
+      image: "ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>"   # từ tham số --image của init
+      prd_path: ${{ inputs.prd_path || 'docs/prd/**' }} # PRD nào được xử lý (từ --prd-glob)
+      openapi: "openapi.json"                           # chỉ có nếu bạn truyền --openapi cho init
+      # ... các dòng bắt đầu bằng "#" bên dưới là ví dụ tuỳ chọn ...
+    secrets: inherit                                    # đưa ANTHROPIC_API_KEY vào workflow
+```
+
+> **File do `init` sinh ra còn chứa vài dòng ví dụ Gemini đang bị comment** (`# model: gemini-...`, `# llm_min_interval_s`…). Bạn **bỏ qua hoặc xoá** chúng, đừng bỏ comment: tài liệu này chỉ dùng Claude.
+
+Các tuỳ chọn Claude bạn có thể thêm vào khối `with:` (đều **không bắt buộc**):
 
 ```yaml
     with:
       project: my-sut
-      image: ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12
+      image: "ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>"
       prd_path: ${{ inputs.prd_path || 'docs/prd/**' }}
       openapi: "openapi.json"
-      model: gemini-3.6-flash                                  # tiền tố gemini-* => dùng secret GEMINI_API_KEY
-      llm_min_interval_s: "12"                                 # giãn cách giữa hai request (≈ 5 RPM, free tier)
-      llm_max_retries: "5"                                     # thử lại (exponential backoff) khi 429/5xx
-      llm_fallback_models: "gemini-3.8-flash,gemini-2.5-flash" # model dự phòng khi hết quota
-    secrets: inherit
+      model: claude-sonnet-5          # ghim model cho chế độ mặc định (bỏ trống = mặc định của image, cũng là claude-sonnet-5)
+      timeout_minutes: 20             # mặc định 20 phút; chế độ agent cần 60
 ```
 
-Thiếu secret thì job `generate` dừng ngay với thông báo rõ, **trước khi gửi bất cứ thứ gì ra ngoài**.
+Chế độ **agent** (LLM đọc cả mã nguồn, nhiều lượt) **tắt mặc định** và gửi mã nguồn tới Anthropic. Chỉ bật khi đã được phép và đã có kế hoạch chi phí (mục 6 và [measure-sprint-1-on-sut.md](measure-sprint-1-on-sut.md)):
+
+```yaml
+      agent: true                     # bật bộ sinh agent
+      timeout_minutes: 60
+      agent_model: claude-sonnet-5-5  # model rẻ; chỉ đặt Opus khi chủ động muốn
+      agent_max_cost_usd: "3"         # TRẦN chi phí ước tính cho MỘT lần chạy
+```
+
+Sau khi sửa file này, commit và merge vào `main` như mọi thay đổi workflow (vì `/.github/workflows/qc-*.yml` được khoá cho team QA, PR cần họ duyệt).
 
 ### 4.2. Bật quyền cho Bot tự tạo PR
 
@@ -605,9 +641,9 @@ Các AC giao diện (nút bấm, hiển thị…) trong PRD **không sinh test �
 
 ### Quyền riêng tư và chi phí
 
-- **PRD và danh sách endpoint OpenAPI được gửi tới nhà cung cấp LLM bạn chọn** (Anthropic hoặc Google). **Gói miễn phí của Gemini cho phép Google dùng nội dung để cải thiện sản phẩm**: PRD nhạy cảm nên dùng khoá trả phí. Hãy xác nhận với bộ phận bảo mật/pháp chế của công ty trước khi chạy với PRD thật.
+- **PRD và danh sách endpoint OpenAPI được gửi tới Anthropic** (nhà cung cấp LLM duy nhất). Hãy xác nhận với bộ phận bảo mật/pháp chế của công ty về việc gửi PRD ra ngoài trước khi chạy với PRD thật.
 - Mọi lời gọi LLM ghi `egress.jsonl` **trước khi gửi** (artifact của workflow, giữ 14 ngày). Log không chứa nội dung PRD, prompt hay phản hồi.
-- Chi phí một lần sinh: **một lời gọi LLM** (tối đa 16 000 token ra), cộng tối đa một lần sửa khi đầu ra sai định dạng. Số token nằm trong `summary.json`. Gemini free tier có hạn mức thấp: dùng `llm_min_interval_s`, `llm_max_retries`, `llm_fallback_models` (mục 4.1).
+- Chi phí một lần sinh: **một lời gọi LLM** (tối đa 16 000 token ra), cộng tối đa một lần sửa khi đầu ra sai định dạng. Số token nằm trong `summary.json`. Đặt spend limit trong Anthropic Console (mục 4.1) để chặn chi phí ngoài dự kiến.
 
 ### Chế độ agent (tuỳ chọn, mặc định TẮT)
 
@@ -641,7 +677,7 @@ Workflow có tuỳ chọn `agent: true`: LLM đọc cả **mã nguồn** repo qu
 
 **Tích hợp**
 - [ ] Chạy `init` (đã thử `--dry-run`), commit, mở PR onboarding, merge vào `main`
-- [ ] Secret `GEMINI_API_KEY` hoặc `ANTHROPIC_API_KEY` (+ `qc_bot_token` nếu có)
+- [ ] Secret `ANTHROPIC_API_KEY` (+ `qc_bot_token` nếu có), đặt sau cùng; spend limit đã đặt trong Console
 - [ ] Bật *Allow GitHub Actions to create and approve pull requests*
 
 **Chạy thử**
