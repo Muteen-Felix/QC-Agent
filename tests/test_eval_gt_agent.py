@@ -284,6 +284,47 @@ def test_check_only_validates_everything_without_calling_any_llm(tmp_path, capsy
         assert needle in out, needle
 
 
+# ---------------- không mất kết quả đã trả tiền ----------------
+
+def test_the_generated_set_is_saved_before_measuring_and_remeasured_for_free(tmp_path, capsys, monkeypatch):
+    keep = tmp_path / "keep"
+    code, text, err, first = evaluate(tmp_path, capsys, "--generator", "agent", "--skip-mutants", "--keep-dir", str(keep))
+    assert code == 0, text + err
+    assert (keep / "agent-run1" / "catalog.json").is_file() and (keep / "agent-run1" / "meta.json").is_file() and (keep / "agent-egress").is_dir()
+    assert "Đã lưu bộ vừa sinh (agent, lượt 1)" in err and "--from-saved" in err
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:9")                                 # nếu lỡ gọi LLM sẽ thấy ngay
+    out = tmp_path / "again.json"
+    code = ev.main(["--config", str(config(tmp_path, sut_root=str(tmp_path / "fresh-sut"))), "--generator", "agent", "--skip-mutants", "--from-saved", str(keep), "--out-json", str(out)])
+    again = json.loads(out.read_text(encoding="utf-8"))
+    assert code == 0, capsys.readouterr()
+    assert again["llm"] == "saved" and again["generation"]["ac_coverage"] == first["generation"]["ac_coverage"]
+    assert again["generation"]["runs"][0]["agent"]["cost_usd_est"] == first["generation"]["runs"][0]["agent"]["cost_usd_est"]
+    assert ev.main(["--config", str(config(tmp_path)), "--from-saved", str(tmp_path / "nowhere")]) == 3 and "không đọc được lượt đã lưu" in capsys.readouterr().err
+
+
+def test_a_measurement_failure_after_generation_keeps_the_paid_result_and_says_how_to_remeasure(tmp_path, capsys):
+    broken = {"sut": {"start": {"cmd": f'"{sys.executable}" -c "raise SystemExit(1)" --port {{port}}', "health_path": "/", "timeout_s": 5}}}
+    keep = tmp_path / "keep"
+    code, text, err, data = evaluate(tmp_path, capsys, "--generator", "agent", "--keep-dir", str(keep), **broken)
+    assert code == 3 and data is None
+    assert (keep / "agent-run1" / "catalog.json").is_file()
+    assert "đo agent lượt 1 thất bại" in err and f"--from-saved {keep}" in err
+
+
+def test_a_mutant_that_cannot_be_measured_is_recorded_and_does_not_lose_the_run(tmp_path, capsys):
+    mutants = [{"id": "M-env", "acs": ["AC-1.3"], "env": {"QC_BUGS": "4"}},
+               {"id": "M-stale", "acs": ["AC-1.1"], "edits": [{"file": "toyapp/app.py", "find": "ĐOẠN KHÔNG TỒN TẠI", "replace": "x"}]}]
+    code, text, err, data = evaluate(tmp_path, capsys, "--generator", "agent", "--generated-mutants", mutants=mutants)
+    assert data is not None, text + err
+    gm = data["generators"]["agent"]["mutants_generated"]
+    assert gm["measurement_errors"] == ["M-stale"] and gm["survived_in_worst"] == ["M-stale"]          # tính là không bị bắt, nhưng được gọi đúng tên
+    results = data["generators"]["agent"]["runs"][0]["mutants_generated"]["results"]
+    assert results["M-env"]["killed"] is True and results["M-stale"]["killed"] is False
+    assert results["M-stale"]["measurement_error"] is True and "khớp 0 lần" in results["M-stale"]["error"]
+    assert "Mutant LỖI KHI ĐO ở bộ sinh agent" in text and "M-stale" in text
+
+
 def test_check_only_fails_on_a_bad_sut_command_before_any_spending(tmp_path, capsys):
     broken = {"sut": {"start": {"cmd": f'"{sys.executable}" -c "raise SystemExit(1)" --port {{port}}', "health_path": "/", "timeout_s": 5}}}
     code = ev.main(["--config", str(config(tmp_path, sut_root=str(fresh_sut(tmp_path)), **broken)), "--check-only"])

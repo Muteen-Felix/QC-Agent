@@ -323,6 +323,7 @@ def generate_agent(prd: ParsedPRD, *, model: str, egress_dir: Path, source_root:
         if not state.raw:
             raise gen.GTError(error.kind, str(error)) from None
         failure = error
+        run = getattr(error, "partial", None)   # lượt/token/chi phí đã tốn trước khi lỗi: không có thì thống kê báo 0 dù tiền đã bị tính
 
     catalog, warnings, orphans, dropped = state.catalog()
     problems = gt_schema.validate_catalog(catalog)
