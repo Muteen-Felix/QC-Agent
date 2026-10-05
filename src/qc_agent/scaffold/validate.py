@@ -35,7 +35,8 @@ GT_WORKFLOW = ".github/workflows/qc-groundtruth.yml"
 CODEOWNERS_FILES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")   # thứ tự ưu tiên của GitHub
 # Biến môi trường mà workflow tái sử dụng chuyển vào container gate (khớp bước "Run qc-agent gate"; test đối chiếu với file workflow thật).
 PASSTHROUGH = frozenset({"OPENAI_API_KEY", "GEMINI_API_KEY", "MIDSCENE_MODEL_BASE_URL", "MIDSCENE_MODEL_API_KEY", "MIDSCENE_MODEL_NAME",
-                         "MIDSCENE_MODEL_FAMILY", "QC_JUDGE_PROVIDER", "QC_JUDGE_MODEL", "QC_JUDGE_FALLBACK_PROVIDER", "QC_JUDGE_FALLBACK_MODEL"})
+                         "MIDSCENE_MODEL_FAMILY", "QC_JUDGE_PROVIDER", "QC_JUDGE_MODEL", "QC_JUDGE_FALLBACK_PROVIDER", "QC_JUDGE_FALLBACK_MODEL",
+                         "QC_TEST_USERNAME", "QC_TEST_PASSWORD"})
 FILE_INPUTS = ("flow", "script")   # inputs.<khoá> là đường dẫn file trong repo SUT (cộng inputs.collect.golden)
 
 

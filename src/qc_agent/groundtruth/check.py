@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from qc_agent.groundtruth import auth as gt_auth
 from qc_agent.groundtruth import coverage as gt_coverage
 from qc_agent.groundtruth import render as gt_render
 from qc_agent.groundtruth import schema as gt_schema
@@ -157,6 +158,19 @@ def _xlsx_sync(sut_root: Path, data: dict, result: CheckResult) -> None:
         result.errors.append((gt_render.XLSX_PATH, _XLSX_ADVICE[state]))   # quyết định của QA nằm trong xlsx mà chưa vào YAML: gate không thấy chúng
 
 
+def _auth(sut_root: Path, result: CheckResult) -> None:
+    """auth.yaml (nếu có) phải đúng cấu trúc: sai thì runtime dừng với `error` ở mọi lượt gate, nên báo sớm ở đây."""
+    try:
+        profile = gt_auth.load(sut_root)
+    except ValueError as error:
+        result.errors.append((gt_auth.PROFILE_PATH, str(error).removeprefix(gt_auth.PROFILE_PATH + " ")))
+        return
+    extra = sorted(gt_auth.env_names(profile) - gt_auth.CI_ENV) if profile else []
+    if extra:
+        result.warnings.append((gt_auth.PROFILE_PATH, "workflow qc-gate chỉ truyền " + ", ".join(sorted(gt_auth.CI_ENV))
+                                + " vào container; biến sau sẽ thiếu trên CI: " + ", ".join(extra)))
+
+
 def check(sut_root: Path) -> CheckResult:
     """Chạy toàn bộ cổng HITL trên `<sut_root>/.qc-agent/ground-truth/`. Ném `GTCheckError` khi không phán được (exit 3)."""
     sut_root = Path(sut_root)
@@ -196,6 +210,7 @@ def check(sut_root: Path) -> CheckResult:
     if not any(tc["status"] == "approved" for tc in tcs):
         result.warnings.append((where, "chưa có test case approved nào: suite gt-functional sẽ fail (pytest.tests >= 1)"))
 
+    _auth(sut_root, result)
     _coverage(sut_root, data, result)
     _xlsx_sync(sut_root, data, result)
     _module_map(sut_root, result)

@@ -362,6 +362,8 @@ jobs:
           QC_JUDGE_MODEL: ${{ secrets.QC_JUDGE_MODEL }}
           QC_JUDGE_FALLBACK_PROVIDER: ${{ secrets.QC_JUDGE_FALLBACK_PROVIDER }}
           QC_JUDGE_FALLBACK_MODEL: ${{ secrets.QC_JUDGE_FALLBACK_MODEL }}
+          QC_TEST_USERNAME: ${{ secrets.QC_TEST_USERNAME }}   # tài khoản TEST cho gt-functional khi repo có .qc-agent/ground-truth/auth.yaml
+          QC_TEST_PASSWORD: ${{ secrets.QC_TEST_PASSWORD }}
         run: |
           set +e   # exit code của gate được ghi lại để bước báo cáo chạy xong rồi bước cuối mới quyết định xanh/đỏ
           mkdir -p runs
@@ -389,6 +391,7 @@ jobs:
             -e OPENAI_API_KEY -e GEMINI_API_KEY \
             -e MIDSCENE_MODEL_BASE_URL -e MIDSCENE_MODEL_API_KEY -e MIDSCENE_MODEL_NAME -e MIDSCENE_MODEL_FAMILY \
             -e QC_JUDGE_PROVIDER -e QC_JUDGE_MODEL -e QC_JUDGE_FALLBACK_PROVIDER -e QC_JUDGE_FALLBACK_MODEL \
+            -e QC_TEST_USERNAME -e QC_TEST_PASSWORD \
             "$IMAGE" "${args[@]}"
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 

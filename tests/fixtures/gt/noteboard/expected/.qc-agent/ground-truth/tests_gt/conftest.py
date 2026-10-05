@@ -8,6 +8,8 @@ mã 4 để gate tính là `error` (hạ tầng), không phải `fail`. Một TC
 Biến: bước có `capture` lưu giá trị theo tên; bước sau dùng dạng hai ngoặc nhọn quanh tên biến trong path_params, query và json. Chuỗi json chỉ gồm đúng một
 biến thì giữ nguyên kiểu của giá trị đã capture; còn lại nội suy thành chuỗi.
 Assertion: eq/ne so sánh kiểu JSON (true khác 1); ne, contains, len_* yêu cầu path tồn tại; exists đếm cả giá trị null; contains là chuỗi con hoặc phần tử scalar.
+Xác thực: có `../auth.yaml` thì runtime tự đăng nhập (khoá lấy từ biến môi trường QC_TEST_*) và gắn token vào mọi request, trừ chính endpoint đăng nhập. Header có giá trị
+rỗng nghĩa là KHÔNG gửi header đó (test thiếu token); header tường minh khác được giữ nguyên (test token sai). Sai cấu hình hoặc đăng nhập thất bại là `error`, không phải `fail`.
 """
 import json
 import os
@@ -21,6 +23,7 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 CATALOG = HERE.parent / "test-cases.yaml"
+AUTH_FILE = HERE.parent / "auth.yaml"
 TIMEOUT_S = 10.0
 EXIT_ERROR = 4
 SHOW = 80
@@ -29,6 +32,12 @@ _PLACEHOLDER = re.compile(r"\{([^{}/]+)\}")
 _TOKEN = re.compile(r"\.([A-Za-z_][A-Za-z0-9_-]*)|\[([0-9]+)\]")
 _MISSING = object()
 _cache = {}
+_AUTH_ENV = re.compile(r"QC_TEST_[A-Z0-9_]{1,40}")
+_AUTH_PATH = re.compile(r"/[A-Za-z0-9._~!$&'()*+,;=:@%/-]{0,198}")
+_AUTH_HEADER = re.compile(r"[A-Za-z][A-Za-z0-9-]{0,63}")
+_AUTH_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,31}")
+_AUTH_JSONPATH = re.compile(r"\$(?:\.[A-Za-z_][A-Za-z0-9_-]*|\[[0-9]+\]){1,8}")
+_AUTH_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}")
 _TYPES = {
     "string": lambda v: isinstance(v, str),
     "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
@@ -202,7 +211,109 @@ def _holds(op, found, value):
     return False
 
 
-def _run_step(client, base, tc_id, number, step, variables):
+def _auth_problem(data):
+    """Tên trường sai trong auth.yaml, rỗng nếu hợp lệ. Cùng luật với qc_agent/groundtruth/auth.py (test so hai bản)."""
+    if not isinstance(data, dict) or set(data) - {"version", "login", "header", "scope"} or data.get("version") != 1:
+        return "gốc"
+    login = data.get("login")
+    if not isinstance(login, dict) or set(login) - {"method", "path", "json", "token_path"} or login.get("method", "POST") != "POST":
+        return "login"
+    path = login.get("path")
+    if not (isinstance(path, str) and _AUTH_PATH.fullmatch(path) and ".." not in path and not path.startswith("//")):
+        return "login.path"
+    if not (isinstance(login.get("token_path"), str) and _AUTH_JSONPATH.fullmatch(login["token_path"])):
+        return "login.token_path"
+    body = login.get("json", {})
+    if not isinstance(body, dict):
+        return "login.json"
+    for key, value in body.items():
+        if not (isinstance(key, str) and _AUTH_KEY.fullmatch(key)):
+            return "login.json"
+        if isinstance(value, dict):
+            if set(value) != {"env"} or not (isinstance(value["env"], str) and _AUTH_ENV.fullmatch(value["env"])):
+                return "login.json"
+        elif not isinstance(value, (str, int, float, bool, type(None))):
+            return "login.json"
+    header = data.get("header", {})
+    if not isinstance(header, dict) or set(header) - {"name", "scheme"}:
+        return "header"
+    name, scheme = header.get("name", "Authorization"), header.get("scheme", "Bearer")
+    if not (isinstance(name, str) and _AUTH_HEADER.fullmatch(name)) or not (scheme == "" or (isinstance(scheme, str) and _AUTH_SCHEME.fullmatch(scheme))):
+        return "header"
+    if data.get("scope", "session") not in ("session", "case"):
+        return "scope"
+    return ""
+
+
+def _auth_profile():
+    if "auth" not in _cache:
+        profile = None
+        if AUTH_FILE.is_file():
+            try:
+                profile = yaml.safe_load(AUTH_FILE.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, yaml.YAMLError) as error:
+                _fatal(f"không đọc được {AUTH_FILE.name} ({type(error).__name__})")
+            problem = _auth_problem(profile)
+            if problem:
+                _fatal(f"{AUTH_FILE.name} sai ở {problem}")
+        _cache["auth"] = profile
+    return _cache["auth"]
+
+
+def _login(client, base, profile):
+    """Đăng nhập một lần, trả token. Mọi thông điệp lỗi chỉ nêu tên biến hoặc mã HTTP, không bao giờ nêu mật khẩu hay token."""
+    login, body = profile["login"], {}
+    for key, value in (login.get("json") or {}).items():
+        if isinstance(value, dict):
+            name = value["env"]
+            value = os.environ.get(name, "")
+            if not value:
+                _fatal(f"auth: thiếu biến môi trường {name}")
+        body[key] = value
+    try:
+        response = client.request("POST", base + login["path"], content=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                                  headers={"Content-Type": "application/json"})
+    except httpx.HTTPError as error:
+        _fatal(f"auth: không gọi được endpoint đăng nhập ({type(error).__name__})")
+    if not 200 <= response.status_code < 300:
+        _fatal(f"auth: đăng nhập thất bại (HTTP {response.status_code})")
+    try:
+        token = _lookup(response.json(), login["token_path"])
+    except ValueError:
+        token = _MISSING
+    if not isinstance(token, str) or not token or len(token) > 4096 or any(ord(char) < 32 or ord(char) == 127 for char in token):
+        _fatal("auth: response đăng nhập không có token hợp lệ tại token_path")
+    return token
+
+
+class _Auth:
+    """Gắn token theo auth.yaml (nếu có) vào request. Token chỉ nằm trong bộ nhớ của tiến trình test."""
+
+    def __init__(self, base):
+        self.base, self.profile, self.token = base, _auth_profile(), None
+
+    def headers(self, client, method, template, given):
+        send = {name: value for name, value in given.items() if value != ""}   # rỗng = không gửi
+        profile = self.profile
+        if profile is None:
+            return send
+        header = profile.get("header") or {}
+        name, scheme = header.get("name", "Authorization"), header.get("scheme", "Bearer")
+        if any(key.lower() == name.lower() for key in given) or (method == "POST" and template == profile["login"]["path"]):
+            return send   # TC tự nêu header đó (rỗng hoặc giá trị khác), hoặc đang gọi chính endpoint đăng nhập
+        if profile.get("scope", "session") == "session":
+            if "token" not in _cache:
+                _cache["token"] = _login(client, self.base, profile)
+            token = _cache["token"]
+        else:
+            if self.token is None:
+                self.token = _login(client, self.base, profile)
+            token = self.token
+        send[name] = f"{scheme} {token}" if scheme else token
+        return send
+
+
+def _run_step(client, base, tc_id, number, step, variables, auth):
     def fail(message):
         pytest.fail(f"{tc_id} bước {number}: {message}", pytrace=False)
 
@@ -216,7 +327,7 @@ def _run_step(client, base, tc_id, number, step, variables):
         return urllib.parse.quote(params[match.group(1)], safe="")
 
     query = {name: (_interpolate(value, variables, fail) if isinstance(value, str) else value) for name, value in (request.get("query") or {}).items()}
-    headers = dict(request.get("headers") or {})
+    headers = auth.headers(client, method, template, dict(request.get("headers") or {}))
     kwargs = {}
     if "json" in request:
         kwargs["content"] = json.dumps(_fill(request["json"], variables, fail), ensure_ascii=False).encode("utf-8")
@@ -252,11 +363,11 @@ def gt_run():
 
     def run(tc):
         tc_id = str(tc.get("tc_id"))
-        variables = {}
+        variables, auth = {}, _Auth(base)
         try:
             with httpx.Client(timeout=TIMEOUT_S, follow_redirects=False) as client:
                 for number, step in enumerate(tc["steps"], 1):
-                    _run_step(client, base, tc_id, number, step, variables)
+                    _run_step(client, base, tc_id, number, step, variables, auth)
         except (KeyError, TypeError, AttributeError, ValueError) as error:
             pytest.fail(f"{tc_id}: test case sai cấu trúc ({type(error).__name__}); chạy `qc-agent gt validate`", pytrace=False)
     return run

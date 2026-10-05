@@ -263,8 +263,8 @@ def _existing_block(existing: dict | None) -> str | None:
     return "<existing_cases>\nThese cases are already decided by QA. Do not submit duplicates of them.\n" + fence("\n".join(lines[:MAX_EXISTING_LINES]) + more) + "\n</existing_cases>"
 
 
-def build_first_user(prd: ParsedPRD, overview: str, existing: dict | None = None, repo_map_text: str = "") -> str:
-    parts = [gen.build_user(prd)]
+def build_first_user(prd: ParsedPRD, overview: str, existing: dict | None = None, repo_map_text: str = "", auth: str | None = None) -> str:
+    parts = [gen.build_user(prd, auth=auth)]
     if overview.strip():
         parts.append("<repo_overview>\n" + fence(overview) + "\n</repo_overview>")   # RepoSandbox.overview đã fence; fence lần hai vô hại và không phụ thuộc người gọi
     if repo_map_text.strip():
@@ -278,7 +278,8 @@ def build_first_user(prd: ParsedPRD, overview: str, existing: dict | None = None
 
 def generate_agent(prd: ParsedPRD, *, model: str, egress_dir: Path, source_root: Path, openapi_spec: dict | None = None, facts: dict | None = None,
                    existing: dict | None = None, transport: httpx.BaseTransport | None = None, policy: egress.EgressPolicy | None = None,
-                   source: str | None = None, budget: al.AgentBudget | None = None, repo_map: dict | None = None, use_repo_map: bool = True) -> AgentResult:
+                   source: str | None = None, budget: al.AgentBudget | None = None, repo_map: dict | None = None, use_repo_map: bool = True,
+                   auth: str | None = None) -> AgentResult:
     """Chạy agent -> catalog `draft` (cùng hình dạng và cùng ràng buộc với `generate.generate`). Lỗi luôn là `GTError`.
 
     `source_root`: thư mục mã nguồn được đọc (CI: bản `origin/<base>` mount `:ro`, không phải nhánh bot có thể đã cũ). `openapi_spec`: OpenAPI ĐẦY ĐỦ (cho tool
@@ -316,7 +317,7 @@ def generate_agent(prd: ParsedPRD, *, model: str, egress_dir: Path, source_root:
     run: al.AgentRun | None = None
     failure: llm.LLMError | None = None
     try:
-        run = al.run_agent(purpose=PURPOSE, model=model, system=system, first_user=build_first_user(prd, overview, existing, map_text), tools=_tools(state, sandbox, api),
+        run = al.run_agent(purpose=PURPOSE, model=model, system=system, first_user=build_first_user(prd, overview, existing, map_text, auth), tools=_tools(state, sandbox, api),
                            finish_tool=FINISH_TOOL, egress_dir=egress_dir, base_categories=categories, budget=budget, effort=cfg.gt_agent_effort,
                            timeout_s=cfg.gt_agent_timeout_s, fallbacks=cfg.gt_agent_fallbacks, policy=policy, transport=transport)
     except llm.LLMError as error:
