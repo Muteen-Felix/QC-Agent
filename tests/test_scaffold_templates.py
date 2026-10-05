@@ -238,8 +238,8 @@ def test_every_template_is_used_by_a_builder_and_every_builder_fills_all_placeho
         t.gt_functional_suite(); t.gt_conftest(); t.gt_story_test("US-1"); t.groundtruth_workflow(project="a"); t.codeowners_block("@o/qa")
         t.ui_dockerfile(node_major=22, lockfile="package-lock.json", output_dir="dist")
         for lane in (suites_security, suites_integration):     # mẫu của từng làn (Phase 1) nằm trong module suites_<làn>: thêm mẫu mới không phải sửa test này
-            root = tmp_path / "vahan"
-            (root / "vahan-chrome-extension").mkdir(parents=True, exist_ok=True)
+            root = tmp_path / "sut"
+            root.mkdir(exist_ok=True)
             lane.add_suites(lambda rel, content: None, init_mod.Options(sut_root=root))
     finally:
         t.render = original

@@ -1,15 +1,19 @@
+# Khung suite integration-live (đuôi .example = chưa hoạt động: qc-agent bỏ qua file này). Dùng khung: bỏ đuôi .example ở cả 5 file integration,
+# điền nội dung thật. Suite này chỉ chạy manual (discovery, không chặn merge): KHÔNG thêm vào advisory_suites của mode pr.
+# Xoá các dòng chú thích này sau khi kích hoạt.
+{{todo_line}}
 suite: integration-live
-description: Tích hợp với trang B thật — chỉ chạy manual, không chặn merge
+description: Tích hợp với hệ thống ngoài thật — chỉ chạy manual, không chặn merge
 tasks:
 - task_id: t-022
   capability: flow.integration
   lane: discovery
-  intent: 'Tầng 3: chạy luồng với trang B thật để phát hiện bản ghi lạc hậu'
+  intent: 'Tầng 3: chạy luồng với hệ thống ngoài thật để phát hiện bản ghi lạc hậu'
   target: {kind: web_app, base_url: "${env.APP_UI_URL}"}
   inputs:
     spec_file: ".qc-agent/integration/tier2.spec.mjs"
     b_host: {{b_host}}
-  oracle: {kind: checks, required: [filter_applied, report_downloaded, no_external_requests]}
+  oracle: {kind: checks, required: [todo_replace_me, no_external_requests]}
   expected_result_kind: candidate_finding
   budget: {wallclock_s: 600, tokens: 0, usd: 0}
   determinism: {seed: null, replayable: false}

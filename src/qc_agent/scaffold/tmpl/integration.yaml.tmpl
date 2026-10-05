@@ -1,13 +1,17 @@
+# Khung suite integration (đuôi .example = chưa hoạt động: qc-agent bỏ qua file này). Dùng khung: bỏ đuôi .example ở cả 5 file integration,
+# điền nội dung thật, rồi đăng ký suite `integration` trong policy project (PR vào qc-agent), nếu không thì mode pr không chạy nó.
+# Xoá các dòng chú thích này sau khi kích hoạt.
+{{todo_line}}
 suite: integration
-description: Tích hợp tất định — runner giả và trang B phát lại từ HAR (chặn merge)
+description: Tích hợp tất định — thành phần nội bộ giả lập và hệ thống ngoài phát lại từ HAR (chặn merge)
 tasks:
 - task_id: t-020
   capability: flow.integration
   lane: gate
-  intent: 'Tầng 1: hợp đồng runner/job với runner giả'
+  intent: 'Tầng 1: hợp đồng giữa SUT và thành phần nội bộ giả lập'
   target: {kind: http_service, base_url: "${env.APP_BASE_URL}"}
   inputs: {spec_file: ".qc-agent/integration/tier1.spec.mjs"}
-  oracle: {kind: checks, required: [runner_registered, job_assigned, status_transitions, invalid_transition_rejected]}
+  oracle: {kind: checks, required: [todo_replace_me]}
   expected_result_kind: verdict
   budget: {wallclock_s: 300, tokens: 0, usd: 0}
   determinism: {seed: 0, replayable: true}
@@ -17,13 +21,13 @@ tasks:
 - task_id: t-021
   capability: flow.integration
   lane: gate
-  intent: 'Tầng 2: chuỗi đầy đủ, trang B phát lại từ bản ghi'
+  intent: 'Tầng 2: chuỗi đầy đủ qua UI, hệ thống ngoài phát lại từ bản ghi'
   target: {kind: web_app, base_url: "${env.APP_UI_URL}"}
   inputs:
     spec_file: ".qc-agent/integration/tier2.spec.mjs"
-    har: ".qc-agent/har/vahan-b.har"
+    har: ".qc-agent/har/external.har"
     b_host: {{b_host}}
-  oracle: {kind: checks, required: [filter_applied, report_downloaded, no_external_requests, har_covers_all_requests]}
+  oracle: {kind: checks, required: [todo_replace_me, no_external_requests, har_covers_all_requests]}
   expected_result_kind: verdict
   budget: {wallclock_s: 600, tokens: 0, usd: 0}
   determinism: {seed: 0, replayable: true}

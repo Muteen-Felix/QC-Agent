@@ -1,73 +1,15 @@
 // {{todo}}
+// Khung Tầng 1 (đuôi .example = chưa hoạt động): kiểm hợp đồng giữa SUT và một thành phần nội bộ được giả lập trong test.
+// Dùng khung: bỏ đuôi .example ở cả 5 file integration, viết kiểm tra thật, đổi tên test (tên test = tên check trong oracle.required).
 import { test, expect } from './support.mjs';
-import { io } from 'socket.io-client';
 
-const API = process.env.APP_BASE_URL;
-const TOKEN = process.env.VAHAN_API_RUNNER_TOKEN || 'change-me';
-const filters = { states: ['Delhi'], categoryGroups: ['Two Wheeler'], fuels: ['ELECTRIC(BOV)'],
-  yAxis: 'Vehicle Class', xAxis: 'Month Wise', autoApply: true, autoExport: true };
-
-function once(socket, event, timeout = 5000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`timeout: ${event}`)), timeout);
-    socket.once(event, value => { clearTimeout(timer); resolve(value); });
-  });
+function requiredEnv(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`thiếu biến môi trường ${name}`);
+  return value;
 }
 
-async function runner(name) {
-  const runnerId = `qc-${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const socket = io(`${API}/runner`, { transports: ['websocket'], reconnection: false,
-    auth: { runnerId, runnerName: 'QC fake runner', token: TOKEN, version: 'qc-tier1' } });
-  await once(socket, 'connect');
-  return { socket, runnerId };
-}
-
-async function createJob(request, runnerId) {
-  const response = await request.post(`${API}/api/jobs`, { data: { runnerId, filters } });
-  expect(response.status()).toBe(201);
-  return response.json();
-}
-
-test('runner_registered', async ({ request }) => {
-  const fake = await runner('registered');
-  try {
-    const response = await request.get(`${API}/api/runners`);
-    expect(response.ok()).toBeTruthy();
-    expect((await response.json()).some(item => item.id === fake.runnerId && item.status === 'ONLINE')).toBeTruthy();
-  } finally { fake.socket.disconnect(); }
-});
-
-test('job_assigned', async ({ request }) => {
-  const fake = await runner('assigned');
-  try {
-    const assigned = once(fake.socket, 'job:assigned');
-    const job = await createJob(request, fake.runnerId);
-    expect((await assigned).jobId).toBe(job.id);
-    await request.post(`${API}/api/jobs/${job.id}/cancel`);
-  } finally { fake.socket.disconnect(); }
-});
-
-test('status_transitions', async ({ request }) => {
-  const fake = await runner('status');
-  try {
-    const job = await createJob(request, fake.runnerId);
-    for (const status of ['OPENING_VAHAN', 'CAPTURING_CAPTCHA']) {
-      const ack = await fake.socket.timeout(3000).emitWithAck('job:status', { jobId: job.id, status });
-      expect(ack.ok).toBeTruthy();
-      const current = await (await request.get(`${API}/api/jobs/${job.id}`)).json();
-      expect(current.status).toBe(status);
-    }
-    await request.post(`${API}/api/jobs/${job.id}/cancel`);
-  } finally { fake.socket.disconnect(); }
-});
-
-test('invalid_transition_rejected', async ({ request }) => {
-  const fake = await runner('invalid');
-  try {
-    const job = await createJob(request, fake.runnerId);
-    const ack = await fake.socket.timeout(3000).emitWithAck('job:status', { jobId: job.id, status: 'COMPLETED' });
-    expect(ack.ok).toBeFalsy();
-    expect(String(ack.error)).toContain('Invalid job transition');
-    await request.post(`${API}/api/jobs/${job.id}/cancel`);
-  } finally { fake.socket.disconnect(); }
+test('todo_replace_me', async ({ request }) => {
+  const api = requiredEnv('APP_BASE_URL');
+  throw new Error('Khung chưa viết: thay bằng kiểm tra tích hợp thật (và đổi tên test này)');
 });

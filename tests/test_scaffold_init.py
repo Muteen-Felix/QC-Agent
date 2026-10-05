@@ -299,16 +299,14 @@ def test_todos_are_reported_with_their_location(tmp_path):
     _, outcomes = run_init(tmp_path)
     todos = {o.label: o.todos for o in outcomes if o.todos}
     assert set(todos) == {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/midscene/explore.yaml",
-                          ".qc-agent/integration/tier1.spec.mjs", ".qc-agent/integration/tier2.spec.mjs", ".github/workflows/qc.yml",
-                          ".github/workflows/qc-groundtruth.yml", ".github/CODEOWNERS"}   # ghim SHA/digest và team QA đều chưa có
+                          ".github/workflows/qc.yml", ".github/workflows/qc-groundtruth.yml", ".github/CODEOWNERS"}   # ghim SHA/digest và team QA đều chưa có; khung .example không tính
     assert all(entry.startswith("dòng ") for entries in todos.values() for entry in entries)
 
 
 def test_pins_given_leave_only_the_scanner_and_refine_todos(tmp_path):
     _, outcomes = run_init(tmp_path, qc_ref="a" * 40, image="ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, openapi_source=str(VAHAN),
                            sut_env=["X=y"], qa_team="@muteen/qa")
-    assert {o.label for o in outcomes if o.todos} == {".qc-agent/midscene/explore.yaml", ".qc-agent/integration/tier1.spec.mjs",
-                                                       ".qc-agent/integration/tier2.spec.mjs"}
+    assert {o.label for o in outcomes if o.todos} == {".qc-agent/midscene/explore.yaml"}
 
 
 def test_existing_files_are_never_overwritten_without_force(tmp_path):
