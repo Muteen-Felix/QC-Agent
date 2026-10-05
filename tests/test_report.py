@@ -134,3 +134,10 @@ def test_report_json_carries_real_lane_and_finding_ids_per_task_for_ingest():
     assert {tid: r["lane"] for tid, r in results.items()} == {"t-gate": "gate", "t-ai": "gate", "t-ui": "discovery"}
     assert results["t-ai"]["findings"] == [{"finding_id": "f-ai", "title": "Giữ ý chính"}]
     assert results["t-gate"]["findings"] == [] and set(results["t-ai"]) == {"status", "lane", "cost", "metrics", "findings"}
+
+
+def test_severity_sections_are_critical_medium_low_in_order():
+    md, _ = render(context())
+    positions = [md.index(f"## {name} (") for name in ("Critical", "Medium", "Low")]
+    assert positions == sorted(positions)
+    assert md.index("## Low (") < md.index("## 1. DETERMINISTIC ASSERT")   # mục severity đứng trước các mục chi tiết
