@@ -264,6 +264,35 @@ qc-agent gt validate --sut-root .                  # xlsx và YAML phải khớp
 
 `gt export-xlsx` từ chối ghi đè khi xlsx đang có sửa chưa import (thêm `--force` để bỏ các sửa đó). So sánh theo **ngữ nghĩa**, không theo byte (zip có dấu thời gian), và `generate|regen|export` không ghi lại file khi nội dung đã tương đương nên commit của bot không đổi vô cớ. File xlsx vào bị giới hạn 5 MB, tỉ lệ nén, 5000 dòng/sheet; thông điệp lỗi chỉ nêu địa chỉ ô, không trích nội dung.
 
+## 5e. Xác thực cho test (`auth.yaml`)
+
+API đòi đăng nhập thì QA (hoặc dev) thêm `.qc-agent/ground-truth/auth.yaml` **trước khi sinh**. File được CODEOWNERS khoá như phần còn lại của `.qc-agent/` và **không chứa bí mật**:
+
+```yaml
+version: 1
+login:
+  path: /api/auth/login
+  json:
+    username: {env: QC_TEST_USERNAME}     # giá trị lấy từ biến môi trường lúc chạy, KHÔNG viết thẳng vào file
+    password: {env: QC_TEST_PASSWORD}
+  token_path: $.access_token              # chỗ lấy token trong response (tập con JSONPath)
+header: {name: Authorization, scheme: Bearer}
+scope: session                            # session: đăng nhập một lần cho cả lượt chạy; case: mỗi test case một phiên
+```
+
+| Thành phần | Hành vi |
+|---|---|
+| Runtime (`tests_gt/conftest.py`) | đăng nhập lười ở request đầu tiên, gắn `header` vào mọi request **trừ** chính `POST login.path`; token chỉ ở bộ nhớ |
+| Header rỗng (`Authorization: ""`) | **không gửi** header đó: cách duy nhất để một test case kiểm "thiếu token" |
+| Header tường minh khác (`Bearer invalid`) | giữ nguyên, không bị ghi đè |
+| `scope: session` (mặc định) / `case` | một phiên cho cả lượt chạy / một phiên cho mỗi test case (dùng khi có test đăng xuất hay thu hồi phiên) |
+| Khoá | chỉ `{env: QC_TEST_*}`; tên biến khác bị từ chối để file commit được không thể đưa biến môi trường khác (vd khoá LLM) vào request tới SUT |
+| Lỗi | thiếu biến, sai cấu hình, đăng nhập bị từ chối, response không có token ⇒ `pytest.exit(4)` ⇒ gate tính **`error`** (hạ tầng), không phải `fail`. Thông báo chỉ nêu tên biến hoặc mã HTTP |
+| LLM | thấy khối `<auth>` trong prompt (chỉ khi repo có file): không được waive vì "cần token", không được tự viết token; không bao giờ thấy khoá hay token |
+| `gt validate` | kiểm cấu trúc file (lỗi ⇒ exit 1) và cảnh báo nếu dùng biến mà workflow `qc-gate` không truyền (hiện chỉ `QC_TEST_USERNAME`, `QC_TEST_PASSWORD`) |
+
+Đổi `conftest.py` làm `gt validate` báo *drift* ở repo đã có Ground-Truth: chạy `gt regen` rồi commit. Chưa hỗ trợ: token cố định riêng của endpoint nội bộ, OAuth/cookie phiên, nhiều vai trò. Muốn kiểm AC về đăng nhập (sai mật khẩu, khoá tài khoản...), viết test case cho `POST login.path` với body riêng; endpoint đăng nhập không nhận header tự động.
+
 ## 6. Cài đặt cho một repo SUT
 
 ```bash

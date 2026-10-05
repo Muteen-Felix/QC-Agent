@@ -108,6 +108,28 @@ git add openapi.json && git commit -m "docs: thêm openapi.json cho qc-agent"
 
 > **GitHub Free + repo private:** không có branch protection (cần Pro/Team/Enterprise, hoặc để repo public). Khi đó khoá QA chỉ còn là quy ước.
 
+### 2.4. API có đăng nhập (tuỳ chọn)
+
+Nếu API đòi token, thêm `.qc-agent/ground-truth/auth.yaml` **trước khi chạy `gt generate`**. Có file này thì LLM biết xác thực đã được xử lý tự động; không có thì test case cho endpoint bảo vệ sẽ đỏ vì thiếu token.
+
+```yaml
+version: 1
+login:
+  path: /api/auth/login
+  json:
+    username: {env: QC_TEST_USERNAME}     # giá trị lấy từ biến môi trường lúc chạy, KHÔNG viết thẳng vào file
+    password: {env: QC_TEST_PASSWORD}
+  token_path: $.access_token              # chỗ lấy token trong response (tập con JSONPath)
+header: {name: Authorization, scheme: Bearer}
+scope: session                            # session: đăng nhập một lần cho cả lượt chạy; case: mỗi test case một phiên
+```
+
+- Runtime tự đăng nhập và gắn header vào **mọi request**, trừ chính endpoint đăng nhập. Test "thiếu token": đặt header `Authorization` là chuỗi rỗng `""` (runtime không gửi header đó). Test "token sai": `Bearer invalid`.
+- Dùng một **tài khoản TEST riêng, quyền thấp**. Tên đăng nhập và mật khẩu đặt ở secret `QC_TEST_USERNAME`, `QC_TEST_PASSWORD` của repo (mục 4.1), không bao giờ vào file. Chạy cục bộ thì đặt hai biến môi trường đó.
+- Chỉ nhận biến `QC_TEST_*`, và CI hiện chỉ truyền hai biến trên (`gt validate` cảnh báo nếu file dùng biến khác). Sai cấu hình hoặc đăng nhập thất bại là **`error`** (hạ tầng), không phải `fail`; thông báo chỉ nêu tên biến hoặc mã HTTP, không lộ mật khẩu hay token.
+- Phiên đăng nhập có thể bị thu hồi. Nếu có test case gọi đăng xuất, đặt `scope: case` để mỗi test case có phiên riêng; nếu không, test case đăng xuất sẽ làm các test sau đỏ.
+- **Chưa hỗ trợ:** token cố định riêng của endpoint nội bộ (QA thêm header tĩnh, đừng để khoá thật), OAuth và cookie phiên, nhiều vai trò (admin/user).
+
 ---
 
 ## 3. Tích hợp vào repo SUT: một lệnh Docker
@@ -146,7 +168,7 @@ Sau `init`:
 
 ### 4.1. Secret
 
-**Settings → Secrets and variables → Actions → New repository secret**: `ANTHROPIC_API_KEY` (bắt buộc), `qc_bot_token` (nên có). Hoặc `gh secret set ANTHROPIC_API_KEY --repo my-org/my-sut`.
+**Settings → Secrets and variables → Actions → New repository secret**: `ANTHROPIC_API_KEY` (bắt buộc), `qc_bot_token` (nên có), và `QC_TEST_USERNAME`, `QC_TEST_PASSWORD` (chỉ khi API có đăng nhập, mục 2.4). Hoặc `gh secret set ANTHROPIC_API_KEY --repo my-org/my-sut`.
 
 - Dùng khoá **riêng** và đặt **spend limit** trong Anthropic Console: đó là lớp bảo vệ cuối cùng.
 - Đặt secret **sau cùng**, ngay trước lần chạy đầu (5.1). Thiếu secret thì job `generate` dừng với thông báo rõ, **trước khi gửi gì ra ngoài**.
@@ -323,7 +345,7 @@ Suite `gt-functional` nằm trong `.qc-agent/suites/`; mọi PR của dev chạy
 | Giới hạn | Ghi chú |
 |---|---|
 | Chỉ kiểm thử **HTTP/JSON API** | không UI, hiệu năng, bảo mật trong luồng Ground-Truth |
-| **Chưa hỗ trợ auth động** | header trong test case là chuỗi tĩnh (không đọc token từ env, không tự đăng nhập). Endpoint đòi đăng nhập thì cần môi trường test tắt auth, hoặc QA thêm header tĩnh của tài khoản test (file được commit: **đừng để khoá thật**). AC về xác thực sẽ không kiểm được |
+| Auth chỉ hỗ trợ **đăng nhập một endpoint lấy Bearer token** | xem mục 2.4. Token cố định riêng, OAuth, cookie phiên, nhiều vai trò chưa hỗ trợ: AC liên quan sẽ không kiểm được hoặc QA thêm header tĩnh (file được commit: **đừng để khoá thật**) |
 | Chất lượng test phụ thuộc chất lượng PRD | AC mơ hồ thì LLM đoán, QA phải loại; LLM chỉ **đề xuất**, **đừng duyệt TC bạn không hiểu vì sao đúng** |
 | PRD lớn | lần thử một lời gọi với PRD 98 AC bị lỗi (nghi do vượt 16.000 token đầu ra, **chưa xác minh**): nên chia PRD nhỏ theo story |
 | Tối đa 5 PRD/lần push, mỗi PRD ≤ 256 KB | chia nhỏ hoặc dùng *Run workflow* |
@@ -336,6 +358,7 @@ Suite `gt-functional` nằm trong `.qc-agent/suites/`; mọi PR của dev chạy
 ## Phụ lục: Checklist onboarding
 
 - [ ] PRD đúng quy chuẩn, `gt info` ra đúng số AC; `openapi.json` đã commit
+- [ ] API có đăng nhập: `auth.yaml` đã commit (2.4) và hai secret `QC_TEST_USERNAME`, `QC_TEST_PASSWORD` đã đặt
 - [ ] Có digest image, team QA (quyền Write), API key LLM
 - [ ] `init` (đã thử `--dry-run`) → PR onboarding → merge vào `main`
 - [ ] Secret `ANTHROPIC_API_KEY` (đặt sau cùng, đã có spend limit); bật *Allow GitHub Actions to create and approve pull requests*

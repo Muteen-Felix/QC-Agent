@@ -231,6 +231,8 @@ jira:
 ```
 
 Đặt `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` trong secret của workflow gọi lại.
+
+**Xác thực cho test Ground-Truth (tuỳ chọn).** Repo có `.qc-agent/ground-truth/auth.yaml` (xem `docs/groundtruth.md` §5e) thì đặt secret `QC_TEST_USERNAME`, `QC_TEST_PASSWORD` (tài khoản TEST riêng, quyền thấp). Workflow `qc-gate` truyền hai biến này vào container của gate; thiếu thì suite `gt-functional` báo `error`, không phải `fail`. Hai biến nằm trong môi trường của mọi worker trong lượt gate đó (chỉ `pytest` dùng), nên đừng đặt tài khoản có quyền rộng.
 `user_map` ánh xạ tác giả PR sang Jira account ID; nếu không có ánh xạ, ticket vẫn được
 tạo nhưng không gán người. Worker tìm ticket theo fingerprint trước khi tạo nên chạy lại
 không tạo ticket trùng. Lỗi Jira được ghi trong `jira-status.json` và không đổi verdict.
