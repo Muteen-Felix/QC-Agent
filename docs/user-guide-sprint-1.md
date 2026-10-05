@@ -1,575 +1,280 @@
-# qc-agent Sprint 1: Hướng dẫn sử dụng & Onboarding (Ground-Truth)
+# qc-agent Sprint 1: Hướng dẫn nhanh (Ground-Truth)
 
-Dành cho **team dự án bất kỳ** trong công ty. Đọc và làm theo từng bước là tích hợp được qc-agent vào dịch vụ của bạn, **không cần biết code nội bộ của qc-agent**.
-Phạm vi: Sprint 1, tức **kiểm thử chức năng API dựa trên PRD** (xem mục 6).
+Dành cho team dự án bất kỳ: làm theo từng bước là tích hợp được, không cần biết code nội bộ của qc-agent.
+Phạm vi: **kiểm thử chức năng API dựa trên PRD** (mục 6).
 
 | Bạn là | Đọc mục |
 |---|---|
-| Tech lead / DevOps (người cài đặt, làm một lần) | 2, 3, 4 |
-| BA / PO (người viết PRD) | 2.1, 5.1 |
-| QA (người duyệt test case) | 5.2, 5.3, 5.4 |
-| Dev | 5.1, 5.5 |
+| Tech lead / DevOps (cài một lần) | 2, 3, 4 |
+| BA / PO (viết PRD) | 2.1, 5.1 |
+| QA (duyệt test case) | 5.2 đến 5.4 |
 
 ---
 
-## 1. Tổng quan & Lợi ích
+## 1. Tổng quan
 
-### Bài toán thực tế
+BA viết PRD, QA chuyển từng tiêu chí chấp nhận (AC) thành test case API, và không có gì chặn một PR làm hỏng hành vi PRD đã chốt. qc-agent làm ba việc:
 
-BA viết PRD, QA ngồi chuyển từng tiêu chí chấp nhận (AC) thành test case API, dev merge code xong mới phát hiện API trả sai mã lỗi. Viết test thủ công chậm, hay sót biên (200/201 ký tự, thiếu field bắt buộc…), và không có gì **chặn** một PR làm hỏng hành vi mà PRD đã chốt.
-
-### qc-agent giải quyết thế nào
-
-- **Từ PRD ra test case tự động.** Bạn push PRD lên `main`, một workflow GitHub Actions gọi LLM (Claude của Anthropic) đề xuất test case API. LLM chỉ sinh **dữ liệu** (request + kỳ vọng), không bao giờ sinh code; phần render ra file test do chương trình tất định làm.
-- **QA là người quyết định.** Test case ra dưới dạng **PR** với trạng thái `draft`. QA duyệt trong `test-cases.yaml` hoặc file **Excel** `test-cases.xlsx`, đổi sang `approved` (hoặc `rejected` kèm lý do), và thêm edge case của riêng mình.
-- **Quality Gate chặn merge.** Sau khi QA duyệt, gate trên mọi PR của dev chỉ chạy các test case `approved`. Fail thì không merge được. LLM **không bao giờ** là người phán xanh/đỏ.
+1. **PRD → test case.** Push PRD lên `main`, một workflow gọi LLM (Claude) đề xuất test case. LLM chỉ sinh **dữ liệu** (request + kỳ vọng), không sinh code; file test do chương trình tất định render.
+2. **QA quyết định.** Test case ra dưới dạng **PR** với trạng thái `draft`. QA đổi sang `approved` hoặc `rejected`, và thêm edge case.
+3. **Gate chặn merge.** Sau khi QA duyệt, mọi PR của dev chỉ chạy các test case `approved`. Đỏ thì không merge được. LLM **không bao giờ** phán xanh/đỏ.
 
 ```
-BA/Dev sửa PRD ──push main──► Bot (LLM) ──► PR "Ground-Truth: <prd-id>"  (mọi TC = draft)
-                                                   │
-                         QA: draft → approved / rejected, thêm edge case (YAML hoặc Excel)
-                                                   │ push lên PR
-                                                   ▼
+Sửa PRD ──push main──► Bot (LLM) ──► PR "Ground-Truth: <prd-id>" (mọi TC = draft)
+                                          │  QA: draft → approved / rejected, thêm edge case
+                                          ▼
                           check `gt validate` XANH ──► QA (code owner) approve ──► merge
                                                                                      │
-                                         từ đây mọi PR của dev: gate chạy TC approved ◄┘ (đỏ thì chặn merge)
+                                  từ đây mọi PR của dev: gate chạy TC approved ◄─────┘
 ```
-
-### Điều bạn nhận được
-
-| Bạn có | Ở đâu |
-|---|---|
-| Test case API bám sát PRD, truy vết được về từng AC | `.qc-agent/ground-truth/test-cases.yaml` |
-| Bản Excel cho QA không thích sửa YAML | `.qc-agent/ground-truth/test-cases.xlsx` |
-| Bộ chấm coverage tất định (AC, kỹ thuật biên/validation, mã trạng thái OpenAPI) | chạy trong `gt validate` |
-| Khoá quyền: chỉ QA duyệt được thay đổi `.qc-agent/**` | CODEOWNERS + branch protection |
-| Cổng chặn merge của dev dựa trên test case đã duyệt | suite `gt-functional` |
 
 ---
 
-## 2. Điều kiện chuẩn bị (Prerequisites)
+## 2. Chuẩn bị
 
-### 2.0. Checklist nhanh
+### 2.0. Checklist
 
-- [ ] Repo SUT trên GitHub, có **Dockerfile của API** (build và chạy được bằng `docker build` + `docker run`).
-- [ ] Docker trên máy người cài đặt (không cần Python, không cần SUT đang chạy).
-- [ ] Một PRD đúng quy chuẩn (2.1) nằm dưới `docs/prd/`.
-- [ ] File `openapi.json` đã commit trong repo (2.2).
-- [ ] Quyền **Admin** trên repo SUT (đặt secret, bật quyền workflow, branch protection).
-- [ ] Một **team QA** (hoặc username) có quyền **Write** trên repo, dùng làm code owner.
-- [ ] Một API key của Anthropic (`ANTHROPIC_API_KEY`, 2.3), nên kèm spend limit trong Console.
-- [ ] Từ team qc-agent: **image digest** `ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12` (xem Job Summary của workflow `image` bên repo qc-agent, hoặc xin team qc-agent).
+- [ ] Repo SUT trên GitHub, có **Dockerfile của API**; máy cài đặt có Docker.
+- [ ] PRD đúng quy chuẩn (2.1) dưới `docs/prd/`, và `openapi.json` đã commit (2.2).
+- [ ] Quyền **Admin** repo; một **team QA** (hoặc username) có quyền **Write**.
+- [ ] `ANTHROPIC_API_KEY` (nên có spend limit trong Console).
+- [ ] Từ team qc-agent: **image digest** `ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>` (Job Summary của workflow `image` bên repo qc-agent). Dưới đây gọi là `<IMAGE>`.
 
-### 2.1. Quy chuẩn viết PRD để máy đọc được
+### 2.1. Quy chuẩn viết PRD
 
-Parser PRD là code tất định (không LLM), nên **định dạng quyết định chất lượng đầu ra**. Mẫu chuẩn:
+Parser PRD là code tất định, nên **định dạng quyết định chất lượng đầu ra**:
 
 ```markdown
 ---
-id: orders                    # (1) tên nhánh/PR của bot; chỉ [a-z0-9-], ví dụ orders, my-sut-orders
+id: orders                    # tên nhánh/PR của bot; chỉ [a-z0-9-]
 title: Đơn hàng
 ---
 
-# PRD: Đơn hàng
-
 ## Phạm vi
-- Dịch vụ HTTP/JSON. Lỗi luôn trả JSON có trường `detail`.   # (2) bối cảnh chung, LLM đọc cả phần này
+- Dịch vụ HTTP/JSON. Lỗi luôn trả JSON có trường `detail`.
 
-## US-1: Tạo đơn hàng                                          # (3) mỗi user story một heading `US-<n>`
+## US-1: Tạo đơn hàng
 
-Là khách hàng, tôi muốn tạo đơn để mua hàng.
+### Tiêu chí chấp nhận
 
-### Tiêu chí chấp nhận                                         # (4) heading này báo "bên dưới là các AC"
-
-- AC-1.1: `POST /orders` với JSON `{"sku": "A1", "quantity": 2}` hợp lệ trả 201. Response có `id` (số nguyên) và `status` bằng `"new"`.
-- AC-1.2: `quantity` ≤ 0 thì trả 422.                          # (5) mỗi AC một dòng `- AC-<n>.<m>:`
-- AC-1.3: `sku` dài hơn 50 ký tự thì trả 422; đúng 50 ký tự vẫn hợp lệ (201).
-- AC-1.4: Nút "Đặt hàng" hiển thị tổng tiền.                   # (6) AC giao diện: không kiểm được bằng HTTP, sẽ vào `uncovered_acs`
-
-## US-2: Xem đơn hàng
-...
+- AC-1.1: `POST /orders` với `{"sku": "A1", "quantity": 2}` trả 201. Response có `id` (số nguyên) và `status` là `"new"`.
+- AC-1.2: `quantity` ≤ 0 thì trả 422.
+- AC-1.3: `sku` dài hơn 50 ký tự trả 422; đúng 50 ký tự vẫn trả 201.
+- AC-1.4: Nút "Đặt hàng" hiển thị tổng tiền.     # giao diện: không kiểm được bằng HTTP
 ```
 
-| # | Quy tắc | Vì sao |
-|---|---|---|
-| 1 | Front-matter có `id:` (chỉ `a-z`, `0-9`, `-`; chữ Việt có dấu bị bỏ dấu) | `id` đặt tên nhánh `qc-agent/gt/<id>`. Thiếu thì lấy tên file |
-| 2 | Heading story dạng `## US-<n>: <tên>` | parser nhận story theo `US-<n>` ở **đầu** heading |
-| 3 | Mỗi AC có **ID tường minh** `AC-<n>.<m>:` | thiếu ID thì code băm nội dung ra ID, **sửa chữ là ID đổi** và làm lệch `regen` |
-| 4 | **Không trùng ID** (cả `US-` lẫn `AC-`) | trùng ID là lỗi, lệnh dừng (exit 3) |
-| 5 | AC phải **kiểm được bằng HTTP**: nêu **method + path + mã trạng thái**, trường trong response, giá trị biên | thiếu thì LLM phải đoán, và QA sẽ phải loại |
-| 6 | Tối đa 256 KB/PRD, UTF-8; đuôi `.md` `.markdown` `.txt` `.json` `.yaml`; tối đa **5 PRD** đổi trong một lần push | giới hạn của workflow |
-
-AC tốt và xấu:
-
-| ❌ Mơ hồ (LLM sẽ đoán) | ✅ Máy kiểm được |
+| Quy tắc | Vì sao |
 |---|---|
-| Hệ thống phải phản hồi nhanh | `GET /orders` luôn trả 200 và một mảng JSON |
-| Báo lỗi khi dữ liệu sai | `quantity` ≤ 0 thì trả 422, response có trường `detail` |
-| Tên không được quá dài | `name` dài hơn 200 ký tự trả 422; đúng 200 ký tự vẫn trả 201 |
+| Story là `## US-<n>: <tên>`; mỗi AC một dòng `- AC-<n>.<m>:` với **ID tường minh** | Thiếu ID thì code băm nội dung ra ID, sửa chữ là ID đổi và `regen` lệch |
+| **Không trùng ID** (`US-` lẫn `AC-`) | Trùng là lỗi, lệnh dừng (exit 3) |
+| AC phải kiểm được bằng HTTP: nêu **method + path + mã trạng thái**, trường response, giá trị biên | Thiếu thì LLM phải đoán và QA phải loại |
+| Tối đa 256 KB/PRD, UTF-8; tối đa 5 PRD đổi trong một lần push | Giới hạn của workflow |
 
-Mẹo: nêu rõ **mã lỗi cho từng trường hợp sai** và **giá trị biên** (độ dài, min/max). Bộ chấm coverage sẽ đòi các biên này nếu OpenAPI khai ràng buộc (mục 5.3).
+Ví dụ: ❌ "Hệ thống phản hồi nhanh" → ✅ "`GET /orders` luôn trả 200 và một mảng JSON". Nêu rõ **mã lỗi cho từng trường hợp sai** và **giá trị biên**; bộ chấm coverage sẽ đòi các biên này nếu OpenAPI có ràng buộc.
 
-> Đừng đưa khoá, mật khẩu, dữ liệu khách hàng thật vào PRD: **toàn bộ PRD được gửi tới nhà cung cấp LLM** (mục 6).
+> **Đừng đưa khoá, mật khẩu, dữ liệu khách hàng thật vào PRD:** toàn bộ PRD được gửi tới nhà cung cấp LLM (mục 6).
 
 Kiểm tra parse **offline**, không tốn tiền, trước khi push:
 
 ```bash
-# Linux / macOS / Git Bash
-docker run --rm -v "$PWD:/work:ro" -w /work ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 \
-  gt info --prd docs/prd/orders.md
+docker run --rm -v "$PWD:/work:ro" -w /work <IMAGE> gt info --prd docs/prd/orders.md
 ```
 
-```powershell
-# PowerShell (Windows): dùng ${PWD}, KHÔNG dùng "$PWD:..." và không dùng "\" cuối dòng
-docker run --rm -v "${PWD}:/work:ro" -w /work ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 gt info --prd docs/prd/orders.md
-```
+> **PowerShell:** viết `"${PWD}:/work:ro"` thay vì `"$PWD:/work:ro"`, và đặt biến bằng `$env:TEN = "giá trị"`. Hoặc chạy các khối bash trong Git Bash.
 
-Kết quả là JSON: `prd_id`, `sha256`, số story, số AC. Số AC lệch với PRD thì sửa định dạng trước khi push.
+Kết quả là JSON có `prd_id`, số story, số AC. Số AC lệch với PRD thì sửa định dạng trước khi push.
 
-> **Bạn đang dùng PowerShell?** Mọi khối `bash` trong tài liệu này dùng cú pháp bash. Khác biệt cần nhớ: `"$PWD:/x"` phải viết `"${PWD}:/x"` (nếu không PowerShell báo *Variable reference is not valid*); nối dòng bằng dấu backtick `` ` `` thay vì `\`; biến môi trường đặt bằng `$env:TEN = "giá trị"` thay vì `TEN=giá trị lệnh`. Nếu không muốn đổi, chạy các khối bash trong **Git Bash**.
+### 2.2. File `openapi.json`
 
-### 2.2. File đặc tả API `openapi.json`
-
-CI **chỉ đọc file nằm trong repo** (không với tới URL của SUT đang chạy), nên bạn phải xuất rồi commit. OpenAPI giúp LLM biết chính xác endpoint/ràng buộc, và bật **bộ chấm coverage** (mục 5.3).
-
-Cách trích từ backend (chọn đúng framework của bạn):
+CI **chỉ đọc file nằm trong repo**, nên phải xuất rồi commit. Có OpenAPI thì LLM biết đúng endpoint/ràng buộc và bật được bộ chấm coverage (5.3); không có vẫn chạy nhưng chỉ chấm được chiều AC.
 
 ```bash
-# FastAPI: chạy SUT ở máy bạn rồi tải về
-curl -s http://127.0.0.1:8000/openapi.json -o openapi.json
-
-# FastAPI: không cần chạy server
-python -c "import json; from app.main import app; print(json.dumps(app.openapi(), ensure_ascii=False, indent=2))" > openapi.json
-
-# Spring Boot (springdoc)
-curl -s http://127.0.0.1:8080/v3/api-docs -o openapi.json
-
-# ASP.NET Core (Swashbuckle)
-curl -s http://127.0.0.1:5000/swagger/v1/swagger.json -o openapi.json
-
-# NestJS: dùng SwaggerModule.createDocument(app, config) rồi JSON.stringify ra file
-```
-
-> **PowerShell:** `curl` là bí danh của `Invoke-WebRequest` và không nhận `-s -o`. Dùng `curl.exe -s http://127.0.0.1:8000/openapi.json -o openapi.json` (có đuôi `.exe`), hoặc `Invoke-WebRequest http://127.0.0.1:8000/openapi.json -OutFile openapi.json`. Đừng dùng `> openapi.json` trên Windows PowerShell 5.1 vì nó ghi UTF-16; để Python ghi file: `python -c "import json; from app.main import app; open('openapi.json','w',encoding='utf-8').write(json.dumps(app.openapi(), ensure_ascii=False, indent=2))"`.
-
-```bash
+curl -s http://127.0.0.1:8000/openapi.json -o openapi.json          # FastAPI đang chạy
+curl -s http://127.0.0.1:8080/v3/api-docs -o openapi.json           # Spring Boot (springdoc)
 git add openapi.json && git commit -m "docs: thêm openapi.json cho qc-agent"
 ```
 
-Lưu ý:
-- Đặt ở **gốc repo** (`openapi.json`) cho đơn giản; đường dẫn này sẽ được truyền ở bước `init`.
-- Khi API đổi (thêm endpoint, đổi ràng buộc), **xuất lại và commit**. File cũ làm bộ chấm coverage chấm theo API cũ.
-- Dùng OpenAPI 3.x. Không có OpenAPI vẫn chạy được, nhưng bộ chấm chỉ chấm được chiều AC (mất chiều kỹ thuật và mã trạng thái).
+Đặt ở **gốc repo**. API đổi thì **xuất lại và commit**, nếu không bộ chấm chấm theo API cũ. PowerShell: dùng `curl.exe` (có đuôi `.exe`), đừng dùng `>` vì ghi UTF-16.
 
-### 2.3. Quyền hạn GitHub và API key LLM
+### 2.3. Quyền hạn và khoá
 
 | Cần | Chi tiết |
 |---|---|
-| Quyền **Admin** repo SUT | đặt secret, bật quyền workflow, branch protection (mục 4) |
-| Team QA có quyền **Write** | team này được ghi vào CODEOWNERS. Sai tên team thì GitHub báo "Unknown owner" và không ai bị ép duyệt. Repo cá nhân: dùng `@username` của cộng tác viên có quyền Write |
-| Image qc-agent kéo được | package `qc-agent` public thì bỏ qua. Private: xin team qc-agent cấp quyền *Manage Actions access* cho repo của bạn, hoặc đặt secret `GHCR_PULL_TOKEN` (PAT có `read:packages`) |
-| **API key LLM** | `ANTHROPIC_API_KEY` (khoá Anthropic). Model mặc định `claude-sonnet-5`; chế độ agent tuỳ chọn dùng `claude-sonnet-5-5` |
-| `qc_bot_token` (tuỳ chọn, nên có) | PAT/GitHub App của bot (Contents + Pull requests: Read and write). Giúp PR do bot mở **kích hoạt ngay** check `gt validate` (xem mục 5.1) |
+| Quyền **Admin** repo | đặt secret, bật quyền workflow, branch protection |
+| Team QA có quyền **Write** | được ghi vào CODEOWNERS; sai tên thì GitHub báo "Unknown owner" và không ai bị ép duyệt. Repo cá nhân: dùng `@username` |
+| Kéo được image | package public thì bỏ qua; private thì xin cấp *Manage Actions access* hoặc đặt secret `GHCR_PULL_TOKEN` (PAT `read:packages`) |
+| `ANTHROPIC_API_KEY` | khoá LLM duy nhất qc-agent dùng. Model mặc định `claude-sonnet-5` |
+| `qc_bot_token` (nên có) | PAT/GitHub App của bot (Contents + Pull requests: Read and write); giúp PR do bot mở kích hoạt ngay check `gt validate` |
 
-Chỉ cần **một** khoá LLM (Anthropic). Workflow chỉ đưa khoá này vào container của job sinh test case.
-
-> **Gói GitHub Free + repo private:** branch protection và bắt buộc review **không dùng được** (cần Pro/Team/Enterprise, hoặc để repo public). Khi đó khoá QA chỉ còn là quy ước, không phải cơ chế cưỡng chế.
+> **GitHub Free + repo private:** không có branch protection (cần Pro/Team/Enterprise, hoặc để repo public). Khi đó khoá QA chỉ còn là quy ước.
 
 ---
 
 ## 3. Tích hợp vào repo SUT: một lệnh Docker
 
-Chạy ở **gốc repo SUT**. Ví dụ dưới là repo **monorepo** có Dockerfile của API ở `apps/api-server/` (đổi `--qa-team`, `--sut-dockerfile`, `--sut-context` theo repo của bạn):
-
-```powershell
-# PowerShell (Windows)
-docker run --rm -v "${PWD}:/sut" -w /sut ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 init --sut-root /sut --qa-team @my-org/qa-team --image ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 --prd-glob "docs/prd/**" --sut-dockerfile "apps/api-server/Dockerfile" --sut-context "apps/api-server"
-```
+Chạy ở **gốc repo SUT** (ví dụ monorepo có Dockerfile ở `apps/api-server/`):
 
 ```bash
-# Linux / macOS / Git Bash (Windows: đặt MSYS_NO_PATHCONV=1 trước lệnh)
-docker run --rm -v "$PWD:/sut" -w /sut \
-  ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 \
-  init \
-  --sut-root /sut \
-  --qa-team @my-org/qa-team \
-  --image ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12 \
-  --prd-glob "docs/prd/**" \
-  --sut-dockerfile "apps/api-server/Dockerfile" \
-  --sut-context "apps/api-server"
+docker run --rm -v "$PWD:/sut" -w /sut <IMAGE> init \
+  --sut-root /sut --qa-team @my-org/qa-team --image <IMAGE> \
+  --prd-glob "docs/prd/**" --openapi /sut/openapi.json \
+  --sut-dockerfile "apps/api-server/Dockerfile" --sut-context "apps/api-server"
 ```
 
-Dockerfile của API nằm **ở gốc repo** (hoặc `<thư-mục>/Dockerfile`, `docker/*Dockerfile*`) thì `init` tự tìm được: bỏ hai dòng `--sut-dockerfile` / `--sut-context`. Linux: thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` sau `docker run --rm` để file sinh ra thuộc về bạn, không thuộc root.
+Thêm `--dry-run` để xem trước, không ghi gì (nên chạy thử một lần). Windows Git Bash: đặt `MSYS_NO_PATHCONV=1` trước lệnh. Linux: thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` để file sinh ra không thuộc root.
 
-**Xem trước, không ghi gì:** thêm `--dry-run` cuối lệnh. Nên chạy thử một lần.
-
-### Giải thích tham số
-
-| Phần của lệnh | Ý nghĩa |
+| Tham số | Ý nghĩa |
 |---|---|
-| `-v "$PWD:/sut"` (PowerShell: `"${PWD}:/sut"`) | gắn thư mục repo hiện tại vào `/sut` trong container; `init` chỉ đọc cây thư mục và **chỉ ghi trong repo của bạn** |
-| `-w /sut` | đặt thư mục làm việc trong container là `/sut`, để mọi đường dẫn tương đối (như `apps/api-server/Dockerfile`) tính từ gốc repo |
-| `ghcr.io/…@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12` (đứng trước `init`) | image qc-agent dùng để chạy lệnh. **Ghim theo digest**, không dùng tag `latest` |
-| `--sut-root /sut` | thư mục gốc repo SUT **trong container** (khớp điểm gắn ở trên; mặc định đã là `/sut` nếu có gắn, nên có thể bỏ) |
-| `--qa-team @my-org/qa-team` | team QA (hoặc `@username`) được ghi làm **code owner** của `/.qc-agent/`. Thiếu tham số này thì CODEOWNERS dùng owner giữ chỗ kèm `qc-agent:todo` và `qc-agent validate` từ chối |
-| `--image …@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12` | image mà **workflow trên CI** sẽ kéo về để chạy `gt generate`/`gt validate`. Ghi vào `qc-groundtruth.yml`. Thiếu thì file có dấu `qc-agent:todo` để bạn điền tay |
-| `--prd-glob "docs/prd/**"` | PRD nào kích hoạt workflow khi push lên `main`. Mặc định đã là `docs/prd/**`. Giữ dấu nháy để shell không bung glob |
-| `--sut-dockerfile "apps/api-server/Dockerfile"` | đường dẫn **từ gốc repo** tới Dockerfile của API. Scanner chỉ tự tìm ở gốc, `*/Dockerfile` (sâu 1 cấp) và `docker/*Dockerfile*`; Dockerfile nằm sâu hơn (monorepo `apps/<tên>/…`) thì **bắt buộc** chỉ ra, không thì `init` báo *không thấy Dockerfile của API* |
-| `--sut-context "apps/api-server"` | thư mục **context build** của API (nơi `docker build` được chạy). Chỉ cần khi context không phải gốc repo, thường là thư mục chứa Dockerfile |
+| `--qa-team` | team QA (hoặc `@username`) làm **code owner** của `/.qc-agent/`. Thiếu thì CODEOWNERS dùng owner giữ chỗ và `validate` từ chối |
+| `--image` | image mà **workflow trên CI** kéo về để chạy `gt generate`/`gt validate` |
+| `--prd-glob` | PRD nào kích hoạt workflow khi push `main` (mặc định `docs/prd/**`) |
+| `--openapi` | OpenAPI đã commit. **Bỏ thì CI không có OpenAPI** (mất chiều kỹ thuật và mã trạng thái của bộ chấm) |
+| `--sut-dockerfile`, `--sut-context` | chỉ cần khi Dockerfile không nằm ở gốc, `*/Dockerfile` hay `docker/*Dockerfile*` (monorepo `apps/<tên>/…` thì bắt buộc) |
 
-Tham số tuỳ chọn hay gặp:
+Tuỳ chọn khác: `--qc-ref` (ghim workflow), `--slug`, `--sut-port`, `--health-path`, `--sut-env KEY=VALUE` khi scanner đoán sai.
 
-- `--openapi /sut/openapi.json`: OpenAPI **đã commit trong repo** (đường dẫn trong container, mục 2.2). `init` ghi `openapi: "openapi.json"` vào workflow để CI đọc được. **Bỏ tham số này thì CI không có OpenAPI**: LLM chỉ có PRD và bộ chấm coverage chỉ chấm được chiều AC. Chưa có `openapi.json` thì thêm sau bằng cách commit file đó rồi thêm tay dòng `openapi: "openapi.json"` vào khối `with:` của `.github/workflows/qc-groundtruth.yml` (chạy lại `init` không đủ: file đã có thì `init` giữ nguyên, trừ khi `--force`, mà `--force` sẽ ghi đè cả các sửa tay của bạn).
-- `--qc-ref <SHA 40 ký tự>`: ghim phiên bản workflow tái sử dụng (mặc định lấy từ chính image, thường không cần điền).
-- `--slug`: đặt tên project.
-- `--sut-port`, `--health-path`, `--sut-env KEY=VALUE`: khi cổng/health path/biến môi trường của SUT scanner đoán sai.
+`init` sinh: `.github/workflows/qc-groundtruth.yml` (PRD → test case → PR), `.github/workflows/qc.yml` (gate cho PR của dev, xem [onboarding.md](onboarding.md)), vùng quản lý trong `.github/CODEOWNERS` (`/.qc-agent/`, `/.github/CODEOWNERS`, `/.github/workflows/qc-*.yml` thuộc team QA), và `.qc-agent/suites/`. Thư mục `.qc-agent/ground-truth/` do **bot tạo ở lần chạy đầu** (5.1).
 
-### File được tự động sinh trong repo SUT
-
-```
-repo-sut/
-├── .github/
-│   ├── workflows/
-│   │   ├── qc-groundtruth.yml     ← workflow Ground-Truth: PRD → test case → PR; kiểm `gt validate` trên PR   (CỦA BẠN TRONG SPRINT 1)
-│   │   └── qc.yml                 ← workflow Quality Gate cho PR của dev (chạy suite, chặn merge)
-│   └── CODEOWNERS                 ← thêm VÙNG do qc-agent quản lý (giữa 2 dấu qc-agent:begin/end), giữ nguyên dòng cũ của bạn
-└── .qc-agent/
-    └── suites/                    ← định nghĩa các suite của gate (api-contract.yaml, perf-smoke.yaml, sast/secrets/deps…)
-```
-
-Vùng CODEOWNERS được sinh:
-
-```
-# qc-agent:begin codeowners
-/.qc-agent/ @my-org/qa-team                  # chỉ QA duyệt được thay đổi Ground-Truth
-/.github/CODEOWNERS @my-org/qa-team          # chỉ QA sửa được chính CODEOWNERS
-/.github/workflows/qc-*.yml @my-org/qa-team  # chỉ QA sửa được workflow qc-agent
-# qc-agent:end
-```
-
-Chạy lại `init` chỉ cập nhật **vùng giữa hai dấu**; mọi dòng ngoài vùng giữ nguyên từng byte.
-
-**Chưa có trong lúc này:** thư mục `.qc-agent/ground-truth/` (test-cases.yaml, test-cases.xlsx, tests_gt/, module-map.yaml…) và suite `gt-functional.yaml`. Chúng do **bot tạo ở lần chạy workflow đầu tiên** (mục 5.1).
-
-### Sau khi chạy `init`
-
-1. Đọc phần in ra: mục *"Còn việc cho người (qc-agent:todo)"* liệt kê dòng cần xử lý. Với Sprint 1, bạn chủ yếu cần: `image` đã điền, `--qa-team` đã đúng.
-2. Kiểm nhanh (từ chối khi còn TODO hoặc thiếu CODEOWNERS): bash `docker run --rm -v "$PWD:/sut" <IMAGE> validate --sut-root /sut`; PowerShell `docker run --rm -v "${PWD}:/sut" <IMAGE> validate --sut-root /sut`.
-3. `git checkout -b chore/qc-agent-onboarding`, commit, **mở PR vào chính repo của bạn**, nhờ QA duyệt (vì PR đụng CODEOWNERS), rồi merge vào `main`.
-
-> `qc.yml` và các suite khác thuộc **Quality Gate chung** của qc-agent; `init` sinh sẵn nhưng phần tinh chỉnh (ghim digest ở `qc.yml`, xoá TODO còn sót, đăng ký project…) nằm ngoài tài liệu này: xem [onboarding.md](onboarding.md). PR onboarding **có thể đỏ lúc đầu** vì `validate` chặn mọi `qc-agent:todo` còn sót; đó là chủ ý.
-
-> **Phải merge vào `main` trước.** `workflow_dispatch` và `pull_request` chỉ có tác dụng khi workflow đã nằm trên nhánh mặc định.
+Sau `init`:
+1. Đọc mục "Còn việc cho người (qc-agent:todo)": với Sprint 1 cần `image` đã điền và `--qa-team` đúng.
+2. Kiểm: `docker run --rm -v "$PWD:/sut" <IMAGE> validate --sut-root /sut`.
+3. Commit trên nhánh mới, mở PR vào chính repo, nhờ QA duyệt (vì đụng CODEOWNERS), **merge vào `main`**. Workflow chỉ có tác dụng khi đã nằm trên nhánh mặc định. PR onboarding có thể đỏ lúc đầu vì `validate` chặn mọi `qc-agent:todo` còn sót; đó là chủ ý.
 
 ---
 
-## 4. Cấu hình một lần trên giao diện GitHub của repo SUT
+## 4. Cấu hình một lần trên GitHub
 
-Làm theo đúng thứ tự. Tất cả ở **repo SUT**.
+### 4.1. Secret
 
-### 4.1. Đặt Secret
+**Settings → Secrets and variables → Actions → New repository secret**: `ANTHROPIC_API_KEY` (bắt buộc), `qc_bot_token` (nên có). Hoặc `gh secret set ANTHROPIC_API_KEY --repo my-org/my-sut`.
 
-Vào **Settings → Secrets and variables → Actions → New repository secret**:
+- Dùng khoá **riêng** và đặt **spend limit** trong Anthropic Console: đó là lớp bảo vệ cuối cùng.
+- Đặt secret **sau cùng**, ngay trước lần chạy đầu (5.1). Thiếu secret thì job `generate` dừng với thông báo rõ, **trước khi gửi gì ra ngoài**.
+- File `qc-groundtruth.yml` do `init` sinh đã dùng Claude, không cần sửa. Vài dòng ví dụ Gemini đang bị comment: bỏ qua, đừng bỏ comment.
 
-| Name | Value | Bắt buộc? |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | khoá API của Anthropic (lấy ở console.anthropic.com → API keys) | **Có.** Đây là khoá LLM duy nhất qc-agent dùng |
-| `qc_bot_token` | PAT/GitHub App của bot | nên có (mục 5.1, bẫy 1) |
+### 4.2. Cho phép bot tạo PR
 
-Hoặc dùng GitHub CLI:
+**Settings → Actions → General → Workflow permissions** → tích **"Allow GitHub Actions to create and approve pull requests"**. Repo thuộc tổ chức thì bật ở cấp tổ chức trước. Nếu đang dùng *Allow select actions*, thêm `actions/checkout`, `actions/upload-artifact`, `docker/login-action` và `Muteen-Felix/QC-Agent/.github/workflows/*`.
 
-```bash
-gh secret set ANTHROPIC_API_KEY --repo my-org/my-sut     # sẽ hỏi giá trị, không lưu vào lịch sử shell
-```
+### 4.3. Branch protection cho `main`
 
-Khoá này dùng cho **mọi chế độ sinh** của workflow: chế độ mặc định (một lời gọi, model `claude-sonnet-5`) và chế độ agent tuỳ chọn (`agent: true`, model `claude-sonnet-5-5`, xem mục 6). Bạn không cần khai `model:` trong `qc-groundtruth.yml`; file `init` sinh ra đã dùng Claude. Chỉ khoá này được đưa vào container, và chỉ ở job `generate`; job `select` và `validate` không có khoá.
+Check `validate` **chỉ chọn được sau khi đã chạy ít nhất một lần**, nên làm bước này sau PR Ground-Truth đầu tiên (5.1).
 
-**Nên làm khi đặt khoá:**
-- Dùng một khoá **riêng** cho qc-agent, và đặt **spend limit** trong Anthropic Console (Settings → Limits). Hạn mức này là lớp bảo vệ cuối cùng khi có lần chạy tốn nhiều hơn dự kiến.
-- Đặt secret **sau cùng** (sau khi merge workflow và bật quyền ở 4.2), ngay trước lần chạy đầu tiên của mục 5.1. Chưa có khoá thì dù workflow bị kích hoạt cũng không tốn tiền.
+**Settings → Branches → Add branch protection rule** cho `main`:
+- ✅ Require a pull request before merging → Require approvals ≥ 1 → ✅ **Require review from Code Owners**
+- ✅ Require status checks → chọn **`groundtruth / qc-groundtruth / gt validate (<project>)`** (và `qc-agent / <project>` của gate dev)
+- ✅ Do not allow bypassing / Include administrators (nếu muốn cả admin qua duyệt); chặn force-push
 
-Thiếu secret thì job `generate` dừng ngay với thông báo rõ (*thiếu secret ANTHROPIC_API_KEY …*), **trước khi gửi bất cứ thứ gì ra ngoài**.
+Cách nhanh (cần token **admin**): `GITHUB_TOKEN=<token> python tools/protect_ground_truth.py --repo OWNER/SUT --dry-run` để xem trước, bỏ `--dry-run` để ghi.
 
-#### Khối `with:` trong `.github/workflows/qc-groundtruth.yml`
-
-Với Claude, bạn **không phải sửa gì** để chạy lần đầu: `init` đã điền sẵn. Sau `init` file có dạng:
-
-```yaml
-jobs:
-  groundtruth:
-    permissions:
-      contents: write
-      pull-requests: write
-      packages: read
-    uses: Muteen-Felix/QC-Agent/.github/workflows/qc-groundtruth.reusable.yml@<SHA 40 ký tự>
-    with:
-      project: my-sut                                   # slug project, chỉ dùng đặt tên job
-      image: "ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>"   # từ tham số --image của init
-      prd_path: ${{ inputs.prd_path || 'docs/prd/**' }} # PRD nào được xử lý (từ --prd-glob)
-      openapi: "openapi.json"                           # chỉ có nếu bạn truyền --openapi cho init
-      # ... các dòng bắt đầu bằng "#" bên dưới là ví dụ tuỳ chọn ...
-    secrets: inherit                                    # đưa ANTHROPIC_API_KEY vào workflow
-```
-
-> **File do `init` sinh ra còn chứa vài dòng ví dụ Gemini đang bị comment** (`# model: gemini-...`, `# llm_min_interval_s`…). Bạn **bỏ qua hoặc xoá** chúng, đừng bỏ comment: tài liệu này chỉ dùng Claude.
-
-Các tuỳ chọn Claude bạn có thể thêm vào khối `with:` (đều **không bắt buộc**):
-
-```yaml
-    with:
-      project: my-sut
-      image: "ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>"
-      prd_path: ${{ inputs.prd_path || 'docs/prd/**' }}
-      openapi: "openapi.json"
-      model: claude-sonnet-5          # ghim model cho chế độ mặc định (bỏ trống = mặc định của image, cũng là claude-sonnet-5)
-      timeout_minutes: 20             # mặc định 20 phút; chế độ agent cần 60
-```
-
-Chế độ **agent** (LLM đọc cả mã nguồn, nhiều lượt) **tắt mặc định** và gửi mã nguồn tới Anthropic. Chỉ bật khi đã được phép và đã có kế hoạch chi phí (mục 6 và [measure-sprint-1-on-sut.md](measure-sprint-1-on-sut.md)):
-
-```yaml
-      agent: true                     # bật bộ sinh agent
-      timeout_minutes: 60
-      agent_model: claude-sonnet-5-5  # model rẻ; chỉ đặt Opus khi chủ động muốn
-      agent_max_cost_usd: "3"         # TRẦN chi phí ước tính cho MỘT lần chạy
-```
-
-Sau khi sửa file này, commit và merge vào `main` như mọi thay đổi workflow (vì `/.github/workflows/qc-*.yml` được khoá cho team QA, PR cần họ duyệt).
-
-### 4.2. Bật quyền cho Bot tự tạo PR
-
-**Settings → Actions → General → Workflow permissions** → tích **"Allow GitHub Actions to create and approve pull requests"** → Save.
-
-- Không bật thì bước *Open or update the pull request* lỗi.
-- Repo thuộc tổ chức: bật ở cấp tổ chức (**Organization settings → Actions → General**) trước, rồi mới bật được ở repo.
-- Mức mặc định *Read repository contents* vẫn được: `qc-groundtruth.yml` tự xin đúng quyền `contents: write`, `pull-requests: write`, `packages: read` cho job cần.
-- Nếu **Actions permissions** đang là *Allow select actions*, thêm: `actions/checkout`, `actions/upload-artifact`, `docker/login-action` và workflow tái sử dụng `Muteen-Felix/QC-Agent/.github/workflows/*`.
-
-### 4.3. Branch Protection cho `main`
-
-Check `validate` **chỉ chọn được sau khi nó đã chạy ít nhất một lần**. Vì vậy:
-
-1. Làm bước 4.1 và 4.2, rồi chạy PRD đầu tiên (mục 5.1) để có PR Ground-Truth đầu tiên và check `gt validate` chạy.
-2. Quay lại đây cấu hình.
-
-**Settings → Branches → Add branch protection rule** (hoặc **Rulesets**), *Branch name pattern*: `main`:
-
-- ✅ **Require a pull request before merging**
-  - ✅ **Require approvals** = 1 (hoặc hơn)
-  - ✅ **Require review from Code Owners**: bắt buộc team QA duyệt mọi PR đụng `.qc-agent/**`
-- ✅ **Require status checks to pass before merging**
-  - Ô tìm kiếm, chọn check có tên dạng: **`groundtruth / qc-groundtruth / gt validate (<project>)`** (đây là job `validate`; `<project>` là slug trong `qc-groundtruth.yml`). Tên chính xác hiện trong tab *Checks* của PR Ground-Truth.
-  - Nên chọn thêm check của gate dev: `qc-agent / <project>` (xem [onboarding.md](onboarding.md)).
-- ✅ **Do not allow bypassing the above settings** / *Include administrators*: nếu muốn cả admin cũng phải qua duyệt
-- ✅ Chặn force-push
-
-Cơ chế này làm gì (nói đúng, không hơn):
-
-| Lớp | Chặn cái gì |
+| Lớp | Chặn gì |
 |---|---|
-| CODEOWNERS + *Require review from Code Owners* | **merge** PR có đụng `.qc-agent/**` khi thiếu duyệt của team QA |
-| *Require a pull request before merging* | **push thẳng** vào `main` |
-| Required status check `gt validate` | merge khi test case chưa được duyệt xong (còn `draft`, lệch Excel/YAML…) |
+| CODEOWNERS + Require review from Code Owners | **merge** PR đụng `.qc-agent/**` khi thiếu duyệt của QA |
+| Require a pull request | **push thẳng** vào `main` |
+| Required check `gt validate` | merge khi test case chưa duyệt xong (còn `draft`, lệch Excel/YAML) |
 
-Không có lớp nào ngăn người khác *mở* PR sửa `.qc-agent/**`; chúng chỉ làm PR đó không merge được khi thiếu QA.
+Không lớp nào ngăn người khác *mở* PR sửa `.qc-agent/**`; chúng chỉ làm PR đó không merge được khi thiếu QA.
 
-**Kiểm tay một lần** (nên làm):
-1. Tài khoản **không** thuộc team QA push thẳng lên `main` một thay đổi trong `.qc-agent/`: phải bị từ chối.
+**Kiểm tay một lần** (cần hai tài khoản: một QA, một không phải QA):
+1. Tài khoản không phải QA push thẳng lên `main` một thay đổi trong `.qc-agent/`: phải bị từ chối.
 2. Cũng tài khoản đó mở PR sửa `.qc-agent/ground-truth/test-cases.yaml`: nút merge phải báo cần review của code owner.
 3. Tài khoản QA approve: merge được.
 
 ---
 
-## 5. Vận hành hằng ngày (Day-to-day Workflow)
+## 5. Vận hành hằng ngày
 
-### 5.1. BA/Dev sửa PRD, bot tự mở PR
+### 5.1. Sửa PRD, bot mở PR
 
-**Bước của BA/Dev:** sửa PRD dưới `docs/prd/`, mở PR vào `main`, merge như thường lệ. Khi merge (tức có push lên `main` đổi file khớp `--prd-glob`):
+BA/Dev sửa PRD dưới `docs/prd/`, mở PR, merge như thường. Khi push lên `main` đổi file khớp `--prd-glob`, workflow `qc-groundtruth` chạy: chọn các PRD vừa đổi (tối đa 5), mỗi PRD một lượt `gt generate` (chưa có `test-cases.yaml`) hoặc `gt regen` (đã có, giữ nguyên TC QA đã quyết), commit **chỉ** `.qc-agent/` lên nhánh `qc-agent/gt/<prd-id>`, và mở PR **"Ground-Truth: `<prd-id>`"**. Thân PR có số story/AC/TC, AC mồ côi, bảng coverage và checklist cho QA. Artifact của run chứa `egress.jsonl` (nhật ký dữ liệu gửi ra LLM) và `summary.json` (số token).
 
-```
-push main (PRD đổi)
-   └─► workflow qc-groundtruth
-         ├─ job select   : chọn các PRD VỪA ĐỔI khớp glob (tối đa 5)
-         └─ job generate : (mỗi PRD một lượt, tuần tự)
-               1. lấy prd_id từ front-matter  →  nhánh `qc-agent/gt/<prd-id>`
-               2. chưa có test-cases.yaml → `gt generate`   |   đã có → `gt regen` (giữ nguyên TC QA đã quyết)
-               3. commit CHỈ thư mục .qc-agent/ lên nhánh bot (không force-push)
-               4. mở PR "Ground-Truth: <prd-id>"  (PR đã có → chỉ comment, không ghi đè mô tả của QA)
-```
+**Lần đầu** (PRD chưa "vừa đổi" nên workflow không tự chạy): **Actions → qc-groundtruth → Run workflow**, nhập `prd_path` (vd. `docs/prd/orders.md`).
 
-Bạn thấy gì: tab **Actions → qc-groundtruth** chạy xanh, rồi tab **Pull requests** có PR **"Ground-Truth: `<prd-id>`"** do `qc-agent[bot]` mở. Thân PR có số story/AC/test case, AC mồ côi, bảng coverage và **checklist cho QA**. Artifact `qc-groundtruth-<prd-id>-<n>` của run chứa `egress.jsonl` (nhật ký dữ liệu gửi ra LLM) và `summary.json` (số token), giữ 14 ngày.
+| Bẫy | Cách xử lý |
+|---|---|
+| PR tạo bằng `GITHUB_TOKEN` **không kích hoạt** `pull_request`, nên chưa có check `gt validate` | Không sao: QA push là check chạy. Muốn có ngay: đặt `qc_bot_token`. PR mở bằng PAT của một người thì người đó không tự approve được |
+| Bot push đúng lúc QA đang push | Push của bot bị từ chối, job đỏ: bấm *Re-run* |
+| Một push đổi quá 5 PRD | Job `select` lỗi: dùng *Run workflow* với đường dẫn cụ thể |
 
-**Lần đầu tiên (hoặc muốn sinh lại tay):** PRD chưa "vừa đổi" nên workflow không tự chạy. Vào **Actions → qc-groundtruth → Run workflow**, nhập `prd_path` (ví dụ `docs/prd/orders.md`), bấm chạy.
+### 5.2. QA duyệt test case
 
-**Bẫy cần biết:**
+QA làm **trên nhánh bot** (push thẳng lên đó, PR tự cập nhật): `git fetch origin && git checkout qc-agent/gt/<prd-id>`. Trong `.qc-agent/ground-truth/`:
 
-| # | Bẫy | Cách xử lý |
-|---|---|---|
-| 1 | PR/commit tạo bằng `GITHUB_TOKEN` **không kích hoạt** workflow `pull_request`, nên PR vừa mở **chưa có check `gt validate`** | Không sao: QA đằng nào cũng phải sửa draft rồi push, lúc đó check chạy. Muốn có ngay: đặt secret `qc_bot_token` (mục 4.1). PR mở bằng PAT của một người thì người đó **không tự approve được** PR của mình: dùng tài khoản bot/GitHub App |
-| 2 | Thiếu secret LLM | Job `generate` dừng với thông báo "thiếu secret …"; chưa có gì rời máy |
-| 3 | Push chồng lên nhánh bot đúng lúc QA đang push | Push của bot bị từ chối, job đỏ: bấm *Re-run* |
-| 4 | Một lần push đổi quá 5 PRD | Job `select` lỗi: dùng *Run workflow* với đường dẫn cụ thể |
+| File | QA làm gì |
+|---|---|
+| `test-cases.yaml` | **nguồn sự thật** của gate: duyệt, sửa, thêm |
+| `test-cases.xlsx` | bản Excel cùng nội dung: duyệt, sửa, thêm rồi `gt import-xlsx` (5.4) |
+| `module-map.yaml` | điền `paths`, đổi `status: approved` |
+| `tests_gt/` | **KHÔNG sửa tay**: sửa một dòng là `gt validate` báo *drift* |
+| `openapi.snapshot.json` | không sửa (máy sở hữu) |
 
-### 5.2. Hướng dẫn chi tiết cho QA: duyệt test case
-
-QA làm việc **trên nhánh bot** `qc-agent/gt/<prd-id>` (push thẳng lên đó, PR tự cập nhật).
-
-```bash
-git fetch origin
-git checkout qc-agent/gt/orders        # <prd-id> là id trong front-matter của PRD
-```
-
-Trong `.qc-agent/ground-truth/` có:
-
-| File | Là gì | QA làm gì |
-|---|---|---|
-| `test-cases.yaml` | **nguồn sự thật** của gate: story/AC và mọi test case | duyệt, sửa, thêm |
-| `test-cases.xlsx` | bản Excel của **cùng nội dung** (QA mở file này nếu thích bảng tính) | duyệt, sửa, thêm; rồi `gt import-xlsx` (5.4) |
-| `module-map.yaml` | nháp ánh xạ module → file mã nguồn | điền `paths`, đổi `status: approved` |
-| `openapi.snapshot.json` | ảnh chụp OpenAPI để chấm coverage | **không sửa** (máy sở hữu) |
-| `tests_gt/` | mã pytest sinh máy từ catalog | **KHÔNG sửa tay**: sửa một dòng là `gt validate` báo *drift* |
-
-QA chọn **một** trong hai đường (A: YAML, B: Excel). Đừng sửa cả hai song song.
-
-#### Vòng đời của một test case
+Chọn **một** trong hai đường (YAML hoặc Excel), đừng sửa song song.
 
 ```
-   LLM đề xuất
-   ──────────► draft ──► approved   (gate chạy; fail thì chặn merge)
-                  │
-                  └────► rejected + rejected_reason   (regen KHÔNG đề xuất lại đúng TC này)
+LLM đề xuất ──► draft ──► approved   (gate chạy; fail thì chặn merge)
+                  └────► rejected + rejected_reason   (regen không đề xuất lại TC này)
 ```
 
-| `status` | Ý nghĩa | Gate chạy? | `gt validate` |
-|---|---|---|---|
-| `draft` | LLM đề xuất, chưa ai duyệt | không | **lỗi** |
-| `approved` | QA đã duyệt | **có**, chặn merge nếu fail | ok |
-| `rejected` | loại; **bắt buộc** có `rejected_reason` | không | lỗi nếu thiếu lý do |
-
-#### Đường A: sửa `test-cases.yaml`
-
-Mở file, tìm `test_cases:`. Mỗi TC trông như sau (đã chú thích):
+**Đường A: YAML.** Mỗi TC trong `test_cases:`:
 
 ```yaml
-- tc_id: TC-AC-1.2-3f9a1c            # định danh, do máy đặt: ĐỪNG sửa
+- tc_id: TC-AC-1.2-3f9a1c            # do máy đặt: ĐỪNG sửa
   title: quantity bằng 0 bị từ chối
-  ac_refs: [AC-1.2]                  # TC này kiểm AC nào (AC phải có trong `stories`)
+  ac_refs: [AC-1.2]
   kind: api_functional               # api_contract | api_functional (1 bước) | flow (từ 2 bước)
   status: draft                      # ◄── BẠN ĐỔI DÒNG NÀY
-  origin: llm                        # llm = máy đề xuất; qa = do QA viết (regen không bao giờ đè)
+  origin: llm                        # llm = máy đề xuất; qa = QA viết (regen không bao giờ đè)
   steps:
   - request: {method: POST, path: /orders, json: {sku: A1, quantity: 0}}
-    expect:
-      status: [422]
-      json: [{path: $.detail, op: exists}]
-```
-
-**Với từng TC**, đối chiếu với **PRD** (không phải với code):
-
-| Tình huống | Làm gì |
-|---|---|
-| Đúng với PRD | `status: approved` |
-| Sai, hoặc đoán điều PRD không nêu (thông điệp lỗi, giá trị cụ thể…) | `status: rejected` + `rejected_reason: "PRD không nêu thông điệp lỗi"` |
-| Đúng PRD nhưng chạy đỏ trên SUT sạch | **bug thật của SUT**: giữ `approved`, báo dev |
-| Không hiểu vì sao nó đúng | đừng duyệt |
-
-```yaml
-  status: rejected
-  rejected_reason: "PRD không nêu thông điệp lỗi cụ thể"
-```
-
-Ghi chú của QA phải đặt trong trường `notes` của TC (comment YAML **không sống qua `regen`**).
-
-**Thêm edge case của QA** (`origin: qa`): thêm một mục vào `test_cases`, không cần render lại:
-
-```yaml
-- tc_id: TC-AC-1.2-qa-quantity-am            # dạng TC-<ac_id>-<mô-tả>, không trùng tc_id khác
-  title: quantity âm bị từ chối
-  ac_refs: [AC-1.2]
-  kind: api_functional
-  status: approved
-  origin: qa
-  steps:
-  - request: {method: POST, path: /orders, json: {sku: A1, quantity: -5}}
     expect: {status: [422], json: [{path: $.detail, op: exists}]}
 ```
 
-Với `flow` (nhiều bước), bước sau dùng `{{tên}}` cho giá trị đã `capture` ở bước trước: `capture: {order_id: $.id}` rồi `path_params: {order_id: "{{order_id}}"}`. Assertion hợp lệ: `eq`, `ne`, `exists`, `absent`, `type`, `len_eq`, `len_gte`, `contains`.
+Đối chiếu từng TC với **PRD** (không phải với code):
 
-**AC giao diện** (không kiểm được bằng HTTP): khai trong `uncovered_acs` kèm lý do, ví dụ `- {ac_id: AC-1.4, reason: chỉ kiểm được ở giao diện}`.
+| Tình huống | Làm gì |
+|---|---|
+| Đúng PRD | `status: approved` |
+| Sai, hoặc đoán điều PRD không nêu | `status: rejected` + `rejected_reason: "..."` |
+| Đúng PRD nhưng đỏ trên SUT sạch | **bug thật của SUT**: giữ `approved`, báo dev |
+| Không hiểu vì sao nó đúng | **đừng duyệt** |
 
-**Hoàn tất**, làm ba việc cuối:
+Ghi chú của QA đặt trong trường `notes` (comment YAML không sống qua `regen`).
 
-1. `module-map.yaml`: điền `paths` thật (glob tới **file khai báo route** của từng module, ví dụ `src/orders/**`), **xoá** dòng `qc-agent:todo`, đổi `status: draft` → `status: approved`.
-2. `test-cases.yaml`: đổi `status:` **ngoài cùng** (cạnh `stories:`) thành `approved`. Khi đó mọi TC phải là `approved` hoặc `rejected`.
-3. Nếu có file xlsx đi kèm: chạy `gt export-xlsx` (5.4) để xlsx khớp YAML.
+**Thêm edge case** (`origin: qa`): thêm một mục vào `test_cases` với `tc_id` dạng `TC-<ac_id>-<mô-tả>`, `status: approved`, `origin: qa`. Với `flow` (nhiều bước), bước sau dùng `{{tên}}` cho giá trị đã `capture` ở bước trước. Assertion hợp lệ: `eq`, `ne`, `exists`, `absent`, `type`, `len_eq`, `len_gte`, `contains`. **AC giao diện** khai trong `uncovered_acs` kèm lý do.
 
-#### Đường B: sửa `test-cases.xlsx` (Excel)
+**Hoàn tất:**
+1. `module-map.yaml`: điền `paths` thật (glob tới file khai báo route của từng module), xoá dòng `qc-agent:todo`, đổi `status: approved`.
+2. `test-cases.yaml`: đổi `status:` ngoài cùng (cạnh `stories:`) thành `approved`; khi đó mọi TC phải là `approved` hoặc `rejected`.
+3. Có xlsx đi kèm thì chạy `gt export-xlsx` để xlsx khớp YAML.
 
-Mở `.qc-agent/ground-truth/test-cases.xlsx` bằng **Excel hoặc LibreOffice** (Google Sheets có thể làm mất sheet ẩn và danh sách chọn).
-
-| Sheet | Nội dung | QA làm gì |
-|---|---|---|
-| `HuongDan` | hướng dẫn ngay trong file | đọc |
-| `Catalog` | PRD, model, `status` của catalog | đổi `status` thành `approved` khi xong |
-| `TestCases` | mỗi dòng một test case | đổi `status` (có danh sách chọn), điền `rejected_reason`/`notes`/`priority`, thêm dòng mới |
-| `Steps` / `Assertions` | bước HTTP và assertion của từng TC | sửa/thêm bước và assertion |
-| `Uncovered` / `Waivers` | AC không kiểm được bằng HTTP; waiver coverage | thêm/sửa; **duyệt waiver** (`approved`) |
-| `SpecConflicts` | chỗ mã nguồn khác PRD (chỉ khi dùng chế độ agent) | đổi `open` → `resolved` sau khi quyết |
-| `Coverage` | từng AC/kỹ thuật/API: phủ, miễn hay **gap** | đọc để biết còn thiếu gì |
-
-Quy ước ô: tiêu đề **vàng** = sửa được, **xám** = chỉ đọc (`origin`, `evidence`). Cột nhận theo **tên** nên đổi thứ tự cột được. **Không xoá sheet ẩn `_meta`** (nó giữ ảnh chụp để gộp ba chiều).
-
-Luật quan trọng:
-- Chỉ **duyệt** (`status`, `rejected_reason`, `notes`, `priority`): TC giữ `origin: llm`.
-- **Sửa nội dung** TC do LLM sinh (title, `ac_refs`, bước, assertion…): được phép, nhưng TC đó thành `origin: qa` (giữ `tc_id`) để `regen` không ghi đè công sức của bạn.
-- **TC mới**: thêm dòng ở `TestCases` với `tc_id = NEW-<tên>` (ví dụ `NEW-1`), rồi thêm các dòng `Steps`/`Assertions` **cùng** `tc_id`. Mặc định `approved` và `origin: qa`; import sẽ cấp `tc_id` thật.
-- **Xoá**: không xoá được dòng TC do LLM sinh (hãy `rejected` kèm lý do); TC `origin: qa` xoá được.
-- Ô công thức (bắt đầu bằng `=`) là **lỗi**.
-
-Sau khi sửa xong **phải đồng bộ về YAML** (mục 5.4), vì gate đọc YAML.
+**Đường B: Excel.** Mở `test-cases.xlsx` bằng Excel hoặc LibreOffice (Google Sheets có thể làm mất sheet ẩn và danh sách chọn). Sheet `TestCases`: đổi `status`, điền `rejected_reason`/`notes`, thêm dòng mới; `Steps`/`Assertions`: sửa bước và assertion; `Coverage`: xem còn thiếu gì. Tiêu đề **vàng** = sửa được, **xám** = chỉ đọc; **không xoá sheet ẩn `_meta`**.
+- Chỉ **duyệt** (`status`, `rejected_reason`, `notes`): TC giữ `origin: llm`. **Sửa nội dung** TC do LLM sinh: được, nhưng TC thành `origin: qa` để `regen` không đè.
+- **TC mới**: thêm dòng `TestCases` với `tc_id = NEW-<tên>`, rồi thêm dòng `Steps`/`Assertions` cùng `tc_id`. TC do LLM sinh không xoá được (hãy `rejected`). Ô công thức (bắt đầu bằng `=`) là lỗi.
+- Sửa xong **phải đồng bộ về YAML** (5.4), vì gate đọc YAML.
 
 ### 5.3. Điều kiện để `gt validate` xanh
 
-`gt validate` là cổng kiểm **offline, tất định, không LLM** (không mạng, không secret). Chạy thử trước khi push:
+`gt validate` là cổng kiểm **offline, tất định, không LLM**. Chạy thử trước khi push:
 
 ```bash
-# Khai báo một lần cho tiện (digest bên dưới là bản hiện tại; xin team qc-agent bản mới khi nâng cấp)
-export QC_IMAGE=ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12
-qc() { docker run --rm -v "$PWD:/sut" "$QC_IMAGE" "$@"; }       # Linux: thêm --user "$(id -u):$(id -g)" -e HOME=/tmp
-
-qc gt validate --sut-root /sut
-echo $?        # 0 sạch · 1 còn việc cho người · 3 file hỏng/sai schema
+docker run --rm -v "$PWD:/sut" <IMAGE> gt validate --sut-root /sut     # exit 0 sạch · 1 còn việc cho người · 3 file hỏng/sai schema
 ```
 
-```powershell
-# PowerShell
-$env:QC_IMAGE = "ghcr.io/muteen-felix/qc-agent@sha256:c662229edbd0b92b330547ed7a4cafaf612ce4b7ae86ddfada025d118441ab12"
-function qc { docker run --rm -v "${PWD}:/sut" $env:QC_IMAGE @args }
-qc gt validate --sut-root /sut
-```
+Exit 1 là bình thường cho tới khi QA làm xong. Lỗi thường gặp:
 
-(Repo private trên GHCR: `docker login ghcr.io` trước.)
+| Báo | Cách xử lý |
+|---|---|
+| `N test case còn draft` / `catalog còn status: draft` | đổi sang `approved` hoặc `rejected`; đổi `status` ngoài cùng thành `approved` |
+| `test case rejected thiếu rejected_reason` | điền `rejected_reason` |
+| `module-map còn status: draft` / `còn dấu qc-agent:todo` | điền `paths`, xoá TODO, `status: approved` |
+| `khác bản render lại … (drift)` | đừng sửa `tests_gt/`: hoàn nguyên file, sửa `test-cases.yaml`, hoặc `gt regen` |
+| xlsx lệch YAML | `gt import-xlsx` (5.4) |
+| `coverage ac 24/25 … dưới ngưỡng 100%` | thêm TC cho AC đó, hoặc khai `uncovered_acs` kèm lý do |
+| `coverage api 9/12 … còn thiếu: DELETE /orders/{id} 422` | thêm TC, hoặc `waivers` có lý do |
 
-**Exit 1 là bình thường** cho tới khi QA làm xong. Bảng dưới là các lỗi thường gặp và cách xử lý (chữ thông báo có thể khác đôi chút):
-
-| `gt validate` báo | Nghĩa | Cách xử lý |
-|---|---|---|
-| `N test case còn draft, cần duyệt` | còn TC `draft` | đổi sang `approved` hoặc `rejected` |
-| `catalog còn status: draft` | chưa chốt catalog | đổi `status` ngoài cùng thành `approved` |
-| `test case rejected thiếu rejected_reason` | loại mà không nêu lý do | điền `rejected_reason` |
-| `module-map còn status: draft` / `còn dấu qc-agent:todo` | chưa điền module-map | điền `paths`, xoá TODO, `status: approved` (mục 5.2) |
-| `khác bản render lại … (drift)` | ai đó sửa tay `tests_gt/` | **đừng sửa `tests_gt/`**: hoàn nguyên file, sửa `test-cases.yaml`, hoặc chạy `gt regen` |
-| xlsx lệch YAML ("QA đã quyết trong xlsx mà YAML chưa thấy") | sửa Excel mà chưa import | `gt import-xlsx` (mục 5.4) |
-| `coverage ac 24/25 (96%) dưới ngưỡng 100%` | còn AC chưa có TC `approved` | thêm TC cho AC đó, hoặc khai `uncovered_acs` kèm lý do |
-| `coverage api 9/12 … còn thiếu: DELETE /orders/{id} 422` | còn ô (endpoint × mã trạng thái) trong OpenAPI chưa có TC | thêm TC, hoặc `waivers` có lý do (bên dưới) |
-
-**Bộ chấm coverage** (chỉ có khi repo có `openapi.snapshot.json`, tức đã truyền `--openapi`): mặc định đòi **100%** ở ba chiều. Chấm **chỉ TC `approved`**. Catalog còn `draft` thì thiếu coverage chỉ là *cảnh báo*; QA đổi catalog sang `approved` thì thiếu coverage là **lỗi**. Mỗi gap có hai cách đóng:
+**Bộ chấm coverage** (chỉ có khi có `openapi.snapshot.json`): mặc định đòi **100%** ở ba chiều (AC, kỹ thuật, API), chấm **chỉ TC `approved`**. Catalog còn `draft` thì thiếu coverage chỉ là cảnh báo; catalog `approved` thì là **lỗi**. Đóng gap bằng TC mới (ưu tiên), hoặc miễn có lý do (`target` phải giống từng ký tự id gap mà validate in ra):
 
 ```yaml
-# Cách 1 (ưu tiên): thêm TC có đúng bước/mã trạng thái mà gap yêu cầu.
-
-# Cách 2: miễn có lý do. `target` phải GIỐNG TỪNG KÝ TỰ id gap mà validate in ra.
 waivers:
 - kind: api                                        # api | technique
   target: "DELETE /orders/{order_id} 422"
@@ -578,116 +283,65 @@ waivers:
   status: approved                                 # waiver chỉ có hiệu lực khi QA đặt approved
 ```
 
-Ngưỡng nằm ở `.qc-agent/ground-truth/coverage-policy.yaml` (do QA khoá bằng CODEOWNERS), ví dụ `thresholds: {ac: 1, technique: 1, api: 0.9}`. Chi tiết các ràng buộc OpenAPI nào sinh ra yêu cầu nào: [groundtruth.md §5b](groundtruth.md).
+Ngưỡng nằm ở `.qc-agent/ground-truth/coverage-policy.yaml` (QA khoá bằng CODEOWNERS). Chi tiết: [groundtruth.md §5b](groundtruth.md).
 
-Xanh rồi: `git add .qc-agent && git commit -m "qa: duyệt test case orders" && git push`. Check `groundtruth / qc-groundtruth / gt validate (<project>)` trên PR chuyển xanh → team QA (code owner) **Approve** → **Merge**.
+Xanh rồi: `git add .qc-agent && git commit -m "qa: duyệt test case" && git push`. Check `gt validate` trên PR xanh → QA (code owner) **Approve** → **Merge**.
 
-### 5.4. Đồng bộ Excel với YAML (`gt import-xlsx`)
+### 5.4. Đồng bộ Excel với YAML
 
-Chỉ cần khi QA làm việc trên Excel. Quan hệ hai chiều:
-
-```
-test-cases.yaml  ◄────────── gt import-xlsx ──────────  test-cases.xlsx  ◄── QA sửa trong Excel
-   (gate đọc file này)                                        ▲
-        └────────── gt generate | regen | export-xlsx ────────┘
-                  `gt validate`: hai file phải KHỚP NHAU
-```
-
-Quy trình sau khi sửa xong Excel (đóng file Excel trước khi chạy):
+Chỉ cần khi QA làm việc trên Excel. Đóng file Excel trước khi chạy (`qc` = `docker run --rm -v "$PWD:/sut" <IMAGE>`):
 
 ```bash
 qc gt import-xlsx --sut-root /sut --dry-run     # 1. xem sẽ đổi gì, chưa ghi
-qc gt import-xlsx --sut-root /sut               # 2. ghi vào YAML; cấp tc_id thật cho TC mới; xuất lại xlsx
-qc gt validate    --sut-root /sut               # 3. phải xanh (exit 0)
-git add .qc-agent && git commit -m "qa: duyệt test case (import từ Excel)"   # 4. commit CẢ HAI file
-git push
+qc gt import-xlsx --sut-root /sut               # 2. ghi vào YAML, cấp tc_id thật cho TC mới, xuất lại xlsx
+qc gt validate    --sut-root /sut               # 3. phải xanh
+git add .qc-agent && git commit -m "qa: duyệt test case (import từ Excel)" && git push
 ```
 
-Điểm cần nhớ:
+- **Commit cả `test-cases.yaml` lẫn `test-cases.xlsx`.** Chỉ commit xlsx thì gate không thấy quyết định của bạn.
+- Gộp **ba chiều**: hai bên cùng sửa một trường theo hai cách khác nhau là *xung đột*: lệnh thoát 1, **không ghi gì**, in `tc_id.trường`; sửa tay một bên rồi chạy lại.
+- Lỡ sửa YAML tay mà xlsx cũ: chạy `gt export-xlsx` (từ chối ghi đè nếu xlsx có sửa chưa import; `--force` chỉ khi chắc chắn bỏ các sửa đó).
 
-- **Commit cả `test-cases.yaml` lẫn `test-cases.xlsx`.** Chỉ commit xlsx là gate không thấy quyết định của bạn.
-- Gộp **ba chiều** (ảnh chụp lúc xuất / xlsx / YAML): một bên sửa thì lấy bên đó. **Hai bên cùng sửa một trường theo hai cách khác nhau** là *xung đột*: lệnh thoát exit 1, **không ghi gì**, in `tc_id.trường`; sửa tay một bên rồi chạy lại.
-- Ô sai (JSON hỏng, công thức `=…`, sửa cột chỉ đọc) báo lỗi kèm **địa chỉ ô**.
-- Lỡ sửa YAML tay (đường A) mà xlsx cũ: `gt validate` chỉ **cảnh báo**; chạy `qc gt export-xlsx --sut-root /sut` để xlsx khớp. Lệnh này từ chối ghi đè nếu xlsx có sửa chưa import (thêm `--force` chỉ khi chắc chắn bỏ các sửa đó).
-- `gt regen` (do bot chạy khi PRD đổi) tự gộp xlsx chưa import vào YAML trước khi merge, nên sửa của QA không mất.
+### 5.5. Sau khi merge
 
-### 5.5. Sau khi merge: gate chạy test case đã duyệt
+Suite `gt-functional` nằm trong `.qc-agent/suites/`; mọi PR của dev chạy các TC `approved`, đỏ thì chặn merge (khi đã bật required check ở 4.3). Không có TC `approved` nào thì suite **fail**. TC `approved` mà AC đã bị xoá khỏi PRD thì gate báo lỗi tới khi QA sửa `ac_refs` hoặc `rejected`.
 
-Từ khi PR Ground-Truth được merge, suite `gt-functional` nằm trong `.qc-agent/suites/`. Ở mọi PR của dev, gate chạy **các TC `approved`**, đỏ thì chặn merge (khi đã bật required check ở 4.3).
-
-Gate không có TC `approved` nào thì suite **fail** (gate rỗng không được xanh). TC `approved` mà AC đã bị xoá khỏi PRD thì gate báo lỗi cho tới khi QA sửa `ac_refs` hoặc chuyển `rejected` (chủ ý: đỏ để QA biết PRD đã bỏ một tính năng).
-
-**PRD đổi lần sau** (BA/Dev push lên `main`): bot chạy `gt regen` trên nhánh bot và xếp commit mới lên trên:
-- **Giữ nguyên văn** mọi TC `approved`, `rejected` và `origin: qa`.
-- Thay các TC `draft` do LLM; TC mới luôn là `draft` → QA duyệt phần mới rồi đi lại mục 5.3.
-- TC đã `rejected` không bị đề xuất lại (`tc_id` băm theo nội dung).
-
-Một PRD khác là một nhánh và PR riêng (`qc-agent/gt/<prd-id>`).
+**PRD đổi lần sau:** bot chạy `gt regen` trên nhánh bot. **Giữ nguyên văn** mọi TC `approved`, `rejected`, `origin: qa`; thay các TC `draft` do LLM; TC mới luôn là `draft` → QA duyệt phần mới rồi đi lại 5.3. Mỗi PRD là một nhánh và PR riêng.
 
 ---
 
-## 6. Lưu ý và Giới hạn phạm vi
+## 6. Giới hạn
 
-### Phạm vi của tài liệu này
+**Phạm vi.** Tài liệu này chỉ gồm **Ground-Truth** (PRD → test case → QA duyệt → `gt validate` → gate). Bước chọn phạm vi theo diff, mức nghiêm trọng, PR review và Jira nằm ở gate chung: xem [usage-ci.md](usage-ci.md) và [onboarding.md](onboarding.md). AC giao diện **không sinh test** (khai `uncovered_acs`).
 
-Tài liệu này **chốt ở Sprint 1: kiểm thử chức năng API dựa trên PRD**, gồm: PRD → test case (LLM đề xuất) → QA duyệt (YAML/Excel) → `gt validate` → gate chặn merge bằng TC đã duyệt.
+**Quyền riêng tư và chi phí.**
+- **PRD và danh sách endpoint OpenAPI được gửi tới Anthropic.** Xác nhận với bảo mật/pháp chế trước khi chạy với PRD thật. Mọi lời gọi LLM ghi `egress.jsonl` **trước khi gửi**; log không chứa nội dung PRD, prompt hay phản hồi.
+- Chế độ mặc định là **một lời gọi LLM** mỗi lần sinh (tối đa 16.000 token ra), cộng tối đa một lần sửa khi sai định dạng. Số token nằm trong `summary.json`.
 
-**Chưa nằm trong tài liệu này** (sẽ bổ sung ở các phiên bản sau khi hoàn thiện):
-
-- **Sprint 2:** điều phối chọn test thông minh (Diff Agent chọn suite theo thay đổi của PR, `selection.json`).
-- **Sprint 3:** kiểm thử giao diện UI (Midscene) và mô hình mức độ nghiêm trọng mới của gate.
-
-Các AC giao diện (nút bấm, hiển thị…) trong PRD **không sinh test ở Sprint 1**: chúng được khai `uncovered_acs`.
-
-### Quyền riêng tư và chi phí
-
-- **PRD và danh sách endpoint OpenAPI được gửi tới Anthropic** (nhà cung cấp LLM duy nhất). Hãy xác nhận với bộ phận bảo mật/pháp chế của công ty về việc gửi PRD ra ngoài trước khi chạy với PRD thật.
-- Mọi lời gọi LLM ghi `egress.jsonl` **trước khi gửi** (artifact của workflow, giữ 14 ngày). Log không chứa nội dung PRD, prompt hay phản hồi.
-- Chi phí một lần sinh: **một lời gọi LLM** (tối đa 16 000 token ra), cộng tối đa một lần sửa khi đầu ra sai định dạng. Số token nằm trong `summary.json`. Đặt spend limit trong Anthropic Console (mục 4.1) để chặn chi phí ngoài dự kiến.
-
-### Chế độ agent (tuỳ chọn, mặc định TẮT)
-
-Workflow có tuỳ chọn `agent: true`: LLM đọc cả **mã nguồn** repo qua nhiều lượt để sinh test sát hơn. Lưu ý:
-- **Mã nguồn bị gửi tới Anthropic**; chỉ bật khi đã được phép, và chạy `gitleaks` xoá bí mật đã commit trước.
-- Chỉ dùng được với Claude (cần `ANTHROPIC_API_KEY`).
-- **Chưa được kiểm chứng với API thật**; tài liệu này không khuyến nghị dùng cho onboarding. Chi tiết: [groundtruth.md §5c](groundtruth.md).
-- Muốn **đo thử có kiểm soát chi phí** trên CI của repo SUT (trưởng nhóm SUT làm): xem [measure-sprint-1-on-sut.md](measure-sprint-1-on-sut.md).
-
-### Giới hạn và lưu ý vận hành
+**Chế độ agent** (`agent: true`, **tắt mặc định**): LLM đọc cả **mã nguồn** nhiều lượt để sinh test sát hơn. **Mã nguồn bị gửi tới Anthropic**: chỉ bật khi được phép, và chạy `gitleaks` trước. Chỉ dùng với Claude. Đã chạy thật một lượt trên một SUT (kết quả và giới hạn: `eval/vahan/EVIDENCE.md`); đo có kiểm soát chi phí trên CI: [measure-sprint-1-on-sut.md](measure-sprint-1-on-sut.md); chi tiết: [groundtruth.md §5c](groundtruth.md).
 
 | Giới hạn | Ghi chú |
 |---|---|
-| Chỉ kiểm thử **HTTP/JSON API** | không có UI, hiệu năng, bảo mật trong luồng Ground-Truth |
-| Chất lượng test phụ thuộc chất lượng PRD | AC mơ hồ thì TC do LLM đoán, QA phải loại |
-| LLM chỉ **đề xuất** | QA phải duyệt mọi TC; **đừng duyệt TC bạn không hiểu vì sao nó đúng** |
-| Tối đa 5 PRD/lần push; mỗi PRD ≤ 256 KB | chia nhỏ hoặc dùng *Run workflow* |
-| Không sửa tay `tests_gt/` | sinh máy, sửa là *drift* (exit 1). Đổi image sang phiên bản có mẫu khác cũng gây drift: chạy `gt regen` rồi commit |
-| PR từ **fork** không có secret | job `generate` chỉ chạy trên push/`workflow_dispatch` của chính repo; trên PR chỉ chạy `validate` (chỉ-đọc, không mạng) |
-| Image phải ghim theo **digest** | không dùng tag trôi; muốn nâng cấp thì đổi digest trong `qc-groundtruth.yml` |
-| Repo private + GitHub Free | không có branch protection: khoá QA chỉ là quy ước |
+| Chỉ kiểm thử **HTTP/JSON API** | không UI, hiệu năng, bảo mật trong luồng Ground-Truth |
+| **Chưa hỗ trợ auth động** | header trong test case là chuỗi tĩnh (không đọc token từ env, không tự đăng nhập). Endpoint đòi đăng nhập thì cần môi trường test tắt auth, hoặc QA thêm header tĩnh của tài khoản test (file được commit: **đừng để khoá thật**). AC về xác thực sẽ không kiểm được |
+| Chất lượng test phụ thuộc chất lượng PRD | AC mơ hồ thì LLM đoán, QA phải loại; LLM chỉ **đề xuất**, **đừng duyệt TC bạn không hiểu vì sao đúng** |
+| PRD lớn | lần thử một lời gọi với PRD 98 AC bị lỗi (nghi do vượt 16.000 token đầu ra, **chưa xác minh**): nên chia PRD nhỏ theo story |
+| Tối đa 5 PRD/lần push, mỗi PRD ≤ 256 KB | chia nhỏ hoặc dùng *Run workflow* |
+| Không sửa tay `tests_gt/` | sinh máy, sửa là *drift*; đổi image sang bản có mẫu khác cũng gây drift: chạy `gt regen` rồi commit |
+| PR từ **fork** không có secret | `generate` chỉ chạy trên push/`workflow_dispatch` của chính repo; trên PR chỉ chạy `validate` |
+| Image ghim theo **digest** | muốn nâng cấp thì đổi digest trong `qc-groundtruth.yml` |
 
 ---
 
-## Phụ lục: Checklist onboarding (in ra tick dần)
+## Phụ lục: Checklist onboarding
 
-**Chuẩn bị**
-- [ ] PRD đúng quy chuẩn (`id:`, `## US-n`, `- AC-n.m:` có method/path/status), `gt info` ra đúng số AC
-- [ ] `openapi.json` đã commit ở gốc repo
-- [ ] Có digest image từ team qc-agent; có team QA với quyền Write; có API key LLM
-
-**Tích hợp**
-- [ ] Chạy `init` (đã thử `--dry-run`), commit, mở PR onboarding, merge vào `main`
-- [ ] Secret `ANTHROPIC_API_KEY` (+ `qc_bot_token` nếu có), đặt sau cùng; spend limit đã đặt trong Console
-- [ ] Bật *Allow GitHub Actions to create and approve pull requests*
-
-**Chạy thử**
-- [ ] Actions → qc-groundtruth: *Run workflow* với `prd_path` → có PR "Ground-Truth: `<prd-id>`"
-- [ ] QA duyệt (YAML hoặc Excel + `gt import-xlsx`), điền module-map, catalog `approved`
-- [ ] `gt validate` exit 0, check xanh trên PR
-
-**Khoá chặt**
-- [ ] Branch protection `main`: review Code Owners + required check `groundtruth / qc-groundtruth / gt validate (<project>)`
-- [ ] Kiểm tay 3 bước ở mục 4.3
+- [ ] PRD đúng quy chuẩn, `gt info` ra đúng số AC; `openapi.json` đã commit
+- [ ] Có digest image, team QA (quyền Write), API key LLM
+- [ ] `init` (đã thử `--dry-run`) → PR onboarding → merge vào `main`
+- [ ] Secret `ANTHROPIC_API_KEY` (đặt sau cùng, đã có spend limit); bật *Allow GitHub Actions to create and approve pull requests*
+- [ ] *Run workflow* với `prd_path` → có PR "Ground-Truth: `<prd-id>`"
+- [ ] QA duyệt (YAML hoặc Excel + `gt import-xlsx`), điền module-map, catalog `approved`; `gt validate` exit 0
+- [ ] Branch protection `main` + kiểm tay 3 bước ở 4.3
 - [ ] QA approve và merge PR Ground-Truth đầu tiên → gate dev bắt đầu chạy TC đã duyệt
 
-Tài liệu tham chiếu sâu hơn: [groundtruth.md](groundtruth.md) (luồng, bộ chấm coverage, Excel, bẫy), [groundtruth-real-sut.md](groundtruth-real-sut.md) (chạy trên SUT thật), [onboarding.md](onboarding.md) (Quality Gate chung).
+Tham khảo sâu: [groundtruth.md](groundtruth.md) (luồng, bộ chấm coverage, Excel), [groundtruth-real-sut.md](groundtruth-real-sut.md) (chạy trên SUT thật), [onboarding.md](onboarding.md) (Quality Gate chung).
