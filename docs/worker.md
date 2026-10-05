@@ -110,6 +110,8 @@ Dành cho SUT có tích hợp với hệ thống ngoài (API bên thứ ba, cổ
 2. **Tầng 2** (suite `integration`): luồng đầy đủ với hệ thống ngoài được phát lại từ bản ghi HAR trong `.qc-agent/har/`. Guard cố định `update:false`, `notFound:'abort'`, chặn host ngoài allowlist; request thiếu thành `har_covers_all_requests=false`. **Chặn merge.**
 3. **Tầng 3** (suite `integration-live`): cùng luồng, không HAR. Discovery chỉ chạy manual, một luồng, không retry; fail nghĩa là cần kiểm tra hệ thống ngoài và ghi lại HAR. **Không chặn.**
 
+Khung của cả ba tầng do `init` sinh dạng `.example` (chưa hoạt động, trung tính, không gắn với SUT nào); tầng 1 và 2 chỉ **chặn merge** khi project đã đăng ký suite `integration` trong `blocking_suites` của policy (xem [usage-ci.md](usage-ci.md) mục "Integration với hệ thống ngoài qua HAR").
+
 HAR ghi bằng tài khoản thử nghiệm/dữ liệu ẩn danh, qua `tools/har_scrub.py`, grep credential, và người thứ hai xem trước khi commit (vận hành: [usage-ci.md](usage-ci.md) mục "Integration với hệ thống ngoài qua HAR"). Tầng 2 xanh chỉ chứng minh PR tương thích với hợp đồng đã ghi, không chứng minh hệ thống ngoài thật đang hoạt động.
 
 **Chưa kiểm chứng:** với SUT có browser extension, request phát ra từ service worker có thể không đi qua `BrowserContext.routeFromHAR`. Nếu không intercept được và extension không đổi được base URL, tầng 2 chỉ phủ phần trước extension và đoạn extension ↔ hệ thống ngoài thuộc tầng 3 (phải ghi rõ trong report). Cần spike trên một SUT như vậy; chưa có PR thật nào chạy suite này.

@@ -119,7 +119,7 @@ login:
   json:
     username: {env: QC_TEST_USERNAME}     # giá trị lấy từ biến môi trường lúc chạy, KHÔNG viết thẳng vào file
     password: {env: QC_TEST_PASSWORD}
-  token_path: $.access_token              # chỗ lấy token trong response (tập con JSONPath)
+  token_path: $.token                     # chỗ lấy token trong response (tập con JSONPath); ĐỔI theo đúng tên trường trong response đăng nhập của SUT
 header: {name: Authorization, scheme: Bearer}
 scope: session                            # session: đăng nhập một lần cho cả lượt chạy; case: mỗi test case một phiên
 ```
