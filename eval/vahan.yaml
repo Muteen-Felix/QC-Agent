@@ -1,0 +1,190 @@
+# Đo Ground-Truth (agent) trên MỘT SUT thật: vahan-automation / apps/api-server (FastAPI). Dùng với tools/eval_gt_sut.py, đường dẫn tương đối tính từ FILE NÀY.
+# Chuẩn bị một lần:  powershell -ExecutionPolicy Bypass -File eval\vahan\prepare.ps1   (snapshot đúng commit + venv; xem runs\vahan-sut.source)
+# Kiểm khô $0:       python tools/eval_gt_sut.py --config eval/vahan.yaml --check-only
+#
+# Công cụ đo là chung cho mọi SUT; mọi thứ riêng của vahan (PRD, mutant, nhãn, lớp bọc auth) nằm trong eval/vahan.yaml và eval/vahan/, không có trong src/ hay tools/.
+name: vahan-api-server
+sut_root: ../runs/vahan-sut          # snapshot sạch: không có tests/ của dev và không có .venv (agent chỉ đọc được đây)
+prd: ../../vahan-automation/docs/prd/vahan.md
+openapi: vahan/openapi.json          # xuất từ chính mã snapshot (fastapi_app.openapi()), không viết tay
+
+# NHÃN DO AI SOẠN, chưa có QA người ký. Tài liệu (docs/groundtruth-real-sut.md) yêu cầu người gán nhãn không phải người viết prompt/PRD và tốt nhất là QA:
+# trước khi dùng số đo làm bằng chứng cho hội đồng, một người đọc lại `non_testable` và `mutants` bên dưới rồi đổi dòng này thành tên người đó.
+labeled_by: "AI draft (Claude Sonnet 5.5, 2026-10-03), viết từ PRD + mã SUT TRƯỚC khi agent chạy lần nào; CHƯA có QA duyệt"
+
+# AC không kiểm được bằng HTTP thuần trong môi trường đo (runner-less, auth mở). Loại khỏi mẫu số coverage (a). Lý do theo nhóm:
+#   Socket.IO / Chrome extension / React UI: toàn bộ US-2 (trừ 2.6), US-3, US-6, US-7, US-8, US-15, US-16 và AC-4.8, 5.4, 5.5, 9.1, 9.2, 10.1, 13.4, 13.5
+#   cần một runner đã kết nối (Socket.IO) để có Job hoặc trạng thái runner: AC-4.1, 4.3, 4.5, 4.6, 5.1, 5.2, 9.3-9.10, 10.2-10.4, 11.4, 11.6, 13.1
+#   không quan sát được qua HTTP: AC-14.2 (BOM trong file CSV, sự kiện Socket.IO)
+#   hồ sơ đo TẮT auth trong bản sao (eval/vahan/prepare.ps1 vá app/main.py): AC-1.6, 1.8 (401 do middleware); AC-1.4 cần server CHƯA cấu hình auth
+# (Lần đo 1 dùng lớp bọc ASGI gắn token; agent đọc mã thấy middleware đòi Bearer nên waive gần hết endpoint, nên đã thay bằng hồ sơ tắt auth ngay trong mã bản sao.)
+non_testable:
+  - AC-1.4
+  - AC-1.6
+  - AC-1.8
+  - AC-2.1
+  - AC-2.2
+  - AC-2.3
+  - AC-2.4
+  - AC-2.5
+  - AC-3.1
+  - AC-3.2
+  - AC-3.3
+  - AC-3.4
+  - AC-3.5
+  - AC-3.6
+  - AC-4.1
+  - AC-4.3
+  - AC-4.5
+  - AC-4.6
+  - AC-4.8
+  - AC-5.1
+  - AC-5.2
+  - AC-5.4
+  - AC-5.5
+  - AC-6.1
+  - AC-6.2
+  - AC-6.3
+  - AC-6.4
+  - AC-6.5
+  - AC-7.1
+  - AC-7.2
+  - AC-7.3
+  - AC-7.4
+  - AC-7.5
+  - AC-7.6
+  - AC-7.7
+  - AC-7.8
+  - AC-8.1
+  - AC-8.2
+  - AC-8.3
+  - AC-8.4
+  - AC-8.5
+  - AC-8.6
+  - AC-9.1
+  - AC-9.2
+  - AC-9.3
+  - AC-9.4
+  - AC-9.5
+  - AC-9.6
+  - AC-9.7
+  - AC-9.8
+  - AC-9.9
+  - AC-9.10
+  - AC-10.1
+  - AC-10.2
+  - AC-10.3
+  - AC-10.4
+  - AC-11.4
+  - AC-11.6
+  - AC-13.1
+  - AC-13.4
+  - AC-13.5
+  - AC-14.2
+  - AC-15.1
+  - AC-15.2
+  - AC-15.3
+  - AC-15.4
+  - AC-15.5
+  - AC-15.6
+  - AC-16.1
+  - AC-16.2
+  - AC-16.3
+  - AC-16.4
+
+sut:
+  start:                             # công cụ tự bật/tắt SUT trên BẢN SAO của sut_root; mỗi lần bật là một tiến trình mới, repository in-memory và thư mục runtime/ trong bản sao nên dữ liệu luôn sạch
+    cmd: 'C:\Dev\personal\QC-Agent\runs\vahan-venv\Scripts\python.exe -m uvicorn app.main:application --host 127.0.0.1 --port {port}'
+    cwd: .
+    health_path: /api/health
+    env:                             # thông tin đăng nhập CHỈ cho phòng thí nghiệm, không phải bí mật thật; agent không nhìn thấy (không nằm trong sut_root)
+      VAHAN_UI_AUTH_USERNAME: lab-operator
+      VAHAN_UI_AUTH_PASSWORD: lab-only-password-0001
+      VAHAN_UI_AUTH_TOKEN_SECRET: lab-only-token-secret-0123456789abcdef
+    timeout_s: 60
+  copy_ignore: [".git", "__pycache__", ".pytest_cache", "runtime"]
+
+thresholds: {ac_coverage: 0.9, green_rate: 0.9, mutant_kill_rate: 0.9}
+
+# Mutant: mỗi cái vi phạm đúng một AC kiểm được, hợp lệ theo schema, không gây 5xx với đầu vào thường. `find` khớp đúng 1 lần (công cụ báo lỗi nếu không).
+# Viết trước khi có bất kỳ test case nào của agent. Chỉ áp lên bản sao; snapshot và repo SUT không bị sửa.
+mutants:
+  - id: M01-login-accepts-any-credentials
+    description: đăng nhập chỉ cần username và password không rỗng, không so với cấu hình
+    acs: [AC-1.3]
+    required: true
+    edits:
+      - {file: app/api/auth.py, find: 'if not credentials_match(command.username, command.password):', replace: 'if not (command.username and command.password):'}
+  - id: M02-me-returns-wrong-field
+    description: GET /api/auth/me trả `user` thay vì `username`
+    acs: [AC-1.5]
+    edits:
+      - {file: app/api/auth.py, find: 'return {"username": username}', replace: 'return {"user": username}'}
+  - id: M03-login-username-max-129
+    description: giới hạn độ dài username của login lệch một (128 -> 129)
+    acs: [AC-1.2]
+    edits:
+      - {file: app/api/auth.py, find: 'username: str = Field(min_length=1, max_length=128)', replace: 'username: str = Field(min_length=1, max_length=129)'}
+  - id: M04-runners-list-201
+    description: GET /api/runners trả 201 thay vì 200
+    acs: [AC-2.6]
+    edits:
+      - {file: app/api/runners.py, find: '@router.get("", response_model=list[Runner], response_model_by_alias=True)', replace: '@router.get("", status_code=201, response_model=list[Runner], response_model_by_alias=True)'}
+  - id: M05-legacy-source-not-410
+    description: source "old" không còn bị từ chối 410 mà đi tiếp tới bước tìm runner
+    acs: [AC-4.4]
+    required: true
+    edits:
+      - {file: app/api/jobs.py, find: 'if command.source != ReportSource.NEW:', replace: 'if command.source not in (ReportSource.NEW, ReportSource.OLD):'}
+  - id: M06-offline-runner-400
+    description: tạo Job cho runner không tồn tại trả 400 thay vì 404
+    acs: [AC-4.2]
+    edits:
+      - {file: app/api/jobs.py, find: 'status_code=404, detail="Runner is offline or does not exist."', replace: 'status_code=400, detail="Runner is offline or does not exist."'}
+  - id: M07-unknown-job-400
+    description: job_id không tồn tại trả 400 thay vì 404, ở cả GET /jobs/{id} và POST /jobs/{id}/cancel (cùng một dòng mã xuất hiện hai lần)
+    acs: [AC-4.7, AC-5.3]
+    edits:
+      - {file: app/api/jobs.py, find: 'status_code=404, detail="Job not found."', replace: 'status_code=400, detail="Job not found."', count: 2}
+  - id: M08-verify-missing-file-minus-one
+    description: POST /jobs/reports/verify trả -1 thay vì 0 cho file không tồn tại
+    acs: [AC-11.3]
+    edits:
+      - {file: app/api/excel.py, find: 'session_ids.get(name))) else 0)', replace: 'session_ids.get(name))) else -1)'}
+  - id: M09-nodata-missing-410
+    description: GET /jobs/{id}/no-data khi không có báo cáo trả 410 thay vì 404
+    acs: [AC-11.7]
+    edits:
+      - {file: app/api/excel.py, find: 'status_code=404, detail="No-data report not found."', replace: 'status_code=410, detail="No-data report not found."'}
+  - id: M10-report-file-missing-400
+    description: GET /jobs/reports/file/{name} khi không có file trả 400 thay vì 404
+    acs: [AC-11.8]
+    edits:
+      - {file: app/api/excel.py, find: 'status_code=404, detail="Excel file not found.")', replace: 'status_code=400, detail="Excel file not found.")'}
+  - id: M11-schedule-default-7
+    description: chu kỳ kiểm tra UI mặc định là 7 ngày thay vì 3
+    acs: [AC-12.1]
+    edits:
+      - {file: app/models/ui_health.py, find: 'DEFAULT_UI_HEALTH_INTERVAL_DAYS = 3', replace: 'DEFAULT_UI_HEALTH_INTERVAL_DAYS = 7'}
+  - id: M12-schedule-max-366
+    description: cận trên của intervalDays lệch một (365 -> 366)
+    acs: [AC-12.3]
+    edits:
+      - {file: app/models/ui_health.py, find: 'MAX_UI_HEALTH_INTERVAL_DAYS = 365', replace: 'MAX_UI_HEALTH_INTERVAL_DAYS = 366'}
+  - id: M13-runnow-unknown-runner-409
+    description: POST /ui-health/run-now với runnerId không tồn tại trả 409 thay vì 404
+    acs: [AC-13.3]
+    edits:
+      - {file: app/api/ui_health.py, find: 'status.HTTP_404_NOT_FOUND, detail="Requested extension runner was not found."', replace: 'status.HTTP_409_CONFLICT, detail="Requested extension runner was not found."'}
+  - id: M14-log-created-200
+    description: POST /ui-health/logs trả 200 thay vì 201
+    acs: [AC-14.1]
+    required: true
+    edits:
+      - {file: app/api/ui_health.py, find: 'status_code=status.HTTP_201_CREATED,', replace: 'status_code=status.HTTP_200_OK,'}
+  # (không có M15: đã chủ động bỏ ngày 2026-10-04; giữ nguyên số M16 để các tài liệu/báo cáo cũ không lệch tên)
+  - id: M16-report-download-missing-410
+    description: tải file CSV không tồn tại trả 410 thay vì 404
+    acs: [AC-14.6]
+    edits:
+      - {file: app/api/ui_health.py, find: 'status.HTTP_404_NOT_FOUND, detail="Report file not found."', replace: 'status.HTTP_410_GONE, detail="Report file not found."'}

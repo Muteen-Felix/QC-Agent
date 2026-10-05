@@ -33,7 +33,7 @@
       "verdict_source": "deterministic_assert",
       "confidence": null,
       "rationale": null,
-      "severity_hint": "high",
+      "severity_hint": "critical",
       "evidence": [
         {
           "kind": "raw_output",

@@ -27,3 +27,15 @@ def _fixture_workers(monkeypatch):
 def _repo_on_pythonpath(monkeypatch):
     """Worker giả (tests.fixtures.workers.*) được spawn bằng `python -m`: cần gốc repo trên PYTHONPATH kể cả khi cwd là SUT root."""
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join(p for p in [str(ROOT), os.environ.get("PYTHONPATH", "")] if p))
+
+
+@pytest.fixture(autouse=True)
+def _no_stale_log_handler():
+    """`logging_setup.configure()` gắn handler vào stderr/StringIO của test; test sau ghi log vào luồng đã đóng ("Logging error: I/O operation on closed file")."""
+    yield
+    import logging
+    from qc_agent import logging_setup
+    root = logging.getLogger("qc_agent")
+    for handler in list(root.handlers):
+        if getattr(handler, logging_setup._MARK, False):
+            root.removeHandler(handler)

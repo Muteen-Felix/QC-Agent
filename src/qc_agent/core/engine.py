@@ -18,8 +18,9 @@ from jsonschema import Draft202012Validator
 from qc_agent import logging_setup, settings
 from qc_agent.core import project as project_lib
 from qc_agent.core import registry, report, runner, signature
+from qc_agent.core.findings import normalize
 from qc_agent.core.plan import ROOT, PlanError, load_plan, resolve, toposort
-from qc_agent.core.verdict import FAIL, PASS, YELLOW, GateVerdict, canary_alerts, gate_verdict
+from qc_agent.core.verdict import BLOCKED, PASSED, PASSED_WITH_WARNINGS, GateVerdict, canary_alerts, gate_verdict
 
 log = logging.getLogger("qc_agent.engine")
 SKIPPED_POLICIES = ("yellow", "fail")
@@ -173,8 +174,13 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
                                  layers=toposort(plan["tasks"]), max_parallel=(meta or {}).get("max_parallel", 1))
         wallclock = time.perf_counter() - started
 
+        severity_policy = (meta or {}).get("severity") or {}
+        task_suite = (meta or {}).get("task_suite") or {}
+        findings, infra_blockers = normalize(results, specs, task_suite=task_suite,
+                                             policy={**severity_policy, "on_skipped_gate_task": on_skipped_gate_task})
         signature_hex, gate = judge(specs, results, plan_id, sut, yellow_exit, on_skipped_gate_task,
-                                    yellow_on_fail=frozenset(plan.get("yellow_on_fail") or ()))
+                                    severity_policy=severity_policy, task_suite=task_suite,
+                                    normalized=(findings, infra_blockers))
         logging_setup.event(log, "run.end", gate=gate.value, exit_code=gate.exit_code, wallclock_s=round(wallclock, 3),
                             counts={status: sum(1 for r in results.values() if r["status"] == status) for status in
                                     sorted({r["status"] for r in results.values()})})
@@ -182,7 +188,8 @@ def _execute(plan: dict, plan_label: str | None, runs_dir, *, only, yellow_exit,
         run_id=run_id, plan_id=plan_id, plan_name=plan["name"], plan_path=plan_label or f"{run_id}/plan.yaml",
         plan_text=plan["text"], sut_id=sut, run_signature=signature_hex, generated_at=now(),
         wallclock_s=round(wallclock, 3), specs=specs, results=results, gate=gate,
-        canary=canary_alerts(results, extras), selection=(meta or {}).get("selection"),
+        canary=canary_alerts(results, extras), selection=(meta or {}).get("selection"), findings=findings,
+        severity_policy=severity_policy, task_suite=task_suite, on_skipped_gate_task=on_skipped_gate_task,
         policy_suite_count=(meta or {}).get("policy_suite_count"), selected_suite_count=(meta or {}).get("selected_suite_count"),
         **{k: v for k, v in (meta or {}).items() if k in ("project", "mode", "suite_sha256", "policy_source", "policy_sha256", "policy_ref")})
     md, _ = report.write(run_ctx, run_dir)
@@ -195,10 +202,16 @@ def select_tasks(plan: dict, only: str | None) -> list[str]:
 
 
 def judge(specs: dict, results: dict, plan_id: str, sut: str, yellow_exit: int, on_skipped_gate_task: str = "yellow",
-          yellow_on_fail: frozenset = frozenset()):
-    """verdict.gate_verdict không biết --yellow-exit; gán exit_code thật ở đây để report.json khớp exit của tiến trình."""
-    gate = gate_verdict(results, specs, skipped_gate_is_fail=(on_skipped_gate_task == "fail"), yellow_on_fail=yellow_on_fail)
-    code = {PASS: 0, YELLOW: yellow_exit, FAIL: 1}[gate.value]
+          yellow_on_fail: frozenset = frozenset(), *, severity_policy: dict | None = None,
+          task_suite: dict[str, str] | None = None, normalized=None):
+    """Compute normalized severity verdict; yellow_exit is the legacy warn-exit parameter."""
+    severity_policy = severity_policy or {}
+    findings, blockers = normalized or normalize(results, specs, task_suite=task_suite,
+                                                   policy={**severity_policy, "on_skipped_gate_task": on_skipped_gate_task})
+    gate = gate_verdict(findings, blockers, severity_policy.get("block_on", ("critical", "medium")))
+    gate.banner = [(tid, f"{r['status']}: {str((r.get('verdict') or {}).get('rationale') or '')[:120]}")
+                   for tid, r in results.items() if r.get("status") in ("error", "skipped")]
+    code = {PASSED: 0, PASSED_WITH_WARNINGS: yellow_exit, BLOCKED: 1}[gate.value]
     return signature.run_signature(plan_id, sut, results, specs), dataclasses.replace(gate, exit_code=code)
 
 

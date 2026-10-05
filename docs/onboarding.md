@@ -55,16 +55,29 @@ suite chặn merge là **`api-contract`** (Schemathesis), còn `perf-smoke`/`ui-
 `init` cũng sinh ba suite Security: **`sast`** (Semgrep), **`secrets`** (gitleaks), **`deps`** (Trivy, cần có lockfile). Chúng **chưa chặn merge** cho tới khi policy của qc-agent liệt kê chúng ở `blocking_suites`
 (phòng QC bật sau khi thử trên repo thật); chạy thử ngay ở mode `manual` (`qc-agent run --project <slug> --mode manual --suites sast,secrets,deps`; mode `pr` từ chối suite ngoài policy). Muốn bỏ qua một finding có lý do: `docs/usage-ci.md` mục 4b.
 
-## Nợ test (`coverage-debt`): dò bề mặt mới chưa có test, không chặn merge
-`init` **chưa** tự sinh suite này (khác ba suite Security ở trên). Muốn bật: thêm
-`.qc-agent/suites/coverage-debt.yaml` vào repo của bạn — nội dung mẫu lấy từ
-`qc-agent`'s `src/qc_agent/scaffold/templates.py:coverage_debt_suite()` (copy nguyên văn, không có
-chỗ trống cần điền) — rồi nhờ phòng QC thêm `coverage-debt` vào **cả hai** `advisory_suites` và
-`advisory_yellow_suites` của project bạn trong `configs/projects/<slug>.yaml` (PR 3 dòng, mục dưới).
-Thiếu một trong hai thì suite hoặc không chạy (`qc-agent validate` báo NOTE), hoặc chạy nhưng im lặng
-PASS khi có nợ thay vì báo ⚪ (`validate` báo WARN nếu vậy). Chi tiết cách đọc kết quả, Check Run
-`neutral`, mục "Nợ test" trong comment, và file `.qc-agent/coverage.yaml` để bỏ qua một bề mặt có lý
-do: `docs/usage-ci.md` mục 4c.
+## Bề mặt chưa có test (`coverage-debt`)
+`init` **chưa** tự sinh suite này. Muốn bật, thêm `.qc-agent/suites/coverage-debt.yaml`
+vào repo của bạn từ mẫu `src/qc_agent/scaffold/templates.py:coverage_debt_suite()`,
+rồi nhờ phòng QC thêm `coverage-debt` vào `advisory_suites` trong
+`configs/projects/<slug>.yaml`. Suite dò endpoint hoặc bề mặt mới chưa có test và phát
+finding mức Low kèm vị trí mã nguồn. Finding Low được nêu trong Check Run và có thể
+đồng bộ sang Jira; riêng nó không chặn merge. Xem `docs/usage-ci.md` mục 4c để cấu
+hình `.qc-agent/coverage.yaml` nhằm bỏ qua bề mặt đã được chấp nhận.
+
+Nếu muốn tự tạo Jira ticket cho finding Low, nhờ phòng QC thêm vào
+`configs/projects/<slug>.yaml`:
+
+```yaml
+jira:
+  project_key: QCSB
+  issue_type: Task
+  user_map:
+    github-login: jira-account-id
+```
+
+`user_map` gán ticket cho tác giả PR. Nếu chưa có ánh xạ, ticket vẫn được tạo nhưng
+không có assignee. Đặt `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` trong secret
+của workflow gọi lại; không ghi token vào file cấu hình hay repo SUT.
 
 ## Muốn dashboard / `manual` từ web: đăng ký bằng PR 3 dòng vào qc-agent
 Không đăng ký thì bạn vẫn có gate PR đầy đủ (Check Run, comment, artifact). Muốn lịch sử trên dashboard, `--report-to` hoặc chạy `manual` từ web thì mở PR vào qc-agent thêm

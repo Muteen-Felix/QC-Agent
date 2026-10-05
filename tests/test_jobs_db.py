@@ -45,6 +45,27 @@ def test_migration_up_down_up_and_constraints(make_db):
     eng.dispose()
 
 
+def test_migration_accepts_v2_verdict_and_preserves_legacy(make_db):
+    url = make_db()
+    migrate.upgrade(url, "0005")
+    eng = make_engine(url)
+    with eng.begin() as conn:
+        conn.execute(text("INSERT INTO projects (slug, name) VALUES ('old', 'Old')"))
+    eng.dispose()
+    migrate.upgrade(url)
+    eng = make_engine(url)
+    columns = {column["name"]: column for column in inspect(eng).get_columns("jobs")}
+    assert columns["gate_verdict"]["type"].length == 24
+    with session_scope(eng) as s:
+        for value in ("PASSED_WITH_WARNINGS", "BLOCKED", "PASSED", "YELLOW"):
+            job = repo.create_job(s, "old", mode="manual", source="web")
+            s.flush()
+            s.execute(text("UPDATE jobs SET gate_verdict = :value WHERE id = :id"), {"value": value, "id": job.id})
+        stored = set(s.execute(text("SELECT gate_verdict FROM jobs")).scalars())
+        assert stored == {"PASSED_WITH_WARNINGS", "BLOCKED", "PASSED", "YELLOW"}
+    eng.dispose()
+
+
 def test_normalize_url():
     assert normalize_url("postgresql://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
     assert normalize_url("postgres://u@h/db") == "postgresql+psycopg://u@h/db"

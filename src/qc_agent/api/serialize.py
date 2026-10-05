@@ -1,12 +1,11 @@
 """Chuyển bản ghi DB thành JSON trả về. Không bao giờ đưa ra: password_hash, token_hash, params.env, đường dẫn máy chủ."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import yaml
 
-from qc_agent.jobs.models import DebtEntry, Job, JobTask, User
+from qc_agent.jobs.models import Job, JobTask, User
 
 
 def iso(value) -> str | None:
@@ -53,13 +52,3 @@ def job_json(job: Job, slug: str, creators: dict[int, str], *, runs_root: Path |
         out["artifacts"] = [{"path": a.path, "size_bytes": a.size_bytes, "sha256": a.sha256} for a in job.artifacts]
         out["progress"] = progress(runs_root, slug, job) if runs_root else None
     return out
-
-
-def loads_json(data: bytes):
-    return json.loads(data.decode("utf-8-sig"))
-
-
-def debt_json(row: DebtEntry) -> dict:
-    return {"id": str(row.id), "kind": row.kind, "surface": row.surface, "opened_at": iso(row.opened_at), "closed_at": iso(row.closed_at),
-            "closed_reason": row.closed_reason, "pr_url": row.pr_url, "opened_job_id": str(row.opened_job_id),
-            "last_seen_job_id": str(row.last_seen_job_id), "last_seen_at": iso(row.last_seen_at)}

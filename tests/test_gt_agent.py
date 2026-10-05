@@ -285,6 +285,14 @@ def test_an_api_error_after_some_test_cases_keeps_them(prd, spec, emitted, sourc
     assert any("agent dừng vì lỗi (unavailable)" in w for w in result.warnings)
 
 
+def test_an_api_error_still_reports_the_turns_and_cost_already_spent(prd, spec, emitted, source, tmp_path):
+    first = submit_calls(prd, emitted)[0]
+    result, _ = run(prd, spec, source, tmp_path, [call(*first), 529])
+    assert result.agent["stop"] == "error" and result.agent["turns"] == 2           # lượt 2 là request lỗi: đã gửi đi nên đã tính
+    assert result.usage.output_tokens > 0 and result.agent["cost_usd_est"] is not None and result.agent["cost_usd_est"] > 0
+    assert result.agent["tool_calls"].get("submit_test_cases") == 1
+
+
 @pytest.mark.parametrize("script,kind", [([529], "unavailable"), ([401], "bad_request"), ([tool_use_msg(("x", "nope", {}))] * 2 + [429], "unavailable")])
 def test_an_api_error_before_any_test_case_is_a_gt_error(prd, spec, source, tmp_path, script, kind):
     with pytest.raises(gen.GTError) as error:

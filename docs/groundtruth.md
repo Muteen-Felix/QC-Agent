@@ -1,6 +1,6 @@
 # Ground-Truth: từ PRD tới test case được QA duyệt
 
-Bài toán: BA viết PRD, nhưng nếu để LLM tự viết *và* tự chấm test thì gate xanh không còn nghĩa gì. Ground-Truth tách hai việc: **LLM chỉ đề xuất test case (dạng dữ liệu)**, **QA duyệt**, còn gate chỉ chạy những test case đã được người duyệt. Tài liệu này là hướng dẫn vận hành; thiết kế nằm ở [architecture.md](architecture.md) §5.
+Bài toán: BA viết PRD, nhưng nếu để LLM tự viết *và* tự chấm test thì gate xanh không còn nghĩa gì. Ground-Truth tách hai việc: **LLM chỉ đề xuất test case (dạng dữ liệu)**, **QA duyệt**, còn gate chỉ chạy những test case đã được người duyệt. Tài liệu này là hướng dẫn vận hành; thiết kế nằm ở [architecture.md](architecture.md) §2 và [ADR 0003](adr/0003-gt-llm-sinh-du-lieu-khong-sinh-code.md).
 
 ## 1. Luồng
 
@@ -264,6 +264,35 @@ qc-agent gt validate --sut-root .                  # xlsx và YAML phải khớp
 
 `gt export-xlsx` từ chối ghi đè khi xlsx đang có sửa chưa import (thêm `--force` để bỏ các sửa đó). So sánh theo **ngữ nghĩa**, không theo byte (zip có dấu thời gian), và `generate|regen|export` không ghi lại file khi nội dung đã tương đương nên commit của bot không đổi vô cớ. File xlsx vào bị giới hạn 5 MB, tỉ lệ nén, 5000 dòng/sheet; thông điệp lỗi chỉ nêu địa chỉ ô, không trích nội dung.
 
+## 5e. Xác thực cho test (`auth.yaml`)
+
+API đòi đăng nhập thì QA (hoặc dev) thêm `.qc-agent/ground-truth/auth.yaml` **trước khi sinh**. File được CODEOWNERS khoá như phần còn lại của `.qc-agent/` và **không chứa bí mật**:
+
+```yaml
+version: 1
+login:
+  path: /api/auth/login
+  json:
+    username: {env: QC_TEST_USERNAME}     # giá trị lấy từ biến môi trường lúc chạy, KHÔNG viết thẳng vào file
+    password: {env: QC_TEST_PASSWORD}
+  token_path: $.access_token              # chỗ lấy token trong response (tập con JSONPath)
+header: {name: Authorization, scheme: Bearer}
+scope: session                            # session: đăng nhập một lần cho cả lượt chạy; case: mỗi test case một phiên
+```
+
+| Thành phần | Hành vi |
+|---|---|
+| Runtime (`tests_gt/conftest.py`) | đăng nhập lười ở request đầu tiên, gắn `header` vào mọi request **trừ** chính `POST login.path`; token chỉ ở bộ nhớ |
+| Header rỗng (`Authorization: ""`) | **không gửi** header đó: cách duy nhất để một test case kiểm "thiếu token" |
+| Header tường minh khác (`Bearer invalid`) | giữ nguyên, không bị ghi đè |
+| `scope: session` (mặc định) / `case` | một phiên cho cả lượt chạy / một phiên cho mỗi test case (dùng khi có test đăng xuất hay thu hồi phiên) |
+| Khoá | chỉ `{env: QC_TEST_*}`; tên biến khác bị từ chối để file commit được không thể đưa biến môi trường khác (vd khoá LLM) vào request tới SUT |
+| Lỗi | thiếu biến, sai cấu hình, đăng nhập bị từ chối, response không có token ⇒ `pytest.exit(4)` ⇒ gate tính **`error`** (hạ tầng), không phải `fail`. Thông báo chỉ nêu tên biến hoặc mã HTTP |
+| LLM | thấy khối `<auth>` trong prompt (chỉ khi repo có file): không được waive vì "cần token", không được tự viết token; không bao giờ thấy khoá hay token |
+| `gt validate` | kiểm cấu trúc file (lỗi ⇒ exit 1) và cảnh báo nếu dùng biến mà workflow `qc-gate` không truyền (hiện chỉ `QC_TEST_USERNAME`, `QC_TEST_PASSWORD`) |
+
+Đổi `conftest.py` làm `gt validate` báo *drift* ở repo đã có Ground-Truth: chạy `gt regen` rồi commit. Chưa hỗ trợ: token cố định riêng của endpoint nội bộ, OAuth/cookie phiên, nhiều vai trò. Muốn kiểm AC về đăng nhập (sai mật khẩu, khoá tài khoản...), viết test case cho `POST login.path` với body riêng; endpoint đăng nhập không nhận header tự động.
+
 ## 6. Cài đặt cho một repo SUT
 
 ```bash
@@ -320,7 +349,7 @@ Không có lớp nào ngăn người khác *mở* PR sửa `.qc-agent/**`; chún
 - **PRD (và danh sách endpoint OpenAPI) được gửi tới nhà cung cấp LLM đã chọn** (Anthropic API hoặc Google Gemini API, theo model). Gói miễn phí của Gemini cho phép Google dùng nội dung để cải thiện sản phẩm: PRD nhạy cảm nên dùng khoá trả phí. Mọi lời gọi ghi `egress.jsonl` (loại dữ liệu `prd_text`, `api_spec`, host đích) **trước khi gửi**; chính sách `deny` thì không có request nào.
 - `egress.jsonl` và `summary.json` là **artifact của workflow** (giữ 14 ngày), không bao giờ được commit. Không file nào ghi nội dung PRD, prompt hay response vào log.
 - **Với `--agent`, MÃ NGUỒN của SUT cũng rời máy** (loại dữ liệu mới `source_code` trong `egress.jsonl`, ghi trước mỗi request; cùng với `prd_text` và `api_spec`). Chỉ file qua sandbox (mục 5c) được gửi, nhưng việc che bí mật là best-effort: **chạy `gitleaks` trên repo SUT và xoá bí mật đã commit trước khi bật agent**, và chỉ bật khi đã được phép gửi mã nguồn ra Anthropic (cùng câu hỏi #3 bên dưới, nay gồm cả mã).
-- **Câu hỏi #3 ở [architecture.md](architecture.md) §5.5 chưa được chốt** ("có được gửi PRD ra LLM bên ngoài không"): nó chặn mọi lượt chạy LLM thật. Cho tới khi có câu trả lời, chỉ chạy bằng PRD mẫu/PRD không nhạy cảm.
+- **Câu hỏi #3 ở [implementation-plan.md](implementation-plan.md) (mục "Các câu hỏi chờ chốt") chưa được chốt** ("có được gửi PRD ra LLM bên ngoài không"): nó chặn mọi lượt chạy LLM thật. Cho tới khi có câu trả lời, chỉ chạy bằng PRD mẫu/PRD không nhạy cảm.
 - Chi phí một lần sinh: một lời gọi (tối đa 16 000 token ra), cộng tối đa một lần sửa khi đầu ra sai schema. Số token nằm trong `summary.json`.
 - Chi phí bộ sinh agent: tới 40 lượt, mỗi lượt gửi lại cả lịch sử (được prompt cache). Ước tính ban đầu vài USD tới chục USD mỗi PRD với Opus (**chưa đo bằng API thật**); `agent.cost_usd_est` trong `summary.json` là ước tính theo bảng giá trong `llm/agent_loop.py` và `QC_GT_AGENT_MAX_COST_USD` là trần cứng.
 

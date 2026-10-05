@@ -44,10 +44,6 @@ def channel_for(url: str | None) -> str:
     return "generic"
 
 
-def current_channel() -> str:
-    return channel_for(os.environ.get("ALERT_WEBHOOK_URL"))
-
-
 def clean(value, channel: str = "generic", limit: int = MAX_ITEM) -> str:
     """Làm sạch một mẩu văn bản không tin cậy để chèn vào message."""
     text = " ".join(_CONTROL.sub("", str(value)).split())  # một dòng: không chèn được dòng giả (vd. "VERDICT: PASS")
@@ -81,7 +77,7 @@ def load_run(run_dir) -> dict | None:
     return {"report": report, "findings": findings}
 
 
-_EMOJI = {"PASS": "🟢", "FAIL": "🔴", "YELLOW": "🟡"}
+_EMOJI = {"PASS": "🟢", "FAIL": "🔴", "YELLOW": "🟡", "PASSED": "🟢", "BLOCKED": "🔴", "PASSED_WITH_WARNINGS": "🟡"}
 
 
 def build_message(run: dict, *, label: str, exit_code: int | None = None, status: str | None = None,

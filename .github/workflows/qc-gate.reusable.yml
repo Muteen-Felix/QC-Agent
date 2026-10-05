@@ -107,6 +107,9 @@ on:
       GHCR_PULL_TOKEN: { required: false }
       OPENAI_API_KEY: { required: false }
       ANTHROPIC_API_KEY: { required: false }
+      JIRA_BASE_URL: { required: false }
+      JIRA_EMAIL: { required: false }
+      JIRA_API_TOKEN: { required: false }
       GEMINI_API_KEY: { required: false }
       MIDSCENE_MODEL_BASE_URL: { required: false }
       MIDSCENE_MODEL_API_KEY: { required: false }
@@ -359,6 +362,8 @@ jobs:
           QC_JUDGE_MODEL: ${{ secrets.QC_JUDGE_MODEL }}
           QC_JUDGE_FALLBACK_PROVIDER: ${{ secrets.QC_JUDGE_FALLBACK_PROVIDER }}
           QC_JUDGE_FALLBACK_MODEL: ${{ secrets.QC_JUDGE_FALLBACK_MODEL }}
+          QC_TEST_USERNAME: ${{ secrets.QC_TEST_USERNAME }}   # tài khoản TEST cho gt-functional khi repo có .qc-agent/ground-truth/auth.yaml
+          QC_TEST_PASSWORD: ${{ secrets.QC_TEST_PASSWORD }}
         run: |
           set +e   # exit code của gate được ghi lại để bước báo cáo chạy xong rồi bước cuối mới quyết định xanh/đỏ
           mkdir -p runs
@@ -386,11 +391,12 @@ jobs:
             -e OPENAI_API_KEY -e GEMINI_API_KEY \
             -e MIDSCENE_MODEL_BASE_URL -e MIDSCENE_MODEL_API_KEY -e MIDSCENE_MODEL_NAME -e MIDSCENE_MODEL_FAMILY \
             -e QC_JUDGE_PROVIDER -e QC_JUDGE_MODEL -e QC_JUDGE_FALLBACK_PROVIDER -e QC_JUDGE_FALLBACK_MODEL \
+            -e QC_TEST_USERNAME -e QC_TEST_PASSWORD \
             "$IMAGE" "${args[@]}"
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
-      # ==== qc-agent:region security-review (A) ====
-      - name: Security review (gắn file:dòng lên PR)
+      # ==== qc-agent:region pr-review (A) ====
+      - name: PR review
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true   # chỉ báo cáo: hỏng (kể cả fork: token chỉ-đọc) không được đổi kết quả gate
         env:
@@ -398,13 +404,31 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           RUN=$(ls -d runs/r-* 2>/dev/null | sort | tail -1 || true)
-          if [ -z "$RUN" ]; then echo "security-review: không có run nào"; exit 0; fi
-          # Workspace mount CHỈ-ĐỌC: bước này chỉ đọc evidence (semgrep.json/gitleaks.json/trivy.json) rồi gọi API GitHub
+          if [ -z "$RUN" ]; then echo "pr-review: không có run nào"; exit 0; fi
+          # Review chỉ đọc report.json và gọi API GitHub.
           docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work:ro" -w /work \
             -v "$GITHUB_EVENT_PATH:/tmp/event.json:ro" -e GITHUB_EVENT_PATH=/tmp/event.json \
             -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_API_URL -e GITHUB_TOKEN \
-            --entrypoint python "$IMAGE" -m qc_agent.integrations.security_review --run-dir "$RUN"
+            --entrypoint python "$IMAGE" -m qc_agent.integrations.pr_review --run-dir "$RUN"
       # ==== qc-agent:end ====
+
+      - name: Jira (Low)
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          IMAGE: ${{ inputs.image }}
+          PROJECT: ${{ inputs.project }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          RUN=$(ls -d runs/r-* 2>/dev/null | sort | tail -1 || true)
+          if [ -z "$RUN" ]; then echo "jira: không có run nào"; exit 0; fi
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work \
+            -v "$GITHUB_EVENT_PATH:/tmp/event.json:ro" -e GITHUB_EVENT_PATH=/tmp/event.json -e QC_PROJECTS_DIR=/policy \
+            -e GITHUB_REPOSITORY -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e GITHUB_SERVER_URL \
+            -e JIRA_BASE_URL -e JIRA_EMAIL -e JIRA_API_TOKEN \
+            --entrypoint python "$IMAGE" -m qc_agent.integrations.jira --run-dir "$RUN" --project "$PROJECT"
 
       - name: Report (Check Run, PR comment, history, webhook)
         if: always()

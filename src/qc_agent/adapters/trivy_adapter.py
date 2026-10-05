@@ -106,9 +106,11 @@ class TrivyAdapter(Adapter):
         findings, seen, notes = [], {}, [f"PARSER_VERSION={PARSER_VERSION}", f"trivy exit_code={proc.returncode}"]
         for target, vid, pkg, installed, level in rows:
             counts[f"trivy.{level}"] += 1
-            # Trivy không có số dòng đáng tin: vị trí là file lockfile. severity_hint: critical -> high (schema không có critical), unknown -> null
-            findings.append(sec.finding(sec.finding_id("trivy", f"{vid}|{pkg}|{installed}|{target}", seen),
-                                        f"{vid} {pkg}@{installed} @ {target}", "trivy", level))
+            # Trivy không có số dòng đáng tin: vị trí là file lockfile.
+            item = sec.finding(sec.finding_id("trivy", f"{vid}|{pkg}|{installed}|{target}", seen),
+                               f"{vid} {pkg}@{installed} @ {target}", f"trivy:{vid}", level)
+            item["location"] = {"path": target}
+            findings.append(item)
         metrics = {**counts, "trivy.total": len(rows), "trivy.targets": len(results), "trivy.db_age_days": age}
         return ParsedOutput(
             metrics=metrics, findings=sec.cap_findings(findings, notes), evidence_paths=[("raw_output", out), ("stdout", stdout_path)],

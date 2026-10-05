@@ -145,6 +145,62 @@ class FakeWebhook:
         self.server.server_close()
 
 
+class FakeJira:
+    """Máy chủ Jira REST v3 giả cho test E2E; chỉ ghi request trong bộ nhớ."""
+
+    def __init__(self):
+        self.issues: list[dict] = []
+        self.requests: list[dict] = []
+        self.forced_status: int | None = None
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                try:
+                    body = json.loads(self.rfile.read(length))
+                except ValueError:
+                    body = {}
+                outer.requests.append({"path": self.path, "body": body})
+                if outer.forced_status:
+                    return self._send(outer.forced_status, {"errorMessages": ["fake error"]})
+                if self.path == "/rest/api/3/search/jql":
+                    labels = set(re.findall(r'qcagent-[a-f0-9]{16,64}', str(body.get("jql") or "")))
+                    found = [issue for issue in outer.issues if labels.intersection(issue["fields"].get("labels") or [])]
+                    return self._send(200, {"issues": found, "isLast": True})
+                if self.path == "/rest/api/3/issue":
+                    item = {"key": f"QCSB-{len(outer.issues) + 1}", "fields": body.get("fields") or {}}
+                    outer.issues.append(item)
+                    return self._send(201, {"key": item["key"]})
+                return self._send(404, {"errorMessages": ["not found"]})
+
+            def _send(self, status, payload):
+                raw = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    @property
+    def url(self):
+        return f"http://127.0.0.1:{self.server.server_port}"
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.server.shutdown()
+        self.server.server_close()
+
+
 class FakeAnthropic:
     """Máy chủ Messages API giả (`POST /v1/messages`) cho test tích hợp có LLM (S1-06; S1-08, S2, S4 dùng lại): CLI chạy qua `ANTHROPIC_BASE_URL=<url>`.
 

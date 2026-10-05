@@ -1,0 +1,1652 @@
+{
+  "components": {
+    "schemas": {
+      "Body_upload_excel_api_jobs__job_id__upload_excel_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_excel_api_jobs__job_id__upload_excel_post",
+        "type": "object"
+      },
+      "CreateJobRequest": {
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/VahanFilters"
+          },
+          "runnerId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runnerid",
+            "type": "string"
+          },
+          "scenarioName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenarioname"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ReportSource",
+            "default": "new"
+          }
+        },
+        "required": [
+          "runnerId",
+          "filters"
+        ],
+        "title": "CreateJobRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Job": {
+        "properties": {
+          "captchaId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captchaid"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "excelFileName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excelfilename"
+          },
+          "excelFileSize": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excelfilesize"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/VahanFilters"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "noDataFileName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodatafilename"
+          },
+          "runnerId": {
+            "title": "Runnerid",
+            "type": "string"
+          },
+          "scenarioName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenarioname"
+          },
+          "sessionId": {
+            "format": "uuid",
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ReportSource",
+            "default": "new"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "default": "QUEUED"
+          },
+          "successfulApplyCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Successfulapplycount",
+            "type": "integer"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runnerId",
+          "filters"
+        ],
+        "title": "Job",
+        "type": "object"
+      },
+      "JobStatus": {
+        "enum": [
+          "QUEUED",
+          "ASSIGNED",
+          "OPENING_VAHAN",
+          "CAPTURING_CAPTCHA",
+          "FILLING_FILTERS",
+          "WAITING_CAPTCHA",
+          "SUBMITTING",
+          "WAITING_RESULT",
+          "COMPLETED",
+          "NO_DATA",
+          "FAILED",
+          "CANCELLED"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "LoginRequest": {
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "ReportSource": {
+        "enum": [
+          "new",
+          "old"
+        ],
+        "title": "ReportSource",
+        "type": "string"
+      },
+      "Runner": {
+        "properties": {
+          "currentJobId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentjobid"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "title": "Lastseenat",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ReportSource",
+            "default": "new"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunnerStatus",
+            "default": "ONLINE"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Runner",
+        "type": "object"
+      },
+      "RunnerStatus": {
+        "enum": [
+          "ONLINE",
+          "BUSY",
+          "RECONNECTING"
+        ],
+        "title": "RunnerStatus",
+        "type": "string"
+      },
+      "UiHealthCheckNowRequest": {
+        "properties": {
+          "runnerId": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runnerid"
+          }
+        },
+        "title": "UiHealthCheckNowRequest",
+        "type": "object"
+      },
+      "UiHealthCheckNowResponse": {
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "title": "Requestedat",
+            "type": "string"
+          },
+          "runnerId": {
+            "title": "Runnerid",
+            "type": "string"
+          },
+          "runnerName": {
+            "title": "Runnername",
+            "type": "string"
+          },
+          "status": {
+            "default": "REQUESTED",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "runnerId",
+          "runnerName",
+          "requestedAt"
+        ],
+        "title": "UiHealthCheckNowResponse",
+        "type": "object"
+      },
+      "UiHealthDaySummary": {
+        "properties": {
+          "checkError": {
+            "default": 0,
+            "title": "Checkerror",
+            "type": "integer"
+          },
+          "dataChanged": {
+            "default": 0,
+            "title": "Datachanged",
+            "type": "integer"
+          },
+          "dataChangedErrors": {
+            "default": 0,
+            "title": "Datachangederrors",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "latestCheckedAt": {
+            "default": "",
+            "title": "Latestcheckedat",
+            "type": "string"
+          },
+          "pass": {
+            "default": 0,
+            "title": "Pass",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "uiDrift": {
+            "default": 0,
+            "title": "Uidrift",
+            "type": "integer"
+          },
+          "uiDriftErrors": {
+            "default": 0,
+            "title": "Uidrifterrors",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "UiHealthDaySummary",
+        "type": "object"
+      },
+      "UiHealthLogRequest": {
+        "properties": {
+          "healthCheck": {
+            "additionalProperties": true,
+            "title": "Healthcheck",
+            "type": "object"
+          },
+          "pageUrl": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Pageurl",
+            "type": "string"
+          },
+          "runnerId": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runnerid"
+          }
+        },
+        "required": [
+          "healthCheck"
+        ],
+        "title": "UiHealthLogRequest",
+        "type": "object"
+      },
+      "UiHealthLogResponse": {
+        "properties": {
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "fromDate": {
+            "title": "Fromdate",
+            "type": "string"
+          },
+          "logId": {
+            "title": "Logid",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "part": {
+            "minimum": 1.0,
+            "title": "Part",
+            "type": "integer"
+          },
+          "rowCount": {
+            "minimum": 1.0,
+            "title": "Rowcount",
+            "type": "integer"
+          },
+          "toDate": {
+            "title": "Todate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "logId",
+          "fileName",
+          "rowCount",
+          "fromDate",
+          "toDate",
+          "part"
+        ],
+        "title": "UiHealthLogResponse",
+        "type": "object"
+      },
+      "UiHealthReportFile": {
+        "properties": {
+          "containsSelectedDate": {
+            "title": "Containsselecteddate",
+            "type": "boolean"
+          },
+          "downloadUrl": {
+            "title": "Downloadurl",
+            "type": "string"
+          },
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "fromDate": {
+            "title": "Fromdate",
+            "type": "string"
+          },
+          "part": {
+            "minimum": 1.0,
+            "title": "Part",
+            "type": "integer"
+          },
+          "rowCount": {
+            "minimum": 0.0,
+            "title": "Rowcount",
+            "type": "integer"
+          },
+          "sizeBytes": {
+            "minimum": 0.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "toDate": {
+            "title": "Todate",
+            "type": "string"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileName",
+          "fromDate",
+          "toDate",
+          "part",
+          "rowCount",
+          "sizeBytes",
+          "updatedAt",
+          "containsSelectedDate",
+          "downloadUrl"
+        ],
+        "title": "UiHealthReportFile",
+        "type": "object"
+      },
+      "UiHealthReportsResponse": {
+        "properties": {
+          "availableDates": {
+            "items": {
+              "$ref": "#/components/schemas/UiHealthDaySummary"
+            },
+            "title": "Availabledates",
+            "type": "array"
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/UiHealthReportFile"
+            },
+            "title": "Reports",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "selectedDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selecteddate"
+          }
+        },
+        "title": "UiHealthReportsResponse",
+        "type": "object"
+      },
+      "UiHealthSchedule": {
+        "properties": {
+          "intervalDays": {
+            "default": 3,
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Intervaldays",
+            "type": "integer"
+          },
+          "nextCheckAt": {
+            "format": "date-time",
+            "title": "Nextcheckat",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nextCheckAt"
+        ],
+        "title": "UiHealthSchedule",
+        "type": "object"
+      },
+      "UiHealthScheduleUpdate": {
+        "properties": {
+          "intervalDays": {
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Intervaldays",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "intervalDays"
+        ],
+        "title": "UiHealthScheduleUpdate",
+        "type": "object"
+      },
+      "VahanFilters": {
+        "additionalProperties": true,
+        "description": "Filter payload accepted from the Web UI.\n\nUnknown fields are retained so the MVP does not need a backend release each\ntime VAHAN adds a filter. The extension remains the source of truth for the\nselectors and supported values.",
+        "properties": {
+          "autoApply": {
+            "default": false,
+            "title": "Autoapply",
+            "type": "boolean"
+          },
+          "autoExport": {
+            "default": true,
+            "title": "Autoexport",
+            "type": "boolean"
+          },
+          "categoryGroups": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categorygroups",
+            "type": "array"
+          },
+          "fuels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fuels",
+            "type": "array"
+          },
+          "rtos": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rtos",
+            "type": "array"
+          },
+          "states": {
+            "items": {
+              "type": "string"
+            },
+            "title": "States",
+            "type": "array"
+          },
+          "xAxis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xaxis"
+          },
+          "yAxis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaxis"
+          }
+        },
+        "title": "VahanFilters",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyReportsRequest": {
+        "properties": {
+          "fileNames": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Filenames",
+            "type": "array"
+          },
+          "sessionIds": {
+            "additionalProperties": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Sessionids",
+            "type": "object"
+          }
+        },
+        "required": [
+          "fileNames"
+        ],
+        "title": "VerifyReportsRequest",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "VAHAN RPA API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Root  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Root",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Response Login Api Auth Login Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "current_user_api_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Current User Api Auth Me Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Current User",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/auth/renew": {
+      "post": {
+        "description": "Replace a still-valid legacy expiring token with a non-expiring token.",
+        "operationId": "renew_session_api_auth_renew_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Response Renew Session Api Auth Renew Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Renew Session",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "operationId": "auth_status_api_auth_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Response Auth Status Api Auth Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Status",
+        "tags": [
+          "authentication"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "post": {
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/reports": {
+      "get": {
+        "operationId": "list_exported_reports_api_jobs_reports_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Exported Reports Api Jobs Reports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Exported Reports",
+        "tags": [
+          "excel"
+        ]
+      }
+    },
+    "/api/jobs/reports/file/{file_name}": {
+      "get": {
+        "operationId": "download_stored_report_api_jobs_reports_file__file_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "title": "File Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Stored Report",
+        "tags": [
+          "excel"
+        ]
+      }
+    },
+    "/api/jobs/reports/sessions": {
+      "get": {
+        "description": "Return report jobs grouped by their run session, including no-data and failed cases.",
+        "operationId": "list_exported_report_sessions_api_jobs_reports_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Exported Report Sessions Api Jobs Reports Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Exported Report Sessions",
+        "tags": [
+          "excel"
+        ]
+      }
+    },
+    "/api/jobs/reports/verify": {
+      "post": {
+        "operationId": "verify_exported_reports_api_jobs_reports_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyReportsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verify Exported Reports Api Jobs Reports Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Exported Reports",
+        "tags": [
+          "excel"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/excel": {
+      "get": {
+        "operationId": "download_excel_api_jobs__job_id__excel_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Excel",
+        "tags": [
+          "excel"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/no-data": {
+      "get": {
+        "operationId": "download_no_data_file_api_jobs__job_id__no_data_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download No Data File",
+        "tags": [
+          "excel"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/upload-excel": {
+      "post": {
+        "operationId": "upload_excel_api_jobs__job_id__upload_excel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-VAHAN-RUNNER-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Vahan-Runner-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_excel_api_jobs__job_id__upload_excel_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Excel Api Jobs  Job Id  Upload Excel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Excel",
+        "tags": [
+          "excel"
+        ]
+      }
+    },
+    "/api/runners": {
+      "get": {
+        "operationId": "list_runners_api_runners_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Runner"
+                  },
+                  "title": "Response List Runners Api Runners Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Runners",
+        "tags": [
+          "runners"
+        ]
+      }
+    },
+    "/api/ui-health/logs": {
+      "post": {
+        "operationId": "receive_ui_health_log_api_ui_health_logs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UiHealthLogRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiHealthLogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Receive Ui Health Log",
+        "tags": [
+          "ui-health"
+        ]
+      }
+    },
+    "/api/ui-health/reports": {
+      "get": {
+        "operationId": "list_ui_health_reports_api_ui_health_reports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiHealthReportsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Ui Health Reports",
+        "tags": [
+          "ui-health"
+        ]
+      }
+    },
+    "/api/ui-health/reports/{file_name}/download": {
+      "get": {
+        "operationId": "download_ui_health_report_api_ui_health_reports__file_name__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "title": "File Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Ui Health Report",
+        "tags": [
+          "ui-health"
+        ]
+      }
+    },
+    "/api/ui-health/run-now": {
+      "post": {
+        "operationId": "request_ui_health_check_now_api_ui_health_run_now_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/UiHealthCheckNowRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Command"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiHealthCheckNowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Ui Health Check Now",
+        "tags": [
+          "ui-health"
+        ]
+      }
+    },
+    "/api/ui-health/schedule": {
+      "get": {
+        "operationId": "get_ui_health_schedule_api_ui_health_schedule_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiHealthSchedule"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Ui Health Schedule",
+        "tags": [
+          "ui-health"
+        ]
+      },
+      "put": {
+        "operationId": "update_ui_health_schedule_api_ui_health_schedule_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UiHealthScheduleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiHealthSchedule"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Ui Health Schedule",
+        "tags": [
+          "ui-health"
+        ]
+      }
+    }
+  }
+}

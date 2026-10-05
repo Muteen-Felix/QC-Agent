@@ -198,6 +198,12 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
     def cost() -> float | None:
         return estimate_cost(last_model, usage)
 
+    def fail(error: client.LLMError) -> client.LLMError:
+        """Đính số liệu dở dang (lượt, token, chi phí đã tốn) vào lỗi: không có nó thì người gọi chỉ thấy 0 dù các lượt trước đã bị tính tiền."""
+        error.partial = AgentRun(stop="error", turns=turns, usage=usage, model=last_model, duration_s=_monotonic() - started,
+                                 tool_calls=dict(sorted(calls.items())), nudges=nudges, cost_usd_est=cost())
+        return error
+
     with httpx.Client(transport=transport, timeout=timeout_s) as http:
         while True:
             spent = cost()
@@ -216,7 +222,7 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
             worker = SimpleNamespace(name=f"qc-agent-{purpose}", data_egress=sorted(categories))
             decision = egress.record(policy, egress_dir, spec, worker, turns)   # mỗi request rời máy là một dòng, TRƯỚC khi gửi
             if decision.action != "allow":
-                raise client.LLMError("egress_denied", f"chính sách egress: {decision.action}")
+                raise fail(client.LLMError("egress_denied", f"chính sách egress: {decision.action}"))
 
             body: dict = {
                 "model": model, "max_tokens": max_tokens,
@@ -242,7 +248,7 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
                 error = client._http_error(response)
             if error is not None:
                 client._log_call(logging.WARNING, purpose=purpose, model=model, stop_reason=None, usage=client.Usage(), duration_s=elapsed, kind=error.kind)
-                raise error
+                raise fail(error)
 
             try:
                 payload = response.json()
@@ -250,7 +256,7 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
                 payload = None
             if not isinstance(payload, dict):
                 client._log_call(logging.WARNING, purpose=purpose, model=model, stop_reason=None, usage=client.Usage(), duration_s=elapsed, kind="bad_output")
-                raise client.LLMError("bad_output", "response không phải object JSON")
+                raise fail(client.LLMError("bad_output", "response không phải object JSON"))
             turn_usage = client._usage(payload.get("usage"))
             usage = _add(usage, turn_usage)
             last_model = payload["model"] if isinstance(payload.get("model"), str) else last_model
@@ -270,7 +276,7 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
                 problem = ("bad_output", "stop_reason=tool_use nhưng không có tool_use")
             if problem is not None:
                 client._log_call(logging.WARNING, purpose=purpose, model=last_model, stop_reason=reason or None, usage=turn_usage, duration_s=elapsed, kind=problem[0])
-                raise client.LLMError(*problem)
+                raise fail(client.LLMError(*problem))
             client._log_call(logging.INFO, purpose=purpose, model=last_model, stop_reason=reason or None, usage=turn_usage, duration_s=elapsed, kind=None)
 
             messages.append({"role": "assistant", "content": content})   # NGUYÊN VĂN, kể cả thinking + chữ ký
@@ -279,7 +285,7 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
 
             if not uses:   # end_turn mà chưa gọi tool nào
                 if nudges >= 1:
-                    raise client.LLMError("bad_output", f"kết thúc mà không gọi {finish_tool}")
+                    raise fail(client.LLMError("bad_output", f"kết thúc mà không gọi {finish_tool}"))
                 nudges += 1
                 messages.append({"role": "user", "content": [{"type": "text", "text": f"You stopped without calling `{finish_tool}`. Continue the task and finish by calling `{finish_tool}`."}]})
                 continue

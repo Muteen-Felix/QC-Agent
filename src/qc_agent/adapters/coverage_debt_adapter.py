@@ -1,14 +1,13 @@
 """Coverage-debt (capability repo.coverage_debt): vỏ mỏng quanh worker tất định `coverage_debt_worker` (P2-2).
 Adapter chỉ dịch `debt.json` -> findings/metrics; KHÔNG phán: ngưỡng (`debt.new == 0`) nằm trong file suite, oracle `threshold` so.
 
-Chế độ quét do môi trường quyết định, adapter không đoán: có `QC_DIFF_BASE` (workflow đặt trên pull_request) => diff-scan chỉ MỞ nợ,
-không có (Mode 2) => full-scan, cơ sở để ĐÓNG nợ. Biến này thừa hưởng nguyên vẹn qua `Adapter._exec` (`{**os.environ, ...}`).
+Chế độ quét do môi trường quyết định: có `QC_DIFF_BASE` thì diff-scan, không có thì full-scan.
 
 Ba trường hợp đều kết thúc bằng AdapterParseError (status=error, chỉ lên banner vì lane discovery), KHÔNG BAO GIỜ bằng "0 nợ":
   - worker báo `status: error` (thiếu base/checkout nông/cấu hình sai/file không parse được);
   - không có debt.json, hoặc exit code mâu thuẫn với status;
   - findings và metrics tự mâu thuẫn (số nợ khác độ dài danh sách, finding_id lệch kind/surface).
-Không cắt danh sách findings như adapter Security: full-scan dùng phần VẮNG MẶT để đóng nợ, cắt bớt sẽ đóng oan.
+Không cắt danh sách findings để report và Jira thấy đầy đủ phạm vi.
 """
 from __future__ import annotations
 
@@ -80,8 +79,13 @@ class CoverageDebtAdapter(Adapter):
             if item.get("finding_id") != f"debt:{kind}:{surface}" or item["finding_id"] in seen:
                 raise AdapterParseError("finding_id không khớp debt:<kind>:<surface> hoặc bị trùng")
             seen.add(item["finding_id"])
-            findings.append({"finding_id": item["finding_id"], "title": _title(kind, surface), "detected_by": f"coverage-debt:{kind}",
-                             "verdict_source": "heuristic", "confidence": None, "severity_hint": "low"})
+            finding = {"finding_id": item["finding_id"], "title": _title(kind, surface), "detected_by": f"coverage-debt:{kind}",
+                       "verdict_source": "heuristic", "confidence": None, "severity_hint": "low"}
+            if item.get("path") is not None or item.get("line") is not None:
+                if not isinstance(item.get("path"), str) or not isinstance(item.get("line"), int) or item["line"] < 1:
+                    raise AdapterParseError("location của finding coverage-debt không hợp lệ")
+                finding["location"] = {"path": sec.safe_relpath(item["path"], "finding.path"), "line": item["line"]}
+            findings.append(finding)
         if new != len(findings):
             raise AdapterParseError(f"mâu thuẫn: debt.new={new} nhưng có {len(findings)} findings")
 

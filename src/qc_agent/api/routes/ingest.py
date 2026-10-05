@@ -16,11 +16,10 @@ from qc_agent.auth import service
 from qc_agent.core.evidence import sha256_file
 from qc_agent.jobs import repository as repo
 from qc_agent.jobs.db import session_scope
-from qc_agent.jobs.debt_report import try_apply_report_debt
 
 router = APIRouter(prefix="/api/v1", tags=["ingest"])
 log = logging.getLogger("qc_agent.api")
-_VERDICTS = ("PASS", "YELLOW", "FAIL")
+_VERDICTS = ("PASS", "YELLOW", "FAIL", "PASSED", "PASSED_WITH_WARNINGS", "BLOCKED")
 
 
 def _bearer(request: Request) -> str | None:
@@ -78,13 +77,13 @@ async def ingest_run(slug: str, request: Request, response: Response):
     report = run.report
     verdict, exit_code = report.get("gate_verdict"), report.get("exit_code")
     if verdict not in _VERDICTS or isinstance(exit_code, bool) or not isinstance(exit_code, int):
-        raise HTTPException(status_code=422, detail="report.json thiếu gate_verdict (PASS|YELLOW|FAIL) hoặc exit_code (số nguyên)")
+        raise HTTPException(status_code=422, detail="report.json thiếu gate_verdict hợp lệ hoặc exit_code (số nguyên)")
     if not isinstance((report.get("details") or {}).get("results"), dict):
         raise HTTPException(status_code=422, detail="report.json thiếu details.results")
 
     with session_scope(state.engine) as session:
         job, created = repo.create_finished_job(
-            session, slug, external_id=run.external_id, mode=run.mode, status="failed" if verdict == "FAIL" else "succeeded",
+            session, slug, external_id=run.external_id, mode=run.mode, status="failed" if verdict in ("FAIL", "BLOCKED") else "succeeded",
             gate_verdict=verdict, exit_code=exit_code, pr_number=run.pr_number, sha=run.sha, branch=run.branch)
         job_id = job.id
         if created:
@@ -99,7 +98,6 @@ async def ingest_run(slug: str, request: Request, response: Response):
                 artifacts.append({"path": name, "size_bytes": path.stat().st_size, "sha256": sha256_file(path),
                                   "storage_uri": path.resolve().as_uri()})
             repo.replace_job_results(session, job_id, _tasks_from_report(report), artifacts)
-            try_apply_report_debt(session, slug, job_id, report)  # nợ test (D2/D4): lỗi ở đây không làm mất job vừa ghi
     logging_setup.event(log, "job.ingested", job_id=str(job_id), project=slug, mode=run.mode, source="ci", gate=verdict, created=created)
     if not created:
         response.status_code = 200  # gửi lại cùng external_id: trả job cũ, không tạo trùng

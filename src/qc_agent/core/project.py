@@ -2,7 +2,6 @@
 
   project: slug, suites_dir, sut{files,attrs,probe_url}, modes{<mode>: policy}
   mode `pr`-kiểu : blocking_suites (mọi task phải lane=gate), advisory_suites (mọi task phải lane=discovery), on_skipped_gate_task,
-                   advisory_yellow_suites (tập con của advisory_suites: task fail => verdict YELLOW thay vì im lặng)
   mode `manual`-kiểu: suites: "*" | [tên...] (lane giữ nguyên như suite khai báo)
   suite  : {suite: <tên == tên file>, tasks: [task như trong plan]}
 
@@ -36,6 +35,27 @@ PROJECT_SCHEMA = {
         "slug": {"type": "string", "pattern": _NAME},
         "name": {"type": "string"},
         "repo": {"type": "string"},
+        "jira": {
+            "type": "object", "additionalProperties": False,
+            "properties": {
+                "project_key": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,29}$"},
+                "issue_type": {"type": "string", "minLength": 1},
+                "user_map": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}},
+                "max_new_per_run": {"type": "integer", "minimum": 0},
+            },
+        },
+        "severity": {
+            "type": "object", "additionalProperties": False,
+            "properties": {
+                "block_on": {"type": "array", "uniqueItems": True, "items": {"enum": ["low", "medium", "critical"]}},
+                "default_severity": {"type": "object", "additionalProperties": {"enum": ["low", "medium", "critical"]}},
+                "overrides": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                    "required": ["suite", "rule_id", "from", "to"],
+                    "properties": {"suite": {"type": "string"}, "rule_id": {"type": "string"},
+                                   "from": {"enum": ["low", "medium", "critical"]},
+                                   "to": {"enum": ["low", "medium", "critical"]}}}},
+            },
+        },
         "suites_dir": {"type": "string", "minLength": 1},
         "sut": {
             "type": "object",
@@ -71,7 +91,6 @@ PROJECT_SCHEMA = {
                 "properties": {
                     "blocking_suites": _NAME_LIST,
                     "advisory_suites": _NAME_LIST,
-                    "advisory_yellow_suites": _NAME_LIST,  # tập con của advisory_suites: task fail ở đây => YELLOW (nợ test), không chặn
                     "suites": {"oneOf": [{"const": "*"}, _NAME_LIST]},
                     "on_skipped_gate_task": {"enum": ["yellow", "fail"]},
                     "floor_workers": _NAME_LIST,
@@ -175,8 +194,6 @@ def resolve_project(slug: str, projects_dir) -> tuple[dict, dict]:
     if pr is not None and not pr.get("blocking_suites"):
         raise PlanError(f"project {slug}: mode pr phải có ít nhất một suite trong blocking_suites (rỗng => gate luôn xanh giả). "
                         f"Repo không có suite gate thì chưa đủ điều kiện mode pr, chỉ dùng mode manual")
-    for mode_name, mode_policy in merged["modes"].items():
-        _check_yellow_subset(slug, mode_name, mode_policy)
     merged.setdefault("suites_dir", ".qc-agent/suites")
     info = {"source": "registered" if registered else "default", "files": files,
             "sha256": hashlib.sha256(json.dumps(merged, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()}
@@ -215,13 +232,6 @@ def _check_lanes(suite: dict, want: str, mode: str, role: str) -> None:
             raise PlanError(
                 f"suite {suite['name']} task {task.get('task_id', '?')}: lane={lane!r} nhưng suite nằm trong "
                 f"{role} của mode {mode!r} (cần lane={want}). Sửa suite cho khớp policy.")
-
-
-def _check_yellow_subset(slug: str, mode: str, policy: dict) -> None:
-    outside = [n for n in policy.get("advisory_yellow_suites") or [] if n not in (policy.get("advisory_suites") or [])]
-    if outside:
-        raise PlanError(f"project {slug}: mode {mode!r}: advisory_yellow_suites phải nằm trong advisory_suites "
-                        f"(suite chặn merge đã có verdict riêng), thừa: {', '.join(outside)}")
 
 
 def policy_suite_names(project: dict, mode: str, suites: dict[str, dict]) -> list[str]:
@@ -263,7 +273,6 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
         floor_suites = {suite for worker in policy["floor_workers"] for suite in suite_map.get(worker, [])}
         if floor_suites - set(policy.get("blocking_suites", [])):
             raise PlanError("floor_workers phai thuoc blocking_suites")
-    _check_yellow_subset(project["slug"], mode, policy)  # resolve_project đã kiểm; project dựng tay (test/API) không qua đó
 
     if "suites" in policy:
         names = sorted(suites) if policy["suites"] == "*" else list(policy["suites"])
@@ -292,8 +301,7 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
     if missing:
         raise PlanError(f"mode {mode!r} cần suite không có trong thư mục suite: {', '.join(missing)}")
 
-    yellow_suites = set(policy.get("advisory_yellow_suites") or [])
-    tasks, seen, yellow_on_fail = [], {}, []
+    tasks, seen = [], {}
     for name in names:
         suite = suites[name]
         if roles[name] == "blocking":
@@ -306,24 +314,21 @@ def build_plan(project: dict, mode: str, suites: dict[str, dict], only_suites: l
                 raise PlanError(f"task_id {task_id!r} trùng giữa suite {seen[task_id]} và {name}")
             seen[task_id] = name
             tasks.append(copy.deepcopy(task))
-            if name in yellow_suites:
-                yellow_on_fail.append(task_id)
 
     sut = copy.deepcopy(project.get("sut", {}))
     plan = {"plan_version": 1, "name": f"{project['slug']}:{mode}", "sut": sut, "tasks": tasks}
     if selection is not None:
         plan["selection"] = copy.deepcopy(selection)
-    if yellow_on_fail:  # nằm TRONG plan text: được hash vào plan_id và --rerender dựng lại đúng verdict
-        plan["yellow_on_fail"] = yellow_on_fail
     text = yaml.safe_dump(plan, allow_unicode=True, sort_keys=False)
     meta = {
         "project": project["slug"], "mode": mode,
         "suite_sha256": {n: suites[n]["sha256"] for n in names},
         "on_skipped_gate_task": policy.get("on_skipped_gate_task"),
         "absent_advisory_suites": absent_advisory,
-        "yellow_task_ids": list(yellow_on_fail),
+        "task_suite": dict(seen),
+        "severity": copy.deepcopy(project.get("severity") or {}),
     }
-    result = {"name": plan["name"], "sut": sut, "tasks": tasks, "text": text, "yellow_on_fail": yellow_on_fail}
+    result = {"name": plan["name"], "sut": sut, "tasks": tasks, "text": text}
     if selection is not None:
         result["selection"] = copy.deepcopy(selection)
     return result, meta

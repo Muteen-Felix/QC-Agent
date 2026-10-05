@@ -73,11 +73,11 @@ def test_sample_counts_by_level_and_measures_db_age(tmp_path, spec):
     assert parsed.metrics == {"trivy.critical": 3, "trivy.high": 2, "trivy.medium": 4, "trivy.low": 0, "trivy.unknown": 0,
                               "trivy.total": 9, "trivy.targets": 2, "trivy.db_age_days": 3}
     hints = {f["title"]: f["severity_hint"] for f in parsed.findings}
-    assert hints["CVE-2021-44906 minimist@0.0.8 @ package-lock.json"] == "high"      # CRITICAL -> high (schema không có critical)
-    assert hints["CVE-2020-14343 PyYAML@5.3 @ requirements.txt"] == "high"           # CRITICAL ở target thứ hai
-    assert hints["CVE-2021-23337 lodash@4.17.20 @ package-lock.json"] == "high"      # HIGH thật
+    assert hints["CVE-2021-44906 minimist@0.0.8 @ package-lock.json"] == "critical"
+    assert hints["CVE-2020-14343 PyYAML@5.3 @ requirements.txt"] == "critical"
+    assert hints["CVE-2021-23337 lodash@4.17.20 @ package-lock.json"] == "critical"
     assert hints["CVE-2020-28500 lodash@4.17.20 @ package-lock.json"] == "medium"
-    assert all(f["detected_by"] == "trivy" and f["verdict_source"] == "deterministic_assert" for f in parsed.findings)
+    assert all(f["detected_by"].startswith("trivy:") and f["location"]["path"] and f["verdict_source"] == "deterministic_assert" for f in parsed.findings)
     assert parsed.tokens == 0 and [k for k, _ in parsed.evidence_paths] == ["raw_output", "stdout"]
     assert oracle.evaluate(spec["oracle"], parsed.metrics, {}).value == "fail"
 

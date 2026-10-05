@@ -36,7 +36,7 @@ def test_job_logs_carry_job_id_and_project_from_executor_down_to_task_events(env
     executor_events = parse(parent.getvalue())
     assert [e["event"] for e in executor_events] == ["job.start", "job.end"]
     assert all(e["job_id"] == str(job_id) and e["project"] == "demo" for e in executor_events)
-    assert executor_events[1]["status"] == "succeeded" and executor_events[1]["gate"] == "PASS" and executor_events[0]["mode"] == "manual"
+    assert executor_events[1]["status"] == "succeeded" and executor_events[1]["gate"] == "PASSED" and executor_events[0]["mode"] == "manual"
 
     log_text = (env.cfg.runs_root / "demo" / f"{job_id}.log").read_text(encoding="utf-8")  # executor.log = stdout + stderr của tiến trình con
     child = parse(log_text)

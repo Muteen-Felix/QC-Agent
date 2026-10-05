@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from qc_agent import settings
+from qc_agent.groundtruth import auth as gt_auth
 from qc_agent.groundtruth import check as gt_check
 from qc_agent.groundtruth import coverage as gt_coverage
 from qc_agent.groundtruth import render as gt_render
@@ -130,15 +131,24 @@ def _source_root(args, root: Path) -> Path:
     return directory.resolve()
 
 
+def _auth_prompt(root: Path) -> str | None:
+    try:
+        return gt_auth.prompt_block(gt_auth.load(root))
+    except ValueError as error:
+        raise GTCliError(str(error)) from None
+
+
 def _produce(args, root: Path, existing: dict | None = None) -> tuple[ParsedPRD, GenerateResult, object, dict | None]:
     prd_path = Path(args.prd)
+    auth = _auth_prompt(root)
     prd = parse_prd(prd_path, openapi_source=args.openapi)
     spec, analysis, facts = _openapi(args)
     if not _use_agent(args):
-        return prd, generate(prd, model=settings.get().gt_model, egress_dir=_egress_dir(args, root), source=_source(prd_path, root)), analysis, facts
+        return prd, generate(prd, model=settings.get().gt_model, egress_dir=_egress_dir(args, root), source=_source(prd_path, root),
+                                  auth=auth), analysis, facts
     from qc_agent.groundtruth import agent as gt_agent   # import lười: chỉ khi bật agent (kéo theo vòng lặp LLM nhiều lượt)
     result = gt_agent.generate_agent(prd, model=settings.get().gt_agent_model, egress_dir=_egress_dir(args, root), source_root=_source_root(args, root),
-                                     openapi_spec=spec, facts=facts, existing=existing, source=_source(prd_path, root))
+                                     openapi_spec=spec, facts=facts, existing=existing, source=_source(prd_path, root), auth=auth)
     if spec is None:
         result = dataclasses.replace(result, warnings=(*result.warnings, "agent chạy không có --openapi: không có tool openapi_*, và không chấm được technique/API"))
     return prd, result, analysis, facts

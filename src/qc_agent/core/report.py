@@ -21,6 +21,10 @@ class RunContext:
     specs: dict
     results: dict
     gate: GateVerdict
+    findings: list = field(default_factory=list)
+    severity_policy: dict = field(default_factory=dict)
+    task_suite: dict = field(default_factory=dict)
+    on_skipped_gate_task: str = "yellow"
     canary: list = field(default_factory=list)
     tickets_draft: list = field(default_factory=list)
     project: str | None = None  # chỉ có khi chạy qua project/suite
@@ -60,7 +64,7 @@ def render(ctx: RunContext) -> tuple[str, dict]:
         lines.extend(item["message"] for item in broken_canaries)
         lines.append("")
 
-    symbol = {"PASS": "✅", "YELLOW": "🟡", "FAIL": "❌"}.get(ctx.gate.value, "⚠")
+    symbol = {"PASSED": "✅", "PASSED_WITH_WARNINGS": "✅⚠", "BLOCKED": "❌"}.get(ctx.gate.value, "⚠")
     lines.extend([f"## VERDICT: {symbol} {ctx.gate.value}", ""])
     if ctx.selection is not None:
         selected = ctx.selection
@@ -72,6 +76,15 @@ def render(ctx: RunContext) -> tuple[str, dict]:
             lines.append(f"- {worker}: {_clean_reason(reason)}")
         if selected.get("floor_enforced_by_core"):
             lines.append("- Floor được core bổ sung: " + ", ".join(selected["floor_enforced_by_core"]))
+        lines.append("")
+    for severity in ("critical", "medium", "low"):
+        lines.extend([f"## {severity.capitalize()} ({ctx.gate.counts.get(severity, 0)})", ""])
+        selected_findings = [f for f in ctx.findings if f.severity == severity]
+        for finding in selected_findings:
+            location = f" · {finding.path}:{finding.line}" if finding.path and finding.line else (f" · {finding.path}" if finding.path else "")
+            lines.append(f"- `{finding.task_id}` { _clean_reason(finding.title) }{location}")
+        if not selected_findings:
+            lines.append("- Không có.")
         lines.append("")
     lines.extend(_deterministic_section(ctx, gating))
     lines.extend(_llm_section(ctx))
@@ -97,6 +110,8 @@ def render(ctx: RunContext) -> tuple[str, dict]:
         "run_signature": ctx.run_signature,
         "sut_id": ctx.sut_id,
         "gate_verdict": ctx.gate.value,
+        "findings": [f.to_dict() for f in ctx.findings],
+        "severity_counts": ctx.gate.counts,
         "exit_code": ctx.gate.exit_code,
         "deterministic_view": deterministic_view,
         "banner": [list(item) for item in ctx.gate.banner],
@@ -105,6 +120,9 @@ def render(ctx: RunContext) -> tuple[str, dict]:
         "details": {
             "generated_at": ctx.generated_at,
             "wallclock_s": ctx.wallclock_s,
+            "severity_policy": ctx.severity_policy,
+            "task_suite": ctx.task_suite,
+            "on_skipped_gate_task": ctx.on_skipped_gate_task,
             "results": {
                 task_id: {
                     "status": result["status"],
@@ -173,8 +191,7 @@ def _deterministic_section(ctx: RunContext, gating: list) -> list[str]:
         )
     if not gating:
         lines.append("| — | — | — | — | không có result gating |")
-    values = " AND ".join(result["verdict"]["value"] for result in gating) or "∅"
-    lines.extend(["", f"→ gate_verdict = {values} = **{ctx.gate.value}**", ""])
+    lines.extend(["", f"→ gate_verdict = severity + hạ tầng = **{ctx.gate.value}**", ""])
     return lines
 
 

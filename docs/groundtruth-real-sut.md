@@ -36,7 +36,7 @@ Ba việc dễ nhầm:
 |---|---|
 | SUT là **HTTP/JSON API** | Test sinh ra là `pytest` + `httpx` gọi `APP_BASE_URL`; giao diện (UI) không kiểm được, phải khai `non_testable` |
 | Chạy được bằng **một lệnh**, nhận cổng qua `{port}` hoặc biến `PORT` | `eval_gt_sut.py` tự bật/tắt SUT cho từng mutant |
-| Endpoint đang kiểm **không đòi đăng nhập** ở môi trường test | Runtime của test **chưa hỗ trợ auth động**: `headers` trong catalog là chuỗi tĩnh (không nội suy `{{biến}}`) và không đọc token từ env. Cách tạm: bật chế độ test/tắt auth cho môi trường đo, hoặc để QA thêm header tĩnh của tài khoản test (nhớ: file này được commit, đừng để khoá thật). Đây là giới hạn của Sprint 1 |
+| Endpoint đang kiểm **không đòi đăng nhập**, hoặc đăng nhập bằng **một endpoint trả Bearer token** | Có hồ sơ `.qc-agent/ground-truth/auth.yaml` thì runtime tự đăng nhập (khoá lấy từ biến `QC_TEST_*`): xem `docs/groundtruth.md` §5e. Chưa hỗ trợ token cố định riêng, OAuth/cookie phiên, nhiều vai trò: cách tạm là tắt auth ở môi trường đo hoặc để QA thêm header tĩnh của tài khoản test (file này được commit, đừng để khoá thật). `eval_gt_sut.py` cần các biến `QC_TEST_*` trong môi trường chạy |
 | Dùng **DB dùng một lần** (SQLite tạm, container riêng) | Test tạo dữ liệu thật; TC được viết tự đủ nhưng dữ liệu vẫn tồn tại sau lượt chạy |
 | Có **OpenAPI** (file trong repo) | Cho LLM danh sách endpoint, kiểm endpoint từng TC, sinh suite `api-contract`. CI chỉ đọc được file **trong repo**, không với tới URL của SUT đang chạy ở máy bạn |
 

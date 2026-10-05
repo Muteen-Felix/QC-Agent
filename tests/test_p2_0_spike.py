@@ -1,4 +1,4 @@
-"""P2-0 spike (docs/phase2/plan-debt.md): kiểm chứng hai giả định kỹ thuật TRƯỚC khi sửa core.
+"""P2-0 spike (thiết kế gốc docs/phase2/plan-debt.md đã xóa, xem `git log -- docs/phase2`): kiểm chứng hai giả định kỹ thuật TRƯỚC khi sửa core.
 
   A. PR checkout với fetch-depth 2 là một merge commit: `HEAD^1` luôn là tip nhánh đích, và
      `git diff --name-status -M HEAD^1 HEAD` bóc đúng file thêm (A) / đổi tên (R) của riêng PR.

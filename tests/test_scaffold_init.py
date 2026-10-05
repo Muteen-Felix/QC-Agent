@@ -450,7 +450,9 @@ def _serve_noteboard(monkeypatch, bugs):
     return server, thread, f"http://127.0.0.1:{port}"
 
 
-@pytest.mark.skipif(shutil.which("st") is None or shutil.which("k6") is None, reason="needs st and k6")
+# `init` sinh cả suite sast/secrets/deps (floor của S2 + deps của _default) nên gate trên máy cần đủ công cụ; trong image qc-agent đã có sẵn.
+_GATE_TOOLS = ("st", "k6", "semgrep", "gitleaks", "trivy")
+@pytest.mark.skipif(any(shutil.which(tool) is None for tool in _GATE_TOOLS), reason="needs " + ", ".join(_GATE_TOOLS))
 def test_init_from_a_live_sut_produces_a_gate_that_passes_clean_and_fails_on_a_seeded_bug(tmp_path, monkeypatch):
     server, thread, url = _serve_noteboard(monkeypatch, "none")
     try:
@@ -468,7 +470,7 @@ def test_init_from_a_live_sut_produces_a_gate_that_passes_clean_and_fails_on_a_s
             return proc.returncode, proc.stdout
 
         code, report = gate("clean")
-        assert code == 0 and "VERDICT: ✅ PASS" in report, report[-800:]
+        assert code == 0 and "VERDICT: ✅ PASSED" in report, report[-800:]
         assert "t-102" in report  # perf-smoke (discovery) cũng chạy được, k6 thật
     finally:
         server.should_exit = True

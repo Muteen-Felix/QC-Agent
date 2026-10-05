@@ -2,6 +2,10 @@
 
     python tools/eval_gt_sut.py --config eval/my-sut.yaml --llm real --runs 3 --yes --out-json eval/out.json
     python tools/eval_gt_sut.py --config eval/my-sut.yaml --skip-generate          # chỉ đo bộ ĐÃ DUYỆT (không gọi LLM, không tốn quota)
+    python tools/eval_gt_sut.py --config eval/my-sut.yaml --from-saved runs/eval-generated-<giờ>   # đo lại bộ vừa sinh ở lần trước, KHÔNG gọi LLM, không tốn tiền
+
+Lần chạy `--llm real` ghi bộ vừa sinh (catalog.json, meta.json) và egress vào `--keep-dir` (mặc định runs/eval-generated-<giờ UTC>) NGAY khi LLM trả về, trước khi đo; `--out-json`
+cũng được ghi một phần (khoá `partial`) ngay sau khi đo xong phần sinh. Một mutant lỗi khi đo chỉ bị ghi `measurement_error` (tính là không bị bắt), không làm mất cả lượt.
 
 Ba metric (dùng lại phần tính của tools/eval_groundtruth.py):
   (a) AC coverage   AC `testable` có >= 1 TC / tổng AC `testable` (PRD trừ `non_testable` do QA gán). Mỗi lượt sinh; --runs N lấy median.
@@ -31,6 +35,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import yaml
@@ -251,7 +256,8 @@ def summarize_mutants(results: dict[str, dict], required: set[str]) -> dict:
     survived = sorted(m for m in results if m not in killed)
     total = len(results)
     return {"killed": killed, "survived": survived, "count": len(killed), "total": total, "value": len(killed) / total if total else 0.0,
-            "required_missed": sorted(m for m in required if m in results and not results[m].get("killed"))}
+            "required_missed": sorted(m for m in required if m in results and not results[m].get("killed")),
+            "measurement_errors": sorted(m for m, r in results.items() if r.get("measurement_error"))}   # đã nằm trong `survived`: chưa chắc bộ test bỏ sót, có thể đo hỏng
 
 
 def verdict(thresholds: dict, *, coverage: float | None, green: float | None, mutants: dict | None, baseline_green: bool | None,
@@ -301,6 +307,8 @@ def render_markdown(report: dict) -> str:
             lines.append(f"| {mutant_id} | {mark(result.get('killed', False))}{note} | {', '.join(report['mutant_acs'].get(mutant_id, [])) or '—'} | {failing or '—'} |")
         if appr["mutants"]["survived"]:
             lines += ["", f"Mutant sống sót (bộ test bỏ sót): {', '.join(appr['mutants']['survived'])}"]
+        if appr["mutants"].get("measurement_errors"):
+            lines += ["", f"Mutant LỖI KHI ĐO (đã tính là không bị bắt, chưa chắc do bộ test): {', '.join(appr['mutants']['measurement_errors'])}"]
     if "generation" in report and report["generation"]["ac_coverage"]["missing"]:
         lines += ["", f"AC testable chưa có TC (lượt thấp nhất): {', '.join(report['generation']['ac_coverage']['missing'])}"]
     lines += render_generators(report)
@@ -345,9 +353,7 @@ def measure_approved(cfg: dict, golden: dict, measure_mutants: bool) -> dict:
         results: dict[str, dict] = {}
         if measure_mutants and out["baseline_green"]:   # bộ không xanh trên SUT sạch thì "bắt được lỗi" vô nghĩa: mọi thứ đều fail
             for mutant in cfg.get("mutants") or []:
-                with sut_instance(cfg, mutant) as url:
-                    code, outcomes = base.run_suite(workspace, url)
-                results[mutant["id"]] = base.mutant_result(mutant["id"], code, outcomes, golden, approved)
+                results[mutant["id"]] = run_mutant(cfg, mutant, workspace, golden, approved)
         out["mutant_results"] = results
         required = {m["id"] for m in cfg.get("mutants") or [] if m.get("required")}
         out["mutants"] = summarize_mutants(results, required)
@@ -378,6 +384,66 @@ def generate_agent_once(cfg: dict, llm: str, fake_script: Path | None, model: st
         except (OSError, ValueError):
             raise EvalError("không đọc được --fake-script (cần file JSON là danh sách response Messages API)") from None
     return prd, gt_agent.generate_agent(prd, **options)
+
+
+def save_generated(keep_dir: Path | None, kind: str, index: int, generated) -> Path | None:
+    """Ghi bộ VỪA SINH ra đĩa ngay khi LLM trả về, TRƯỚC mọi phép đo: lỗi ở bước đo (SUT không lên, pytest quá giờ...) không làm mất kết quả đã trả tiền.
+    Đo lại không tốn tiền bằng `--from-saved <keep_dir>`. Chỉ ghi catalog + số liệu chạy; không có khoá, không có nội dung nào ngoài những gì đã nằm trong catalog."""
+    if keep_dir is None:
+        return None
+    target = Path(keep_dir) / f"{kind}-run{index}"
+    target.mkdir(parents=True, exist_ok=True)
+    usage = generated.usage
+    meta = {"usage": {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens, "cache_creation_input_tokens": usage.cache_creation_input_tokens,
+                      "cache_read_input_tokens": usage.cache_read_input_tokens},
+            "orphans": list(generated.orphans), "warnings": list(generated.warnings), "dropped": generated.dropped, "agent": getattr(generated, "agent", None)}
+    (target / "catalog.json").write_text(json.dumps(generated.catalog, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    (target / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
+    return target
+
+
+def load_saved(saved_dir: Path, kind: str, index: int):
+    """Đọc lại một lượt đã lưu bởi `save_generated`: cùng dạng với kết quả của bộ sinh (catalog, usage, orphans, warnings, dropped, agent), không gọi LLM."""
+    from qc_agent.llm import client
+    source = Path(saved_dir) / f"{kind}-run{index}"
+    try:
+        catalog = json.loads((source / "catalog.json").read_text(encoding="utf-8"))
+        meta = json.loads((source / "meta.json").read_text(encoding="utf-8"))
+        usage = client.Usage(*(int(meta["usage"][k]) for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")))
+    except (OSError, ValueError, KeyError, TypeError):
+        raise EvalError(f"không đọc được lượt đã lưu {kind}-run{index} trong --from-saved (cần catalog.json + meta.json do lần chạy trước ghi ra)") from None
+    return SimpleNamespace(catalog=catalog, usage=usage, orphans=tuple(meta.get("orphans") or ()), warnings=tuple(meta.get("warnings") or ()),
+                           dropped=meta.get("dropped", 0), agent=meta.get("agent") or {})
+
+
+@contextmanager
+def egress_dir_for(keep_dir: Path | None, kind: str):
+    """Thư mục egress.jsonl (mỗi request rời máy một dòng). Có `keep_dir` thì giữ lại làm bằng chứng kiểm toán, không thì dùng thư mục tạm."""
+    if keep_dir is None:
+        with tempfile.TemporaryDirectory() as tmp:
+            yield Path(tmp)
+    else:
+        path = Path(keep_dir) / f"{kind}-egress"
+        path.mkdir(parents=True, exist_ok=True)
+        yield path
+
+
+def run_mutant(cfg: dict, mutant: dict, workspace: Path, golden: dict, tcs: list[dict]) -> dict:
+    """Đo MỘT mutant. Mutant lỗi khi đo (không áp được, SUT không lên, pytest quá giờ) không làm mất cả lượt: ghi `measurement_error` kèm lý do ngắn,
+    và tính là KHÔNG bị bắt (bảo thủ: không thổi phồng kill rate)."""
+    try:
+        with sut_instance(cfg, mutant) as url:
+            code, outcomes = base.run_suite(workspace, url)
+    except Exception as error:  # noqa: BLE001 — EvalError có thông điệp an toàn; lỗi khác chỉ nêu loại
+        reason = str(error) if isinstance(error, EvalError) else type(error).__name__
+        return {"killed": False, "exit_code": None, "failing_tcs": [], "caught_by_expected_ac": False, "measurement_error": True, "error": reason}
+    return base.mutant_result(mutant["id"], code, outcomes, golden, tcs)
+
+
+def write_report(report: dict, path: Path | None) -> None:
+    if path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8", newline="\n")
 
 
 def measure_scorer(catalog: dict, spec: dict | None) -> dict:
@@ -413,9 +479,7 @@ def measure_generated_mutants(catalog: dict, golden: dict, cfg: dict, analysis) 
         gt_render.write(gt_render.render(subset, sut_root=work, openapi=analysis), work)
         results: dict[str, dict] = {}
         for mutant in cfg["mutants"]:
-            with sut_instance(cfg, mutant) as url:
-                code, outcomes = base.run_suite(work, url)
-            results[mutant["id"]] = base.mutant_result(mutant["id"], code, outcomes, golden, subset["test_cases"])
+            results[mutant["id"]] = run_mutant(cfg, mutant, work, golden, subset["test_cases"])
     required = {m["id"] for m in cfg["mutants"] if m.get("required")}
     return {"measured": True, "test_cases": len(subset["test_cases"]), "excluded_red": len(forced["test_cases"]) - len(subset["test_cases"]),
             "results": results, **summarize_mutants(results, required)}
@@ -436,6 +500,9 @@ def aggregate_runs(runs: list[dict]) -> dict:
     if measured:
         out["mutants_generated"] = {"median_kill_rate": base.median([m["value"] for m in measured]), "runs": len(measured),
                                     "survived_in_worst": min(measured, key=lambda m: m["value"])["survived"]}
+        errored = sorted({e for m in measured for e in m.get("measurement_errors", [])})
+        if errored:     # chỉ có khoá này khi có mutant đo hỏng: giữ nguyên dạng cũ của báo cáo khi mọi thứ đo được
+            out["mutants_generated"]["measurement_errors"] = errored
     agents = [r["agent"] for r in runs if r.get("agent")]
     if agents:
         costs = [a["cost_usd_est"] for a in agents if a.get("cost_usd_est") is not None]
@@ -485,6 +552,10 @@ def render_generators(report: dict) -> list[str]:
     if agent:
         cost = "—" if agent["cost_usd_max"] is None else f"≤ ${agent['cost_usd_max']:.2f}"
         lines += ["", f"Agent: {agent['completed_runs']}/{agent['runs']} lượt hoàn tất · {agent['turns_median']:.0f} lượt gọi (median) · chi phí ước tính {cost} · {agent['wall_s_max']:.0f}s (lượt lâu nhất)"]
+    for name in names:
+        errors = (generators[name].get("mutants_generated") or {}).get("measurement_errors")
+        if errors:
+            lines += ["", f"Mutant LỖI KHI ĐO ở bộ sinh {name} (đã tính là không bị bắt, chưa chắc do bộ test): {', '.join(errors)}"]
     comparison = report.get("comparison")
     if comparison:
         lines += ["", "| Tiêu chí 'agent tốt hơn hẳn' | |", "|---|---|"] + [f"| {name} | {mark(ok)} |" for name, ok in comparison["checks"].items()]
@@ -547,6 +618,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--max-total-usd", type=float, help="BẮT BUỘC khi --llm real với agent: tổng ngân sách tối đa cho cả lệnh; từ chối chạy nếu trần/lượt × số lượt × số bộ sinh agent vượt mức này")
     ap.add_argument("--check-only", action="store_true", help="kiểm khô KHÔNG gọi LLM: đọc cấu hình, PRD, OpenAPI, quét repo map, khởi động SUT sạch một lần; in số liệu rồi thoát (làm trước khi chạy thật)")
     ap.add_argument("--generated-mutants", action="store_true", help="đo mutant trên bộ VỪA SINH (tập TC xanh); tự bật khi --generator both")
+    ap.add_argument("--keep-dir", type=Path, help="nơi ghi bộ vừa sinh + egress NGAY khi LLM trả về, trước khi đo (mặc định với --llm real: runs/eval-generated-<giờ UTC>)")
+    ap.add_argument("--from-saved", type=Path, help="đo lại bộ đã lưu bởi một lần chạy trước (thư mục --keep-dir của lần đó), KHÔNG gọi LLM, không tốn tiền")
     ap.add_argument("--price-in", type=float, help="USD/MTok đầu vào (Gemini free tier: mặc định 0)")
     ap.add_argument("--price-out", type=float, help="USD/MTok đầu ra")
     try:
@@ -558,6 +631,8 @@ def main(argv: list[str]) -> int:
             raise EvalError("--runs phải trong 1..10")
         if args.skip_generate and args.skip_mutants:
             raise EvalError("--skip-generate và --skip-mutants cùng bật thì không còn gì để đo ngoài baseline; bỏ một cờ")
+        if args.from_saved and (args.skip_generate or args.keep_dir):
+            raise EvalError("--from-saved không đi cùng --skip-generate hay --keep-dir (nó đọc bộ đã lưu, không sinh và không ghi thêm)")
         from qc_agent import settings
         from qc_agent.groundtruth.prd import parse_prd
         from qc_agent.llm.client import provider_of
@@ -578,7 +653,7 @@ def main(argv: list[str]) -> int:
                 model = "claude-sonnet-5"   # response giả có dạng Messages API
             if not os.environ.get("ANTHROPIC_API_KEY", "").strip():   # khoá rỗng (vd. từ .env) cũng phải thay
                 os.environ["ANTHROPIC_API_KEY"] = "sk-ant-eval-fake"
-        elif not args.skip_generate:
+        elif not args.skip_generate and not args.from_saved:
             if "single" in gens:
                 free = provider_of(model) == "gemini" and args.price_in is None and args.price_out is None
                 estimate = base.estimate_for(cfg["prd"], cfg.get("openapi"), args.runs, model, 0.0 if free else args.price_in, 0.0 if free else args.price_out)
@@ -603,27 +678,41 @@ def main(argv: list[str]) -> int:
 
         labels = {"single": model, "agent": agent_model}
         shown = " vs ".join(labels[g] for g in gens)
-        report: dict = {"name": cfg.get("name", Path(cfg["sut_root"]).name), "prd_id": prd.prd_id, "llm": "skipped" if args.skip_generate else args.llm,
-                        "model": "—" if args.skip_generate else shown if args.llm == "real" else f"{shown} (fake)", "labeled_by": cfg.get("labeled_by"),
+        llm_label = "skipped" if args.skip_generate else "saved" if args.from_saved else args.llm
+        report: dict = {"name": cfg.get("name", Path(cfg["sut_root"]).name), "prd_id": prd.prd_id, "llm": llm_label,
+                        "model": "—" if args.skip_generate else "(bộ đã lưu)" if args.from_saved else shown if args.llm == "real" else f"{shown} (fake)", "labeled_by": cfg.get("labeled_by"),
                         "thresholds": thresholds, "mutant_acs": {m["id"]: m["acs"] for m in cfg.get("mutants") or []}, "generator": "—" if args.skip_generate else args.generator}
         coverage = green = mutants = baseline = scorer_complete = generated_mutants = comparison = None
+        keep_dir = args.keep_dir
+        if keep_dir is None and args.llm == "real" and not args.skip_generate and not args.from_saved:
+            keep_dir = ROOT / "runs" / time.strftime("eval-generated-%Y%m%dT%H%M%SZ", time.gmtime())   # lần chạy tốn tiền luôn để lại bộ vừa sinh
         if not args.skip_generate:
             measure_generated = (args.generator == "both" or args.generated_mutants) and not args.skip_mutants and bool(cfg.get("mutants"))
             aggregates: dict[str, dict] = {}
             for kind in gens:
                 runs = []
-                with tempfile.TemporaryDirectory() as egress:
-                    for _ in range(args.runs):
-                        if kind == "single":
+                with egress_dir_for(keep_dir, kind) as egress:
+                    for index in range(1, args.runs + 1):
+                        if args.from_saved:
+                            generated = load_saved(args.from_saved, kind, index)
+                        elif kind == "single":
                             _, generated = generate_once(cfg, args.llm, args.fake_response, model, Path(egress))
                         else:
                             _, generated = generate_agent_once(cfg, args.llm, args.fake_script, agent_model, Path(egress), spec)
-                        measured = measure_generation(generated.catalog, golden, cfg, analysis)
-                        measured["usage"] = {"input_tokens": generated.usage.input_tokens, "output_tokens": generated.usage.output_tokens}
-                        measured["orphans"] = list(generated.orphans)
-                        measured["scorer"] = measure_scorer(generated.catalog, spec)
-                        if measure_generated:
-                            measured["mutants_generated"] = measure_generated_mutants(generated.catalog, golden, cfg, analysis)
+                        saved = save_generated(keep_dir, kind, index, generated)
+                        if saved:
+                            print(f"Đã lưu bộ vừa sinh ({kind}, lượt {index}) ở {saved} trước khi đo; nếu bước đo lỗi, đo lại miễn phí bằng --from-saved {keep_dir}", file=sys.stderr)
+                        try:
+                            measured = measure_generation(generated.catalog, golden, cfg, analysis)
+                            measured["usage"] = {"input_tokens": generated.usage.input_tokens, "output_tokens": generated.usage.output_tokens}
+                            measured["orphans"] = list(generated.orphans)
+                            measured["scorer"] = measure_scorer(generated.catalog, spec)
+                            if measure_generated:
+                                measured["mutants_generated"] = measure_generated_mutants(generated.catalog, golden, cfg, analysis)
+                        except Exception as error:  # noqa: BLE001 — bộ đã trả tiền và đã lưu: nói rõ cách đo lại thay vì chỉ báo lỗi
+                            reason = str(error) if isinstance(error, EvalError) else type(error).__name__
+                            where = f"bộ đã lưu ở {saved}; đo lại không tốn tiền: --from-saved {keep_dir}" if saved else "bộ vừa sinh chưa được lưu (dùng --keep-dir lần sau)"
+                            raise EvalError(f"đo {kind} lượt {index} thất bại: {reason}. {where}") from None
                         if kind == "agent":
                             measured["agent"] = {key: generated.agent.get(key) for key in ("turns", "stop", "completed", "error_kind", "files_read", "bytes_read", "submissions", "dropped_in_loop",
                                                                                            "finish_rejections", "waivers", "spec_conflicts", "cost_usd_est", "duration_s", "techniques", "repo_map")}
@@ -632,6 +721,7 @@ def main(argv: list[str]) -> int:
             primary = aggregates["agent"] if "agent" in aggregates else aggregates["single"]
             coverage, green = primary["ac_coverage"]["median"], primary["green_rate"]["median"]
             report["generation"], report["generators"] = primary, aggregates
+            write_report({**report, "partial": "mới có phần sinh/đo bộ vừa sinh; chưa có (c) và kết luận"}, args.out_json)   # còn lại có thể hỏng (SUT/QA chưa duyệt): không để mất phần đã đo
             if args.generator == "agent":       # agent một mình: scorer 100% và kill rate trên bộ vừa sinh là điều kiện; `both` dồn hết vào `comparison`
                 scorer_complete = primary["scorer"]["complete_runs"] == primary["scorer"]["runs"] if primary.get("scorer") else None
                 generated_mutants = primary.get("mutants_generated")
@@ -652,14 +742,13 @@ def main(argv: list[str]) -> int:
         print(f"LỖI: {error}", file=sys.stderr)
         return 3
     except Exception as error:  # noqa: BLE001 — chỉ in loại lỗi: thông điệp của LLM/YAML có thể trích lại nội dung
-        print(f"LỖI HỆ THỐNG: {type(error).__name__}", file=sys.stderr)
+        kind = getattr(error, "kind", None)   # GTError/LLMError: `kind` là từ khoá ngắn (bad_output, timeout, refused...), không chứa nội dung
+        print(f"LỖI HỆ THỐNG: {type(error).__name__}" + (f" ({kind})" if isinstance(kind, str) and kind.isidentifier() else ""), file=sys.stderr)
         return 3
 
     report["verdict"] = verdict(thresholds, coverage=coverage, green=green, mutants=mutants, baseline_green=baseline,
                                 scorer_complete=scorer_complete, generated_mutants=generated_mutants, comparison=comparison)
-    if args.out_json:
-        args.out_json.parent.mkdir(parents=True, exist_ok=True)
-        args.out_json.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    write_report(report, args.out_json)
     sys.stdout.write(render_markdown(report))
     return 0 if report["verdict"]["passed"] else 1
 

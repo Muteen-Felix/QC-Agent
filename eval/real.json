@@ -1,0 +1,672 @@
+{
+  "generation": {
+    "ac_coverage": {
+      "covered": 24,
+      "median": 0.9230769230769231,
+      "missing": [
+        "AC-1.5",
+        "AC-1.7"
+      ],
+      "testable": 26
+    },
+    "agent": {
+      "completed_runs": 1,
+      "cost_usd_max": 1.064,
+      "cost_usd_median": 1.064,
+      "runs": 1,
+      "turns_median": 15,
+      "wall_s_max": 322.391
+    },
+    "green_rate": {
+      "median": 0.8939393939393939
+    },
+    "mutants_generated": {
+      "median_kill_rate": 0.8666666666666667,
+      "runs": 1,
+      "survived_in_worst": [
+        "M02-me-returns-wrong-field",
+        "M11-schedule-default-7"
+      ]
+    },
+    "runs": [
+      {
+        "ac_coverage": {
+          "covered": 24,
+          "missing": [
+            "AC-1.5",
+            "AC-1.7"
+          ],
+          "testable": 26,
+          "value": 0.9230769230769231
+        },
+        "agent": {
+          "bytes_read": 54963,
+          "completed": true,
+          "cost_usd_est": 1.064,
+          "dropped_in_loop": 0,
+          "duration_s": 322.391,
+          "error_kind": null,
+          "files_read": 9,
+          "finish_rejections": 1,
+          "repo_map": {
+            "chars": 7140,
+            "files": 29,
+            "parsed": 29,
+            "reused": 0,
+            "skipped": 0
+          },
+          "spec_conflicts": 2,
+          "stop": "finished",
+          "submissions": 11,
+          "techniques": {
+            "authz": 5,
+            "boundary": 17,
+            "data_integrity": 2,
+            "equivalence": 1,
+            "error_handling": 12,
+            "happy_path": 10,
+            "negative_validation": 19
+          },
+          "turns": 15,
+          "waivers": 20
+        },
+        "exit_code": 1,
+        "green_rate": {
+          "failing": [
+            "TC-AC-1.4-1c89f6",
+            "TC-AC-1.6-c1b4c8",
+            "TC-AC-1.6-e58dda",
+            "TC-AC-1.8-868f44",
+            "TC-AC-1.8-cfd9fd",
+            "TC-AC-1.8-d7d41f",
+            "TC-AC-14.1-43336c"
+          ],
+          "passed": 59,
+          "total": 66,
+          "value": 0.8939393939393939
+        },
+        "mutants_generated": {
+          "count": 13,
+          "excluded_red": 7,
+          "killed": [
+            "M01-login-accepts-any-credentials",
+            "M03-login-username-max-129",
+            "M04-runners-list-201",
+            "M05-legacy-source-not-410",
+            "M06-offline-runner-400",
+            "M07-unknown-job-400",
+            "M08-verify-missing-file-minus-one",
+            "M09-nodata-missing-410",
+            "M10-report-file-missing-400",
+            "M12-schedule-max-366",
+            "M13-runnow-unknown-runner-409",
+            "M14-log-created-200",
+            "M16-report-download-missing-410"
+          ],
+          "measured": true,
+          "measurement_errors": [],
+          "required_missed": [],
+          "results": {
+            "M01-login-accepts-any-credentials": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-1.3-7d7d3b"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M02-me-returns-wrong-field": {
+              "caught_by_expected_ac": false,
+              "exit_code": 0,
+              "failing_tcs": [],
+              "killed": false,
+              "measurement_error": false
+            },
+            "M03-login-username-max-129": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-1.2-8fb900"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M04-runners-list-201": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-2.6-30f545"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M05-legacy-source-not-410": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-4.4-f3248b"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M06-offline-runner-400": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-4.2-c322e1"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M07-unknown-job-400": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-4.7-4c110f",
+                "TC-AC-5.3-bcc7ee"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M08-verify-missing-file-minus-one": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-11.3-88cc2e"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M09-nodata-missing-410": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-11.7-9d3d03"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M10-report-file-missing-400": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-11.8-962b68"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M11-schedule-default-7": {
+              "caught_by_expected_ac": false,
+              "exit_code": 0,
+              "failing_tcs": [],
+              "killed": false,
+              "measurement_error": false
+            },
+            "M12-schedule-max-366": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-12.3-e4e99a"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M13-runnow-unknown-runner-409": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-13.3-1bea98"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M14-log-created-200": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-14.1-127d4f",
+                "TC-AC-14.1-6ffa82",
+                "TC-AC-14.1-96b2ab",
+                "TC-AC-14.3-ff75c4",
+                "TC-AC-14.5-68a8a0"
+              ],
+              "killed": true,
+              "measurement_error": false
+            },
+            "M16-report-download-missing-410": {
+              "caught_by_expected_ac": true,
+              "exit_code": 1,
+              "failing_tcs": [
+                "TC-AC-14.6-9d6e5a"
+              ],
+              "killed": true,
+              "measurement_error": false
+            }
+          },
+          "survived": [
+            "M02-me-returns-wrong-field",
+            "M11-schedule-default-7"
+          ],
+          "test_cases": 59,
+          "total": 15,
+          "value": 0.8666666666666667
+        },
+        "orphans": [],
+        "scorer": {
+          "complete": true,
+          "dims": {
+            "ac": {
+              "covered": 34,
+              "gaps": [],
+              "gaps_total": 0,
+              "ratio": 1.0,
+              "total": 98,
+              "waived": 64
+            },
+            "api": {
+              "covered": 24,
+              "gaps": [],
+              "gaps_total": 0,
+              "ratio": 1.0,
+              "total": 37,
+              "waived": 13
+            },
+            "technique": {
+              "covered": 24,
+              "gaps": [],
+              "gaps_total": 0,
+              "ratio": 1.0,
+              "total": 31,
+              "waived": 7
+            }
+          }
+        },
+        "test_cases": 66,
+        "usage": {
+          "input_tokens": 32,
+          "output_tokens": 53062
+        }
+      }
+    ],
+    "scorer": {
+      "complete_runs": 1,
+      "median": {
+        "ac": 1.0,
+        "api": 1.0,
+        "technique": 1.0
+      },
+      "runs": 1
+    }
+  },
+  "generator": "agent",
+  "generators": {
+    "agent": {
+      "ac_coverage": {
+        "covered": 24,
+        "median": 0.9230769230769231,
+        "missing": [
+          "AC-1.5",
+          "AC-1.7"
+        ],
+        "testable": 26
+      },
+      "agent": {
+        "completed_runs": 1,
+        "cost_usd_max": 1.064,
+        "cost_usd_median": 1.064,
+        "runs": 1,
+        "turns_median": 15,
+        "wall_s_max": 322.391
+      },
+      "green_rate": {
+        "median": 0.8939393939393939
+      },
+      "mutants_generated": {
+        "median_kill_rate": 0.8666666666666667,
+        "runs": 1,
+        "survived_in_worst": [
+          "M02-me-returns-wrong-field",
+          "M11-schedule-default-7"
+        ]
+      },
+      "runs": [
+        {
+          "ac_coverage": {
+            "covered": 24,
+            "missing": [
+              "AC-1.5",
+              "AC-1.7"
+            ],
+            "testable": 26,
+            "value": 0.9230769230769231
+          },
+          "agent": {
+            "bytes_read": 54963,
+            "completed": true,
+            "cost_usd_est": 1.064,
+            "dropped_in_loop": 0,
+            "duration_s": 322.391,
+            "error_kind": null,
+            "files_read": 9,
+            "finish_rejections": 1,
+            "repo_map": {
+              "chars": 7140,
+              "files": 29,
+              "parsed": 29,
+              "reused": 0,
+              "skipped": 0
+            },
+            "spec_conflicts": 2,
+            "stop": "finished",
+            "submissions": 11,
+            "techniques": {
+              "authz": 5,
+              "boundary": 17,
+              "data_integrity": 2,
+              "equivalence": 1,
+              "error_handling": 12,
+              "happy_path": 10,
+              "negative_validation": 19
+            },
+            "turns": 15,
+            "waivers": 20
+          },
+          "exit_code": 1,
+          "green_rate": {
+            "failing": [
+              "TC-AC-1.4-1c89f6",
+              "TC-AC-1.6-c1b4c8",
+              "TC-AC-1.6-e58dda",
+              "TC-AC-1.8-868f44",
+              "TC-AC-1.8-cfd9fd",
+              "TC-AC-1.8-d7d41f",
+              "TC-AC-14.1-43336c"
+            ],
+            "passed": 59,
+            "total": 66,
+            "value": 0.8939393939393939
+          },
+          "mutants_generated": {
+            "count": 13,
+            "excluded_red": 7,
+            "killed": [
+              "M01-login-accepts-any-credentials",
+              "M03-login-username-max-129",
+              "M04-runners-list-201",
+              "M05-legacy-source-not-410",
+              "M06-offline-runner-400",
+              "M07-unknown-job-400",
+              "M08-verify-missing-file-minus-one",
+              "M09-nodata-missing-410",
+              "M10-report-file-missing-400",
+              "M12-schedule-max-366",
+              "M13-runnow-unknown-runner-409",
+              "M14-log-created-200",
+              "M16-report-download-missing-410"
+            ],
+            "measured": true,
+            "measurement_errors": [],
+            "required_missed": [],
+            "results": {
+              "M01-login-accepts-any-credentials": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-1.3-7d7d3b"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M02-me-returns-wrong-field": {
+                "caught_by_expected_ac": false,
+                "exit_code": 0,
+                "failing_tcs": [],
+                "killed": false,
+                "measurement_error": false
+              },
+              "M03-login-username-max-129": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-1.2-8fb900"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M04-runners-list-201": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-2.6-30f545"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M05-legacy-source-not-410": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-4.4-f3248b"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M06-offline-runner-400": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-4.2-c322e1"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M07-unknown-job-400": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-4.7-4c110f",
+                  "TC-AC-5.3-bcc7ee"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M08-verify-missing-file-minus-one": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-11.3-88cc2e"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M09-nodata-missing-410": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-11.7-9d3d03"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M10-report-file-missing-400": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-11.8-962b68"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M11-schedule-default-7": {
+                "caught_by_expected_ac": false,
+                "exit_code": 0,
+                "failing_tcs": [],
+                "killed": false,
+                "measurement_error": false
+              },
+              "M12-schedule-max-366": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-12.3-e4e99a"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M13-runnow-unknown-runner-409": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-13.3-1bea98"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M14-log-created-200": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-14.1-127d4f",
+                  "TC-AC-14.1-6ffa82",
+                  "TC-AC-14.1-96b2ab",
+                  "TC-AC-14.3-ff75c4",
+                  "TC-AC-14.5-68a8a0"
+                ],
+                "killed": true,
+                "measurement_error": false
+              },
+              "M16-report-download-missing-410": {
+                "caught_by_expected_ac": true,
+                "exit_code": 1,
+                "failing_tcs": [
+                  "TC-AC-14.6-9d6e5a"
+                ],
+                "killed": true,
+                "measurement_error": false
+              }
+            },
+            "survived": [
+              "M02-me-returns-wrong-field",
+              "M11-schedule-default-7"
+            ],
+            "test_cases": 59,
+            "total": 15,
+            "value": 0.8666666666666667
+          },
+          "orphans": [],
+          "scorer": {
+            "complete": true,
+            "dims": {
+              "ac": {
+                "covered": 34,
+                "gaps": [],
+                "gaps_total": 0,
+                "ratio": 1.0,
+                "total": 98,
+                "waived": 64
+              },
+              "api": {
+                "covered": 24,
+                "gaps": [],
+                "gaps_total": 0,
+                "ratio": 1.0,
+                "total": 37,
+                "waived": 13
+              },
+              "technique": {
+                "covered": 24,
+                "gaps": [],
+                "gaps_total": 0,
+                "ratio": 1.0,
+                "total": 31,
+                "waived": 7
+              }
+            }
+          },
+          "test_cases": 66,
+          "usage": {
+            "input_tokens": 32,
+            "output_tokens": 53062
+          }
+        }
+      ],
+      "scorer": {
+        "complete_runs": 1,
+        "median": {
+          "ac": 1.0,
+          "api": 1.0,
+          "technique": 1.0
+        },
+        "runs": 1
+      }
+    }
+  },
+  "labeled_by": "AI draft (Claude Sonnet 5.5, 2026-10-03), viết từ PRD + mã SUT TRƯỚC khi agent chạy lần nào; CHƯA có QA duyệt",
+  "llm": "real",
+  "model": "claude-sonnet-5-5",
+  "mutant_acs": {
+    "M01-login-accepts-any-credentials": [
+      "AC-1.3"
+    ],
+    "M02-me-returns-wrong-field": [
+      "AC-1.5"
+    ],
+    "M03-login-username-max-129": [
+      "AC-1.2"
+    ],
+    "M04-runners-list-201": [
+      "AC-2.6"
+    ],
+    "M05-legacy-source-not-410": [
+      "AC-4.4"
+    ],
+    "M06-offline-runner-400": [
+      "AC-4.2"
+    ],
+    "M07-unknown-job-400": [
+      "AC-4.7",
+      "AC-5.3"
+    ],
+    "M08-verify-missing-file-minus-one": [
+      "AC-11.3"
+    ],
+    "M09-nodata-missing-410": [
+      "AC-11.7"
+    ],
+    "M10-report-file-missing-400": [
+      "AC-11.8"
+    ],
+    "M11-schedule-default-7": [
+      "AC-12.1"
+    ],
+    "M12-schedule-max-366": [
+      "AC-12.3"
+    ],
+    "M13-runnow-unknown-runner-409": [
+      "AC-13.3"
+    ],
+    "M14-log-created-200": [
+      "AC-14.1"
+    ],
+    "M16-report-download-missing-410": [
+      "AC-14.6"
+    ]
+  },
+  "name": "vahan-api-server",
+  "prd_id": "vahan-rpa-system",
+  "thresholds": {
+    "ac_coverage": 0.9,
+    "green_rate": 0.9,
+    "mutant_kill_rate": 0.9
+  },
+  "verdict": {
+    "checks": {
+      "ac_coverage": true,
+      "coverage_scorer_100": true,
+      "generated_mutant_kill_rate": false,
+      "green_rate": false
+    },
+    "passed": false
+  }
+}

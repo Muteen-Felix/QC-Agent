@@ -17,3 +17,9 @@ docs/research/qcagent-run*.md
 
 # workspace tạm của test workflow Docker
 tests/.docker-workspaces/
+
+# Artifact sinh ra khi chạy test (Playwright, Hypothesis) - không commit
+test-results/
+playwright-report/
+.hypothesis/
+.env.local

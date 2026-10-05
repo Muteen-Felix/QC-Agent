@@ -85,7 +85,7 @@ def test_missing_binary_skips_the_task_and_the_gate_fails(tmp_path, monkeypatch,
     """Gỡ công cụ khỏi image không được là cách "tắt gate" mà không ai biết."""
     result, task, calls = run_gate(tmp_path, monkeypatch, tool, binary=BAD_BINARY, on_skipped="fail")
     assert task["status"] == "skipped" and BAD_BINARY in task["verdict"]["rationale"] and task["verdict"]["gating"] is False
-    assert result.exit_code == 1 and result.gate.value == "FAIL" and calls == 0
+    assert result.exit_code == 1 and result.gate.value == "BLOCKED" and calls == 0
     assert any("skipped" in reason for _, reason in result.gate.reasons)
 
 
@@ -94,9 +94,9 @@ def test_alongside_a_passing_gate_task_only_the_fail_policy_makes_a_skipped_one_
     """Đối chứng: khi còn một task gate khác đạt, chính chính sách `on_skipped_gate_task: fail` mới làm gate đỏ — nên policy mặc định của mode pr phải có nó."""
     other = "semgrep" if tool != "semgrep" else "gitleaks"
     result, task, _ = run_gate(tmp_path / "yellow", monkeypatch, tool, "empty", binary=BAD_BINARY, on_skipped="yellow", also=other)
-    assert task["status"] == "skipped" and result.gate.value == "YELLOW" and result.exit_code == 0        # không có policy: task chặn biến mất mà gate vẫn xanh (vàng)
+    assert task["status"] == "skipped" and result.gate.value == "PASSED_WITH_WARNINGS" and result.exit_code == 0
     result, task, _ = run_gate(tmp_path / "red", monkeypatch, tool, "empty", binary=BAD_BINARY, on_skipped="fail", also=other)
-    assert task["status"] == "skipped" and result.gate.value == "FAIL" and result.exit_code == 1
+    assert task["status"] == "skipped" and result.gate.value == "BLOCKED" and result.exit_code == 1
     default = yaml.safe_load((ROOT / "configs" / "projects" / "_default.yaml").read_text(encoding="utf-8"))
     assert default["modes"]["pr"]["on_skipped_gate_task"] == "fail"
 
@@ -105,7 +105,7 @@ def test_alongside_a_passing_gate_task_only_the_fail_policy_makes_a_skipped_one_
 def test_a_gate_whose_only_task_is_skipped_fails_even_without_the_policy(tmp_path, monkeypatch, tool):
     """Chốt chặn thứ hai của gate: không còn result gating nào thì không có gate, không phải "xanh vì rỗng"."""
     result, task, _ = run_gate(tmp_path, monkeypatch, tool, binary=BAD_BINARY, on_skipped="yellow")
-    assert task["status"] == "skipped" and result.gate.value == "FAIL" and result.exit_code == 1
+    assert task["status"] == "skipped" and result.gate.value == "BLOCKED" and result.exit_code == 1
 
 
 # ---------- 2. công cụ chết ----------
@@ -115,7 +115,7 @@ def test_a_crashed_tool_is_error_never_pass(tmp_path, monkeypatch, tool):
     result, task, calls = run_gate(tmp_path, monkeypatch, tool, "crash")     # exit 137, không ghi file
     assert task["status"] == "error" and task["verdict"]["gating"] is False and task["verdict"]["value"] != "pass"
     assert task["verdict"]["rationale"].startswith("parse:") and "137" in task["verdict"]["rationale"]
-    assert result.exit_code == 1 and result.gate.value == "FAIL" and any("error" in reason for _, reason in result.gate.reasons)
+    assert result.exit_code == 1 and result.gate.value == "BLOCKED" and any("error" in reason for _, reason in result.gate.reasons)
     assert calls == 2                                                       # retry đúng MỘT lần cho error (hạ tầng), không hơn
 
 
@@ -132,7 +132,7 @@ def test_a_tool_that_exits_zero_but_writes_nothing_is_error(tmp_path, monkeypatc
 def test_broken_json_is_error_labelled_infrastructure(tmp_path, monkeypatch, tool, mode):
     result, task, _ = run_gate(tmp_path, monkeypatch, tool, mode)
     assert task["status"] == "error" and "không đọc được" in task["verdict"]["rationale"] and task["verdict"]["rationale"].startswith("parse:")
-    assert result.exit_code == 1 and result.gate.value == "FAIL"
+    assert result.exit_code == 1 and result.gate.value == "BLOCKED"
     assert task["metrics"] == {} and task["findings"] == []                 # không có số đo nào bị "bịa" từ file hỏng
 
 
@@ -170,7 +170,7 @@ def test_trivy_stale_db_is_a_red_gate_but_not_an_infrastructure_error(tmp_path, 
 def test_a_valid_empty_report_passes_with_every_counter_at_zero(tmp_path, monkeypatch, tool):
     result, task, _ = run_gate(tmp_path, monkeypatch, tool, "empty")
     assert task["status"] == "pass" and task["verdict"]["gating"] is True and task["findings"] == []
-    assert result.exit_code == 0 and result.gate.value == "PASS"
+    assert result.exit_code == 0 and result.gate.value == "PASSED"
     counters = {name: value for name, value in task["metrics"].items() if name.rsplit(".", 1)[1] in COUNTERS}
     assert counters and all(value == 0 for value in counters.values())      # "sạch" = có đủ số đo và bằng 0, không phải "không đo được"
 
@@ -180,7 +180,7 @@ def test_a_valid_empty_report_passes_with_every_counter_at_zero(tmp_path, monkey
 def test_semgrep_high_finding_fails_with_the_exact_location(tmp_path, monkeypatch):
     result, task, _ = run_gate(tmp_path, monkeypatch, "semgrep", "sample")
     titles = [f["title"] for f in task["findings"]]
-    assert task["status"] == "fail" and task["verdict"]["gating"] is True and result.exit_code == 1 and result.gate.value == "FAIL"
+    assert task["status"] == "fail" and task["verdict"]["gating"] is True and result.exit_code == 1 and result.gate.value == "BLOCKED"
     assert "opt.qc-rules.semgrep.python-subprocess-shell-true @ apps/api-server/app/api/jobs.py:6" in titles      # finding của công cụ: đúng path:dòng
     assert "semgrep.high = 1 vi phạm == 0" in titles                                                     # finding của oracle: đúng ngưỡng của suite
     assert task["metrics"]["semgrep.high"] == 1 and task["verdict"]["value"] == "fail"
@@ -205,7 +205,7 @@ def test_trivy_critical_finding_fails_and_names_the_lockfile(tmp_path, monkeypat
 
 def test_a_leaky_gitleaks_report_is_refused_and_the_secret_is_nowhere(tmp_path, monkeypatch):
     result, task, calls = run_gate(tmp_path, monkeypatch, "gitleaks", "leak")
-    assert task["status"] == "error" and "chưa được REDACTED" in task["verdict"]["rationale"] and result.exit_code == 1 and result.gate.value == "FAIL"
+    assert task["status"] == "error" and "chưa được REDACTED" in task["verdict"]["rationale"] and result.exit_code == 1 and result.gate.value == "BLOCKED"
     assert calls == 2 and not list(result.run_dir.rglob("gitleaks.json"))     # báo cáo bị xoá ở CẢ hai lần thử: không nằm lại để bị upload làm artifact
     assert LEAKED not in whole_run_text(result.run_dir) and LEAKED not in json.dumps(task) and LEAKED not in result.report_md
 
@@ -237,4 +237,4 @@ def test_absolute_paths_and_flag_injection_are_rejected(tmp_path, monkeypatch, t
 @pytest.mark.parametrize("tool", TOOLS)
 def test_no_broken_scan_ever_yields_a_passing_gate(tmp_path, monkeypatch, tool, mode):
     result, task, _ = run_gate(tmp_path, monkeypatch, tool, mode)
-    assert task["status"] != "pass" and result.exit_code != 0 and result.gate.value != "PASS"
+    assert task["status"] != "pass" and result.exit_code != 0 and result.gate.value != "PASSED"

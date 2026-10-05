@@ -1,6 +1,11 @@
 # Project `noteboard` = SUT tham chiếu của qc-agent (tests/fixtures/sut/noteboard). TẬP TRUNG: đổi file này phải qua PR vào qc-agent.
 # Suite (nội dung task) nằm trong repo SUT tại suites_dir.
 slug: noteboard
+jira:
+  project_key: QCSB
+  issue_type: Task
+  user_map: {}  # accountId thật chỉ điền khi nối Jira sandbox
+  max_new_per_run: 20
 name: "Noteboard (SUT tham chiếu)"
 suites_dir: .qc-agent/suites
 sut_checkout: tests/fixtures/sut/noteboard   # trên máy service; project root tương đối. Dự án thật: đường dẫn tuyệt đối tới bản checkout luôn được cập nhật
@@ -22,7 +27,6 @@ modes:
   pr:                                    # tự động, mỗi PR
     blocking_suites: [api-contract, ai-eval, gt-functional, sast, secrets]   # mọi task lane=gate: chặn merge (gt-functional: Ground-Truth đã duyệt, S1-08)
     advisory_suites: [ui-explore, perf-smoke, coverage-debt]  # mọi task lane=discovery: không chặn (perf-smoke: SUT trong runner, số đo chỉ tham khảo)
-    advisory_yellow_suites: [coverage-debt]    # P2-8: suite trên fail => YELLOW (⚪ neutral + comment), không PASS im lặng (docs/phase2/plan-debt.md)
     on_skipped_gate_task: fail                 # task gate bị skip không được cho qua
   manual:                                # QA/Dev chạy trên web; lane giữ như suite khai báo
     suites: "*"

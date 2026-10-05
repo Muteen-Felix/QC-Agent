@@ -97,7 +97,7 @@ def _fence(text: str) -> str:
     return _TAG.sub("&lt;", text)
 
 
-def build_user(prd: ParsedPRD, *, repair: str | None = None) -> str:
+def build_user(prd: ParsedPRD, *, repair: str | None = None, auth: str | None = None) -> str:
     index = "\n".join(f"{story.story_id}: {story.title}\n" + "\n".join(f"  [{ac.ac_id}] {ac.text}" for ac in story.acs) for story in prd.stories)
     parts = ["Generate the test cases for the PRD below.\n",
              "<prd>\n" + _fence(prd.text.strip()) + "\n\n=== AC index (extracted by code; use these ids in ac_refs and uncovered_acs) ===\n" + _fence(index) + "\n</prd>"]
@@ -105,6 +105,8 @@ def build_user(prd: ParsedPRD, *, repair: str | None = None) -> str:
         rows = [{"method": e["method"], "path": e["path"], "parameters": e["parameters"], "body_required": e["body_required"], "responses": e["responses"]}
                 for e in prd.endpoints]
         parts.append("<endpoints>\n" + _fence("\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows)) + "\n</endpoints>")
+    if auth:
+        parts.append(auth)   # khối <auth> do code dựng (groundtruth/auth.py), không chứa token hay khoá
     if repair:
         parts.append("<validation_error>\nYour previous call was rejected by schema validation: " + repair
                      + "\nCall emit_test_cases again with the same intent and a corrected, schema-valid input.\n</validation_error>")
@@ -309,7 +311,8 @@ def _assemble(prd: ParsedPRD, data: dict, *, model: str, version: str, source: s
 # ---------------- điểm vào ----------------
 
 def generate(prd: ParsedPRD, *, model: str, egress_dir: Path, transport: httpx.BaseTransport | None = None,
-             policy: egress.EgressPolicy | None = None, source: str | None = None, timeout_s: float | None = None) -> GenerateResult:
+             policy: egress.EgressPolicy | None = None, source: str | None = None, timeout_s: float | None = None,
+             auth: str | None = None) -> GenerateResult:
     """Một lời gọi LLM (+ tối đa MỘT lần sửa khi `bad_output`) -> catalog `draft`. Lỗi luôn là `GTError`.
 
     `source` là chuỗi ghi vào `prd.source` của catalog (CLI truyền đường dẫn tương đối của PRD); mặc định là `prd.prd_id`.
@@ -323,7 +326,7 @@ def generate(prd: ParsedPRD, *, model: str, egress_dir: Path, transport: httpx.B
     timeout = timeout_s if timeout_s is not None else max(settings.get().llm_timeout_s, MIN_TIMEOUT_S)
 
     def ask(repair: str | None) -> llm.ToolCall:
-        return llm.call_tool(purpose="gt-generate", model=model, system=system, user=build_user(prd, repair=repair),
+        return llm.call_tool(purpose="gt-generate", model=model, system=system, user=build_user(prd, repair=repair, auth=auth),
                              tool_name=TOOL_NAME, tool_description=TOOL_DESCRIPTION, input_schema=schema,
                              egress_dir=egress_dir, data_categories=DATA_CATEGORIES, max_tokens=MAX_TOKENS,
                              timeout_s=timeout, policy=policy, transport=transport)

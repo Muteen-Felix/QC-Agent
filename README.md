@@ -1,19 +1,143 @@
-> Orchestrator "ngu" là orchestrator đúng. Routing bằng LLM là thừa và có hại.
+# QC-Agent
 
-Đang refactor từ PoC sang `qc-agent` (xem `docs/README.md`). Bản PoC đầy đủ: tag `poc-final`.
+Quality gate cho Pull Request, kèm bộ sinh test case từ PRD. Dùng chung cho nhiều repo sản phẩm (SUT).
 
-- **Chạy orchestrator:** `python orchestrator.py --plan tests/fixtures/plans/demo.yaml` (exit 0), `demo_fail.yaml` (exit 1).
-- **Toy app (SUT tham chiếu):** `python -m uvicorn toyapp.app:app --host 127.0.0.1 --port 8000`.
-- **Cài đặt:** `pip install uv && uv sync` (tạo `.venv`, cài editable `qc-agent` + phụ thuộc từ `uv.lock`).
-- **Cấu hình:** `QC_RUNS_DIR`, `QC_WORKERS_PATH` (nhiều thư mục, ngăn cách `os.pathsep`), `QC_SCHEMAS_DIR`. Xem `src/qc_agent/settings.py`.
-- **CLI:** `qc-agent --plan ...` (tương đương `python orchestrator.py`). Plan demo cần worker giả: `QC_WORKERS_PATH="workers;tests/fixtures/workers"` (Windows; dùng `:` trên Linux).
-- **Chạy theo project (đa dự án):** `qc-agent run --project noteboard --mode pr --sut-root tests/fixtures/sut/noteboard` (cần `APP_BASE_URL`). Policy chặn/không chặn: `configs/projects/_default.yaml` (mặc định) + `<slug>.yaml` đăng ký tuỳ chọn, gộp bằng deep merge (list thay thế); suite ở repo SUT tại `.qc-agent/suites/` (worker chạy với cwd = SUT root). Chỉ một số suite: `--suites api-contract`.
-- **Job store + executor (service):** `docker compose up -d postgres`, `export QC_DATABASE_URL=postgresql://qc:qc-dev-only@127.0.0.1:5433/qc_agent`, `python -m qc_agent.jobs.migrate upgrade`, rồi `python -m qc_agent.jobs.executor` (nhận job, chạy bằng CLI trong tiến trình con; hỗ trợ huỷ, timeout, khoá môi trường, requeue). Test DB: `QC_TEST_DATABASE_URL=... pytest tests/test_jobs_db.py tests/test_executor.py`.
-- **Tài khoản (chỉ admin mời):** đặt `QC_ALLOWED_EMAIL_DOMAINS=congty.com` (để trống = không ai được thêm), rồi `qc-agent user add ten@congty.com` (in mật khẩu tạm một lần), `user reset|deactivate|activate|list`; token CI theo project: `qc-agent token create --project noteboard --name ci`. Mọi user quyền như nhau; sai mật khẩu 5 lần thì khoá 15 phút.
-- **API (lớp chính; web chỉ là client):** `uvicorn qc_agent.api.app:create_app --factory --port 8080` (cần `QC_DATABASE_URL`, `QC_ALLOWED_EMAIL_DOMAINS`; dev bằng http đặt `QC_COOKIE_SECURE=false`). Endpoint dưới `/api/v1`: `auth/*`, `projects`, `projects/{p}/suites`, `workers`, `projects/{p}/jobs` (tạo job thủ công), `jobs` (lịch sử), `jobs/{id}` (+`/cancel`, `/report.json|.md`, `/artifacts`, `/log`), `projects/{p}/runs` (CI đẩy kết quả bằng token). Project cần `sut_checkout` (đường dẫn checkout repo SUT trên máy chủ) và tuỳ chọn `environments` trong `configs/projects/<slug>.yaml`; `/healthz`, `/readyz`.
-- **Web (dashboard đa dự án):** API tự phục vụ giao diện ở `/` (`web/`: HTML/JS/CSS thuần, không CDN, CSP nghiêm ngặt): đăng nhập, chọn project, chạy job với suite/task/môi trường tuỳ chọn, lịch sử có lọc, chi tiết job (gate/discovery, report, artifact, log), huỷ job, đổi mật khẩu. Test giao diện bằng Chromium thật: `pytest tests/test_web.py` (cần Node + `npm ci`, `QC_TEST_DATABASE_URL`).
-- **Thông báo webhook:** `ALERT_WEBHOOK_URL` (Slack/Discord/Telegram/generic; Telegram cần `ALERT_TELEGRAM_CHAT_ID`), `DASHBOARD_URL` để đính link. CI: `python -m qc_agent.integrations.notify --run-dir runs/r-0001 --exit-code N`; executor tự gửi khi job web kết thúc nếu có `ALERT_WEBHOOK_URL`. Nội dung do SUT kiểm soát được làm sạch (chặn `@everyone`, `<!channel>`, link/markdown giả, dòng giả mạo verdict); URL webhook không bao giờ vào log.
-- **Docker (một image cho CLI + service):** `docker build -t qc-agent .` (Python 3.11 + Schemathesis + DeepEval, Node 22 + Midscene + Chromium, k6; base ghim theo digest; chạy bằng user `qc`). CLI: `docker run --rm -v "$PWD:/work" -e APP_BASE_URL=... qc-agent run --project <slug> --mode pr --sut-root /work`. Service: `--entrypoint uvicorn qc-agent qc_agent.api.app:create_app --factory --host 0.0.0.0 --port 8080`; executor: `--entrypoint python qc-agent -m qc_agent.jobs.executor`. Image publish: `ghcr.io/muteen-felix/qc-agent` (workflow `image.yml`); repo SUT ghim theo digest.
-- **Gate cho repo SUT (chế độ tự động trên PR):** workflow tái sử dụng `qc-gate.reusable.yml` (build + chạy SUT trong container, chạy image qc-agent, Check Run + comment dính + lịch sử + webhook; job xanh/đỏ theo exit code của gate). Gate đọc policy từ nhánh `main` của qc-agent (`configs/projects/_default.yaml` + đăng ký `<slug>.yaml` tuỳ chọn). Hướng dẫn và ví dụ file gọi: `docs/usage-ci.md`; **onboarding tự phục vụ cho repo mới (một lệnh `docker run … init`, PR, duyệt gợi ý refine): `docs/onboarding.md`**. Kiểm thử workflow trên Docker cục bộ: `tools/run_reusable_locally.py`.
-- **Ground-Truth (vòng ngoài, có LLM):** `qc-agent gt generate|regen|validate|info` sinh test case từ PRD, QA duyệt qua PR, gate chỉ chạy TC đã duyệt (`docs/groundtruth.md`). Nhà cung cấp LLM chọn theo tiền tố `QC_GT_MODEL`: `gemini-*` dùng `GEMINI_API_KEY` (có backoff/giãn cách/model dự phòng cho free tier: `QC_LLM_MAX_RETRIES`, `QC_LLM_MIN_INTERVAL_S`, `QC_LLM_FALLBACK_MODELS`), còn lại dùng `ANTHROPIC_API_KEY`. CI cho repo SUT: workflow `qc-groundtruth.reusable.yml`. Đo chất lượng trên SUT thật: `python tools/eval_gt_sut.py --config eval/<sut>.yaml` (hướng dẫn từng bước: `docs/groundtruth-real-sut.md`).
-- **Test:** `pytest -q`
+> **LLM được sinh ứng viên và chọn phạm vi ngoài floor. LLM không được phán quyết.**
+> Mọi thứ chặn merge đều tất định và đã qua người duyệt một lần.
+
+## Hệ thống làm gì
+
+Hai vòng lồng nhau, chạy ở hai nhịp khác nhau, nối với nhau chỉ qua **một thư mục file đã có người duyệt** (`.qc-agent/**` trong repo SUT):
+
+```
+ VÒNG NGOÀI (theo PRD, có LLM)          VÒNG TRONG (mỗi PR, verdict tất định)
+ PRD ─► Ground-Truth Engine             PR ─► Chọn phạm vi ─► Gate ─► Phản hồi
+        LLM sinh test case (JSON)             prune · path rules      chạy worker      inline review
+        render tất định ─► PR cho QA          Diff Agent · floor      chấm tất định    Jira (Low)
+        QA: draft ─► approved                 ⇒ selection.json        BLOCKED / PASSED
+                 │                                   ▲
+                 └──── .qc-agent/** (đã duyệt) ──────┘
+```
+
+| Thành phần | Việc | LLM |
+|---|---|---|
+| Ground-Truth (`groundtruth/`) | PRD → test case → PR để QA duyệt | Có, chỉ sinh dữ liệu JSON |
+| Selector (`selector/`) | Chọn worker cần chạy cho PR này, luôn kèm floor (secrets + SAST) | Có, bị bao vây; lỗi ⇒ chạy toàn bộ |
+| Gate (`core/`) | Chạy worker, chấm, ra verdict | **Không bao giờ** |
+
+Verdict: `BLOCKED` (exit 1) khi có finding critical/medium hoặc task gate bị lỗi/bỏ qua · `PASSED_WITH_WARNINGS` khi chỉ còn Low (exit theo `--warn-exit`, mặc định 0) · `PASSED` (exit 0). Lỗi plan/hệ thống: exit 3.
+
+Đọc đầy đủ ở [docs/architecture.md](docs/architecture.md).
+
+## Worker
+
+| Khâu | Worker | Công cụ |
+|---|---|---|
+| Functional | `schemathesis`, `pytest` (chỉ TC `approved`), `midscene`, `coverage-debt` | Schemathesis · pytest · Midscene |
+| Performance | `k6` | k6 |
+| Integration | `playwright` | Playwright (bản ghi HAR) |
+| Security | `semgrep`, `gitleaks`, `trivy` | Semgrep · gitleaks · Trivy |
+| AI app | `deepeval` | DeepEval |
+
+Mỗi worker là `workers/<tên>.yaml` + `src/qc_agent/adapters/<tên>_adapter.py`, giao tiếp qua `schemas/task_spec.json` và `schemas/result.json`. Thêm worker chỉ là thêm file, không sửa `core/`. Chi tiết: [docs/worker.md](docs/worker.md), [docs/core-rules.md](docs/core-rules.md).
+
+## Bắt đầu nhanh
+
+Yêu cầu: Python 3.11, Node 22 (Midscene CLI và Playwright), [uv](https://docs.astral.sh/uv/). Docker chỉ cần cho Postgres và image.
+
+```bash
+pip install uv && uv sync        # .venv + qc-agent (editable) từ uv.lock
+npm ci                           # Midscene CLI + Playwright
+npx playwright install chromium  # trình duyệt cho test Playwright/web
+cp .env.example .env             # điền khoá khi cần dùng LLM
+```
+
+Chạy gate demo (worker giả, không cần dịch vụ ngoài). Chạy từ thư mục gốc repo:
+
+```bash
+export QC_WORKERS_PATH="workers;tests/fixtures/workers"   # Linux/macOS dùng ":" thay cho ";"
+qc-agent --plan tests/fixtures/plans/demo.yaml            # exit 0
+qc-agent --plan tests/fixtures/plans/demo_fail.yaml       # exit 1
+```
+
+Chạy theo project với SUT mẫu `noteboard`:
+
+```bash
+python -m uvicorn --app-dir tests/fixtures/sut/noteboard toyapp.app:app --port 8000
+APP_BASE_URL=http://127.0.0.1:8000 \
+  qc-agent run --project noteboard --mode pr --sut-root tests/fixtures/sut/noteboard
+```
+
+## Lệnh chính
+
+| Lệnh | Việc |
+|---|---|
+| `qc-agent run --project P --mode pr\|manual` | Chạy gate theo policy của project |
+| `qc-agent select ... --out selection.json` | Chọn phạm vi cho PR (prune → path rules → Diff Agent → floor) |
+| `qc-agent run --trigger pr --selection selection.json` | Chạy đúng phạm vi đã chọn, gộp lại floor |
+| `qc-agent run --trigger manual --workers a,b` | Chạy đúng các worker chỉ định, không LLM, không floor |
+| `qc-agent gt generate\|regen\|validate\|info` | Ground-Truth: sinh TC từ PRD, gộp khi PRD đổi, cổng duyệt của QA |
+| `qc-agent gt import-xlsx\|export-xlsx` | Trao đổi test case với QA qua Excel |
+| `qc-agent init` / `validate` | Onboard repo SUT / kiểm cấu hình offline |
+| `qc-agent doctor` | Kiểm binary, env, version của mọi worker |
+| `qc-agent user ...` / `token ...` | Quản trị tài khoản và token (cần Postgres) |
+
+Dịch vụ (API + dashboard + executor) cần Postgres:
+
+```bash
+docker compose up -d postgres
+export QC_DATABASE_URL=postgresql://qc:qc-dev-only@127.0.0.1:5433/qc_agent
+python -m qc_agent.jobs.migrate upgrade
+python -m qc_agent.jobs.executor &
+QC_ALLOWED_EMAIL_DOMAINS=congty.com QC_COOKIE_SECURE=false \
+  uvicorn qc_agent.api.app:create_app --factory --port 8080
+```
+
+PR và chạy tay qua CLI **không** phụ thuộc Postgres; chỉ dịch vụ mới cần.
+
+## Kiểm thử
+
+```bash
+pytest -q                          # toàn bộ (rất lâu, xem lưu ý)
+pytest tests/test_runner.py -q     # một file
+```
+
+- Test cần DB (`test_jobs_db`, `test_executor`, `test_api`, `test_web`) bị skip nếu thiếu `QC_TEST_DATABASE_URL`, ví dụ `postgresql://qc:qc-dev-only@127.0.0.1:5433/postgres`.
+- Test không bao giờ gọi API LLM thật; LLM được giả bằng `httpx.MockTransport`.
+- Cổng hợp lệ trước khi merge: `qc-agent --plan tests/fixtures/plans/demo.yaml` thoát 0, `demo_fail.yaml` thoát 1, `python tools/freeze_contract.py --check` thoát 0.
+
+## Cấu trúc thư mục
+
+```
+src/qc_agent/
+  core/          gate tất định: plan → worker → verdict → report (không LLM)
+  selector/      chọn phạm vi PR (Diff Agent), sinh selection.json
+  groundtruth/   PRD → test case → render, bộ chấm coverage, Excel
+  llm/           client Claude/Gemini qua httpx, vòng lặp agent
+  adapters/      adapter của từng worker       oracle/   luật chấm pass/fail
+  scaffold/      qc-agent init / validate      integrations/  GitHub, Jira, webhook
+  api/ jobs/ auth/   dịch vụ (FastAPI, executor, Postgres)
+workers/         manifest từng worker          schemas/  contract (đóng băng, SemVer)
+configs/projects/  policy theo project         rules/semgrep/  luật SAST
+web/             dashboard (HTML/JS/CSS thuần) tools/    đo đạc, kiểm contract, tiện ích
+tests/           test + fixture (SUT mẫu noteboard)       docs/   tài liệu
+.github/workflows/  CI, gate và Ground-Truth tái sử dụng, kiểm contract
+```
+
+## Tài liệu
+
+| Đọc | Khi nào |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Hiểu hệ thống; tài liệu chuẩn |
+| [docs/adr/](docs/adr/README.md) | Vì sao thiết kế như vậy |
+| [docs/groundtruth.md](docs/groundtruth.md) | Vận hành vòng ngoài: PRD → test case → QA duyệt |
+| [docs/usage-ci.md](docs/usage-ci.md) | Gắn gate vào repo SUT |
+| [docs/onboarding.md](docs/onboarding.md) | Onboard repo mới bằng một lệnh |
+| [docs/worker.md](docs/worker.md) | Từng worker, giới hạn công cụ |
+| [docs/core-rules.md](docs/core-rules.md) | Luật code của `core/`, cách thêm worker |
+| [docs/implementation-plan.md](docs/implementation-plan.md) | Code đã tới đâu, DoD từng sprint, việc còn lại |
+| [docs/requirement-spec.md](docs/requirement-spec.md) | SRS |
+
+## Trạng thái
+
+Gate, selector, Ground-Truth, verdict mới, PR review và Jira đã có code và test. Phần dùng LLM **chưa được đo bằng model thật** và **chưa có PR thật trên repo SUT thật**. Bảng trạng thái từng thành phần ở [docs/implementation-plan.md](docs/implementation-plan.md).

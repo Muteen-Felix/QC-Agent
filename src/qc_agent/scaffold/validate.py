@@ -35,7 +35,8 @@ GT_WORKFLOW = ".github/workflows/qc-groundtruth.yml"
 CODEOWNERS_FILES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")   # thứ tự ưu tiên của GitHub
 # Biến môi trường mà workflow tái sử dụng chuyển vào container gate (khớp bước "Run qc-agent gate"; test đối chiếu với file workflow thật).
 PASSTHROUGH = frozenset({"OPENAI_API_KEY", "GEMINI_API_KEY", "MIDSCENE_MODEL_BASE_URL", "MIDSCENE_MODEL_API_KEY", "MIDSCENE_MODEL_NAME",
-                         "MIDSCENE_MODEL_FAMILY", "QC_JUDGE_PROVIDER", "QC_JUDGE_MODEL", "QC_JUDGE_FALLBACK_PROVIDER", "QC_JUDGE_FALLBACK_MODEL"})
+                         "MIDSCENE_MODEL_FAMILY", "QC_JUDGE_PROVIDER", "QC_JUDGE_MODEL", "QC_JUDGE_FALLBACK_PROVIDER", "QC_JUDGE_FALLBACK_MODEL",
+                         "QC_TEST_USERNAME", "QC_TEST_PASSWORD"})
 FILE_INPUTS = ("flow", "script")   # inputs.<khoá> là đường dẫn file trong repo SUT (cộng inputs.collect.golden)
 
 
@@ -225,14 +226,8 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
         except PlanError as error:
             report.add(ERROR, f"mode {mode}", str(error))
             continue
-        yellow = project["modes"][mode].get("advisory_yellow_suites") or []
-        yellow_absent = [n for n in meta["absent_advisory_suites"] if n in yellow]
-        plain_absent = [n for n in meta["absent_advisory_suites"] if n not in yellow]
-        if yellow_absent:   # policy hứa YELLOW khi suite này fail, nhưng repo chưa có suite => im lặng không dò gì (xanh giả về nợ test)
-            report.add(WARN, f"mode {mode}", f"advisory_yellow_suites nhắc suite chưa khai báo trong repo: {', '.join(yellow_absent)} "
-                                             f"(thêm {project['suites_dir']}/<tên>.yaml, nếu không nợ test không được dò)")
-        if plain_absent:
-            report.add(NOTE, f"mode {mode}", f"suite advisory không có trong repo nên bị bỏ qua: {', '.join(plain_absent)}")
+        if meta["absent_advisory_suites"]:
+            report.add(NOTE, f"mode {mode}", f"suite advisory không có trong repo nên bị bỏ qua: {', '.join(meta['absent_advisory_suites'])}")
         if mode == "pr" and not any(task.get("lane") == "gate" for task in plan["tasks"]):
             report.add(ERROR, f"mode {mode}", "không có task nào ở lane gate: PR luôn PASS, gate không chặn được gì")
         used: set[str] = set()

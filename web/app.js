@@ -7,6 +7,8 @@ const PAGE = 20;
 const STATUS_LABEL = {
   queued: "Đang chờ", running: "Đang chạy", succeeded: "Thành công", failed: "Thất bại", cancelled: "Đã huỷ", timed_out: "Quá thời gian",
   pass: "pass", fail: "fail", error: "error", skipped: "skipped",
+  PASSED: "Đạt", PASSED_WITH_WARNINGS: "Đạt, có cảnh báo", BLOCKED: "Bị chặn",
+  PASS: "Đạt", YELLOW: "Cảnh báo", FAIL: "Không đạt",
 };
 const ACTIVE = new Set(["queued", "running"]);
 

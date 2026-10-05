@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 from qc_agent.core import project as project_lib, registry  # noqa: E402
 from qc_agent.core.verdict import gate_verdict  # noqa: E402
+from qc_agent.core.findings import normalize  # noqa: E402
 from qc_agent.llm.client import ToolCall, Usage  # noqa: E402
 from qc_agent.selector import agent, pruner, rules  # noqa: E402
 
@@ -63,7 +64,7 @@ def _fake_gate_verdict(workers: set[str]) -> str:
                         "verdict": {"gating": worker not in discovery,
                                     "value": "fail" if worker == "schemathesis" else "pass"}}
                for worker in workers}
-    return gate_verdict(results, specs).value
+    return gate_verdict(*normalize(results, specs)).value
 
 
 def evaluate(*, llm: str = "fake", runs: int = 1) -> dict:

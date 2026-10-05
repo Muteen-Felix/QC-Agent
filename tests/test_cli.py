@@ -41,9 +41,9 @@ def test_01_demo_plan_exits_0_and_writes_report(tmp_path):
     assert proc.returncode == 0, proc.stderr
     md = (tmp_path / "runs" / "r-0001" / "report.md").read_text(encoding="utf-8")
     assert [f"## {n}." in md for n in range(1, 6)] == [True] * 5
-    assert "## VERDICT: ✅ PASS" in proc.stdout  # report cũng được in ra console
+    assert "## VERDICT: ✅⚠ PASSED_WITH_WARNINGS" in proc.stdout  # discovery có finding Low
     data = report_json(tmp_path)
-    assert (data["gate_verdict"], data["exit_code"]) == ("PASS", 0)
+    assert (data["gate_verdict"], data["exit_code"]) == ("PASSED_WITH_WARNINGS", 0)
     assert (tmp_path / "runs" / "r-0001" / "sut_identity.json").is_file()
 
 
@@ -51,7 +51,7 @@ def test_02_failing_plan_exits_1(tmp_path):
     proc = run_cli(tmp_path, "--plan", str(DEMO_FAIL))
     assert proc.returncode == 1, proc.stderr
     data = report_json(tmp_path)
-    assert (data["gate_verdict"], data["exit_code"]) == ("FAIL", 1)
+    assert (data["gate_verdict"], data["exit_code"]) == ("BLOCKED", 1)
     by_task = {row["task_id"]: row["value"] for row in data["deterministic_view"]}
     assert by_task == {"t-e01": "pass", "t-e02": "fail"}  # t-e03 (discovery) không nằm trong deterministic_view
 
@@ -97,12 +97,14 @@ def test_07_yellow_exit_flag(tmp_path):
     plan = str(write_plan(tmp_path, skipped_gate_task))
     default = run_cli(tmp_path, "--plan", plan)
     assert default.returncode == 0, default.stderr
-    assert report_json(tmp_path)["gate_verdict"] == "YELLOW"
+    assert report_json(tmp_path)["gate_verdict"] == "PASSED_WITH_WARNINGS"
     assert "SKIPPED / ERROR — ĐỌC TRƯỚC" in default.stdout
 
-    blocking = run_cli(tmp_path, "--plan", plan, "--yellow-exit", "2")
+    blocking = run_cli(tmp_path, "--plan", plan, "--warn-exit", "2")
     assert blocking.returncode == 2
     assert report_json(tmp_path, "r-0002")["exit_code"] == 2  # report.json khớp exit của tiến trình
+    legacy = run_cli(tmp_path, "--plan", plan, "--yellow-exit", "2")
+    assert legacy.returncode == 2 and "--yellow-exit đã cũ" in legacy.stderr
 
 
 def test_07b_on_skipped_gate_task_fail_blocks(tmp_path):
@@ -113,7 +115,7 @@ def test_07b_on_skipped_gate_task_fail_blocks(tmp_path):
     proc = run_cli(tmp_path, "--plan", plan, "--on-skipped-gate-task", "fail")
     assert proc.returncode == 1, proc.stderr
     data = report_json(tmp_path)
-    assert data["gate_verdict"] == "FAIL" and data["exit_code"] == 1
+    assert data["gate_verdict"] == "BLOCKED" and data["exit_code"] == 1
     assert run_cli(tmp_path, "--plan", plan, "--on-skipped-gate-task", "xanh").returncode == 3  # giá trị lạ là lỗi cấu hình
 
 
@@ -139,7 +141,7 @@ def test_10_rerender_recomputes_without_touching_the_original_report(tmp_path):
     assert proc.returncode == 1, proc.stderr  # verdict được tính lại từ file, vẫn đỏ
     rerendered = (run_dir / "report.rerender.md").read_text(encoding="utf-8")
     verdict = [line for line in rerendered.splitlines() if line.startswith("## VERDICT")]
-    assert verdict == ["## VERDICT: ❌ FAIL"]
+    assert verdict == ["## VERDICT: ❌ BLOCKED"]
     assert (run_dir / "report.md").read_bytes() == original
     assert not (tmp_path / "runs" / "r-0002").exists()  # không tạo run mới, không chạy worker
 
@@ -151,6 +153,7 @@ def test_11_rerender_follows_the_stored_results(tmp_path):
     result = json.loads(result_file.read_text(encoding="utf-8"))
     result.update(status="pass")
     result["verdict"]["value"] = "pass"
+    result["findings"] = []
     result_file.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
 
     assert run_cli(tmp_path, "--rerender", str(run_dir)).returncode == 0  # đọc đúng file result, không chạy lại worker
