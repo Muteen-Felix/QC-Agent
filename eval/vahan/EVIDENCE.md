@@ -7,8 +7,10 @@ Mục đích: cho thấy bộ test do agent Ground-Truth sinh ra có **bắt đ�
 | Được phép nói | Không được phép nói |
 |---|---|
 | Với PRD và mã nguồn của `apps/api-server`, một lượt chạy của agent (Claude Sonnet 5.5) sinh 66 test case; sau khi loại 7 TC đỏ trên SUT sạch, 59 TC còn lại **bắt được 13/15 mutant** (86,7%). | "Agent tốt hơn sinh test một lời gọi (single-shot)": chưa có baseline (xem mục 5). |
-| Độ phủ AC theo nhãn: 24/26 AC kiểm được qua HTTP (92,3%). | "Agent đạt ngưỡng nghiệm thu": hai trong bốn ngưỡng tự động bị hụt (kill rate 86,7% < 90%; TC xanh 89,4% < 90%). |
+| Độ phủ AC theo nhãn: 24/26 AC kiểm được qua HTTP (92,3%). | "Agent đạt ngưỡng 90% của kế hoạch ban đầu": hai trong bốn ngưỡng tự động bị hụt (kill rate 86,7% < 90%; TC xanh 89,4% < 90%). Xem cập nhật ngay dưới bảng. |
 | Hai mutant sống sót chỉ ra hai lỗ hổng cụ thể của bộ test (mục 4). | Con số này đại diện cho agent nói chung: chỉ **1 lượt, 1 SUT, 15 mutant**, không có độ biến thiên. |
+
+> **Cập nhật 2026-10-05 (quyết định của chủ dự án).** Hết ngân sách API nên không đo lại; ngưỡng nghiệm thu S1 cho phép đo LLM thật được hạ từ 90% xuống 85% **sau khi đã có số đo này** và chốt ở 1 lượt (kế hoạch gốc: median 3 lần). Theo ngưỡng mới cả ba chỉ số đạt (92,3% / 89,4% / 86,7%), nhưng kill rate chỉ hơn ngưỡng đúng 1 mutant (13/15; 12/15 = 80% sẽ không đạt) và không có độ biến thiên. Cột "Ngưỡng" ở mục 2 giữ nguyên 90% vì đó là ngưỡng lúc đo. Mọi giới hạn ở mục 6 vẫn đúng.
 
 ## 2. Kết quả lần chạy hợp lệ (lần 3)
 

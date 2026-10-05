@@ -14,8 +14,8 @@ Kiến trúc đích nằm ở [architecture.md](architecture.md); bảng này gh
 | Gate tất định `core/` (plan → worker → verdict → report) | *Đã chạy* | Verdict mới `BLOCKED` / `PASSED_WITH_WARNINGS` / `PASSED` (S3, commit `c883532`) |
 | Worker `schemathesis`, `k6`, `midscene`, `pytest`, `semgrep`, `gitleaks`, `trivy`, `coverage-debt` | *Đã chạy* | Security chạy trong image, chưa có PR thật. `deepeval` chưa chạy trên sản phẩm thật |
 | Worker `playwright` (integration) | Worker + scaffold đã có | Chưa spike với SUT có browser extension (request từ service worker), chưa có PR thật ([worker.md](worker.md)) |
-| `llm/client.py` + `agent_loop.py` (Claude, Gemini) | *Đã chạy — chưa đo bằng model thật* | Agent GT chưa từng gọi API Anthropic thật. `count_tokens`, prompt caching, trần token: chưa làm (S4) |
-| Ground-Truth: parse PRD, sinh catalog, render, `gt generate / validate / regen`, agent đọc repo, bộ chấm coverage, Excel | *Đã chạy — chưa đo bằng model thật* | DoD S1 còn 2 mục PENDING bên dưới |
+| `llm/client.py` + `agent_loop.py` (Claude, Gemini) | *Đã chạy — chưa đo bằng model thật* | Agent GT đã gọi API Anthropic thật (smoke noteboard và một lượt hợp lệ trên vahan-api-server, xem `eval/vahan/EVIDENCE.md`). `count_tokens`, prompt caching, trần token: chưa làm (S4) |
+| Ground-Truth: parse PRD, sinh catalog, render, `gt generate / validate / regen`, agent đọc repo, bộ chấm coverage, Excel | *Đã chạy — chưa đo bằng model thật* | DoD S1 còn 1 mục PENDING (kiểm tay branch protection trên repo thật, dự kiến S4-06). Đo thật 1 lượt, ngưỡng hạ còn 85% |
 | Workflow sinh GT + khoá `.qc-agent/**` | Đã có workflow, mẫu CODEOWNERS, `tools/protect_ground_truth.py` | Chưa chạy trên GitHub thật, chưa bật protection trên repo thật |
 | Trigger `manual` + `--trigger`; Selector (prune, path rules, Diff Agent, floor); Task Runner song song | *Đã chạy* (S2) | Recall/precision/P95 với Haiku thật chưa đo. Executor/dashboard chưa nối `--trigger manual --workers` (phạm vi = toàn bộ policy). `max_parallel` mặc định 1 |
 | Contract 2.0.0, normalizer (`core/findings.py`), `pr_review`, Jira cho finding Low, gỡ sổ nợ | *Đã chạy* (S3) | DoD S3 đã tick kèm bằng chứng (fake GitHub/Jira); còn `S3.1` chờ approval nhóm core. Chưa chạy trên GitHub/Jira thật (S4.6) |
@@ -54,8 +54,8 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
 
 | Sprint | Thước đo chính | Ngưỡng | Công cụ đo |
 |---|---|---|---|
-| **S1** | Tỉ lệ Acceptance Criteria trong PRD mẫu có $\ge 1$ test case trỏ tới (AC coverage) | $\ge 90\%$ | `tools/eval_groundtruth.py` |
-| **S1** | Tỉ lệ mutant nghiệp vụ bị suite đã duyệt bắt được | $\ge 90\%$ | Cùng script trên, chạy toy app |
+| **S1** | Tỉ lệ Acceptance Criteria trong PRD mẫu có $\ge 1$ test case trỏ tới (AC coverage) | $\ge 85\%$ (hạ từ 90%, xem DoD S1) | `tools/eval_groundtruth.py` |
+| **S1** | Tỉ lệ mutant nghiệp vụ bị suite đã duyệt bắt được | $\ge 85\%$ cho phép đo LLM thật (hạ từ 90%); toy app có test tất định giữ $\ge 9/10$ | Cùng script trên |
 | **S2** | Recall khi chọn worker: không bỏ sót worker cần chạy (chỉ tính phần LLM) | $\ge 90\%$ | `tools/eval_selector.py` |
 | **S3** | Tỉ lệ finding có vị trí được comment đúng dòng | $\ge 90\%$ | Test fixture |
 | **S4** | Số lần chạy trọn chuỗi E2E trên CI thật xanh liên tiếp | $\ge 9/10$ | Runbook |
@@ -143,7 +143,7 @@ Con số 90% chỉ có ý nghĩa khi có một tập chuẩn (Golden Set) để 
 
 ### DoD Sprint 1
 - [x] Với fake LLM, `gt generate` trên PRD mẫu cho ra đúng bộ file golden. Chạy lại 2 lần cho ra byte giống hệt nhau.
-- [ ] Với LLM thật (median của 3 lần chạy): AC coverage $\ge 90\%$, và $\ge 90\%$ TC sinh ra chạy xanh trên toy app sạch. **PENDING (chưa tick):** cần chạy `tools/eval_gt_sut.py --llm real --runs 3 --yes` trên SUT thật với Gemini (tốn quota, gửi PRD ra ngoài: chờ người dùng chạy và xác nhận).
+- [x] Với LLM thật: AC coverage $\ge 85\%$, và $\ge 85\%$ TC sinh ra chạy xanh trên SUT sạch. **Đóng với phạm vi hẹp hơn kế hoạch ban đầu** (quyết định của chủ dự án, 2026-10-05): ngưỡng hạ từ 90% xuống 85% **sau khi đã có số đo**, và chốt ở **1 lượt** thay vì median 3 lần vì hết ngân sách API. *Số đo* (`eval/real.json`, `eval/vahan/EVIDENCE.md`; vahan-api-server, Claude Sonnet 5.5, 1 lượt): AC coverage 24/26 = 92,3%; TC xanh 59/66 = 89,4%; mutant bắt 13/15 = 86,7%. *Giới hạn cần nhớ:* kill rate chỉ hơn ngưỡng mới đúng 1 mutant (12/15 = 80% sẽ không đạt); 1 lượt nên không có độ biến thiên; nhãn `non_testable` và 15 mutant do AI soạn, chưa có QA duyệt; môi trường đo tắt auth nên các AC xác thực không đo được; chưa có baseline single-shot.
 - [x] Sau khi QA duyệt: suite bắt được $\ge 9/10$ mutant (`BUG-4…BUG-13`) và vẫn bắt được `BUG-1`.
 - [x] `gt regen` sau khi sửa PRD giữ nguyên 100% TC `approved` và `origin: qa` (có test).
 - [ ] `gt validate` exit 1 khi còn draft. Qua fake GitHub, xác nhận script protect bật đúng `require_code_owner_reviews`. Kiểm tay một lần trên repo thật: tài khoản không phải QA push vào `.qc-agent/` thì bị từ chối. **PENDING (chưa tick):** đã có bằng chứng cho `gt validate` exit 1 (`test_gt_cli.py`) và script protect qua fake GitHub (`test_protect_ground_truth.py`); còn thiếu kiểm tay trên repo thật (cần repo, secret và branch protection do người dùng cấu hình; dự kiến S4-06).
