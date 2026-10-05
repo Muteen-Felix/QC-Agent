@@ -18,7 +18,7 @@ Kiến trúc đích nằm ở [architecture.md](architecture.md); bảng này gh
 | Ground-Truth: parse PRD, sinh catalog, render, `gt generate / validate / regen`, agent đọc repo, bộ chấm coverage, Excel | *Đã chạy — chưa đo bằng model thật* | DoD S1 còn 2 mục PENDING bên dưới |
 | Workflow sinh GT + khoá `.qc-agent/**` | Đã có workflow, mẫu CODEOWNERS, `tools/protect_ground_truth.py` | Chưa chạy trên GitHub thật, chưa bật protection trên repo thật |
 | Trigger `manual` + `--trigger`; Selector (prune, path rules, Diff Agent, floor); Task Runner song song | *Đã chạy* (S2) | Recall/precision/P95 với Haiku thật chưa đo. Executor/dashboard chưa nối `--trigger manual --workers` (phạm vi = toàn bộ policy). `max_parallel` mặc định 1 |
-| Contract 2.0.0, normalizer (`core/findings.py`), `pr_review`, Jira cho finding Low, gỡ sổ nợ | Đã có code + test (S3) | DoD S3 chưa tick; cần bằng chứng harness fake GitHub/Jira như S1/S2 |
+| Contract 2.0.0, normalizer (`core/findings.py`), `pr_review`, Jira cho finding Low, gỡ sổ nợ | *Đã chạy* (S3) | DoD S3 đã tick kèm bằng chứng (fake GitHub/Jira); còn `S3.1` chờ approval nhóm core. Chưa chạy trên GitHub/Jira thật (S4.6) |
 | Cache selection + GT, prompt caching, trần token, E2E trên CI thật, runbook | *Chưa làm* (S4) | |
 | Bước `refine` trên PR (`continue-on-error`, chỉ đề xuất) | Giữ nguyên | Ngoài v2, không có quyền chặn |
 
@@ -268,21 +268,21 @@ def gate_verdict(findings, infra_blockers, block_on=("critical", "medium")) -> G
 
 ### Task con
 
-- [ ] **S3.1:** Nâng contract lên 2.0.0 và sửa cả 11 chỗ phát `high` trong cùng một PR. Chạy `test_contract_frozen` và `test_contract_mutants`. Workflow `contract-check` cần approval của nhóm core.
-- [ ] **S3.2 (Normalizer):**
+- [ ] **S3.1:** Nâng contract lên 2.0.0 và sửa cả 11 chỗ phát `high` trong cùng một PR. Chạy `test_contract_frozen` và `test_contract_mutants`. Workflow `contract-check` cần approval của nhóm core. **PENDING (chưa tick):** code đã xong (`freeze_contract --check` exit 0 ở v2.0.0; `test_contract_frozen`, `test_contract_mutants` xanh trong full suite); còn thiếu approval của nhóm core trên PR nâng MAJOR (quy trình `contract-check`, ngoài code).
+- [x] **S3.2 (Normalizer):** *Bằng chứng:* `tests/test_findings_normalize.py` (override theo policy, fingerprint ổn định, giới hạn Low cho LLM/discovery sau override, fail không finding nhận `default_severity`, error/skipped là infra blocker).
   - Severity lấy từ `severity_hint`, sau đó áp override trong policy (theo suite và `rule_id`).
   - Task fail mà không có finding thì nhận `default_severity` của suite (mặc định `medium`, nghĩa là chặn, cho an toàn).
   - Task lane discovery hoặc `verdict_source=llm_judgment` thì bị giới hạn ở Low.
   - Task error/skipped được coi là infra blocker.
-- [ ] **S3.3:** Viết lại `verdict.py` và exit code. `report.md` có ba mục Critical / Medium / Low.
-- [ ] **S3.4:** Gỡ sổ nợ khỏi luồng. Chạy `alembic upgrade head` để chắc migration vẫn chạy.
-- [ ] **S3.5:** `coverage-debt` phát finding Low có location (file của endpoint hoặc route mới), đi vào Jira thay vì DB.
-- [ ] **S3.6 (`pr_review.py`):**
+- [x] **S3.3:** Viết lại `verdict.py` và exit code. `report.md` có ba mục Critical / Medium / Low. *Bằng chứng:* `tests/test_verdict.py`, `tests/test_gatekeeper.py`, `tests/test_report.py::test_severity_sections_are_critical_medium_low_in_order` (thêm khi rà S3: trước đó mã có nhưng chưa có test cho ba mục).
+- [x] **S3.4:** Gỡ sổ nợ khỏi luồng. Chạy `alembic upgrade head` để chắc migration vẫn chạy. *Bằng chứng:* `grep -r apply_debt src/` rỗng; `tests/test_jobs_db.py` (up/down/up) pass trên PostgreSQL thật. Rà S3 phát hiện migration 0006 hỏng trên DB thật (thiếu `op.f()`), đã sửa ở commit `6442c9f`.
+- [x] **S3.5:** `coverage-debt` phát finding Low có location (file của endpoint hoặc route mới), đi vào Jira thay vì DB. *Bằng chứng:* `adapters/coverage_debt_adapter.py` phát finding `low` kèm `location`; `tests/test_coverage_debt_adapter.py`, `tests/test_jira_sync.py`.
+- [x] **S3.6 (`pr_review.py`):** *Bằng chứng:* `tests/test_pr_review.py` (inline chỉ ở phía RIGHT của diff, ngoài diff vào thân review, digest chống đăng lặp, làm sạch Markdown, 403 chỉ là cảnh báo).
   - Finding nằm trong diff thì gắn inline comment đúng dòng, dùng lại `refine_review.pr_diff_lines`.
   - Finding ngoài diff hoặc không có vị trí thì đưa vào thân review.
   - Chống đăng lặp bằng digest.
-- [ ] **S3.7:** Check Run: `BLOCKED` thì failure. `PASSED_WITH_WARNINGS` thì success, tiêu đề dạng "✅ PASS · 3 cảnh báo Low".
-- [ ] **S3.8 (`jira.py`):**
+- [x] **S3.7:** Check Run: `BLOCKED` thì failure. `PASSED_WITH_WARNINGS` thì success, tiêu đề dạng "✅ PASS · 3 cảnh báo Low". *Bằng chứng:* `tests/test_gatekeeper_e2e.py` (`conclusion_for`: BLOCKED → failure, PASSED_WITH_WARNINGS → success; `check_title` = "✅ PASS · 1 cảnh báo Low").
+- [x] **S3.8 (`jira.py`):** *Bằng chứng:* `tests/test_jira_sync.py` (tìm theo label fingerprint và phân trang trước khi tạo, `user_map`, egress deny không gửi request, lỗi xác thực không lộ khoá) và `tests/test_gatekeeper_e2e.py` (Jira 401/503 giữ nguyên verdict).
   - Chỉ xử lý Low.
   - Trước khi tạo, tìm ticket có label fingerprint qua JQL, đã có thì bỏ qua.
   - Gán cho tác giả PR qua `user_map` (không map được thì để trống và ghi chú).
@@ -290,16 +290,16 @@ def gate_verdict(findings, infra_blockers, block_on=("critical", "medium")) -> G
   - Fail-open: Jira lỗi thì không đổi verdict.
 
 ### DoD Sprint 3
-- [ ] `test_gatekeeper.py` phủ 100% tổ hợp severity $\times$ lane $\times$ verdict_source $\times$ status. Có property test: finding do LLM chấm không bao giờ chặn được.
-- [ ] E2E qua harness (fake GitHub + fake Jira):
+- [x] `test_gatekeeper.py` phủ 100% tổ hợp severity $\times$ lane $\times$ verdict_source $\times$ status. Có property test: finding do LLM chấm không bao giờ chặn được. *Bằng chứng:* `tests/test_gatekeeper.py` liệt kê đủ 72 tổ hợp 3×2×3×4 bằng `itertools.product` (miền hữu hạn nên liệt kê đủ thay cho property test; không dùng thư viện property-based); finding `llm_judgment` không bao giờ chặn.
+- [x] E2E qua harness (fake GitHub + fake Jira): *Bằng chứng và phạm vi:* `tests/test_gatekeeper_e2e.py` chạy chuỗi `normalize` → `gate_verdict` → `pr_review` → Check Run → Jira trên máy chủ giả: Critical (schemathesis 5xx) và Medium (semgrep WARNING) → `BLOCKED`, exit 1, Check failure, inline đúng dòng; chỉ Low → exit 0, Check success, inline đúng dòng, đúng 1 ticket gán `account-123`; chạy lại → review `skipped`, 0 ticket mới. Đường gate thật với `QC_BUGS=1,3` trong container: `tests/test_reusable_workflow.py::test_pr_flow_pass_then_fail...` (BLOCKED, exit 1, Check failure) pass trên image. *Chưa kiểm:* inline comment và Jira trong chính chuỗi container (cần S4.6).
   - `QC_BUGS=1` (lỗi 5xx) cho Critical $\to$ `BLOCKED`, exit 1, Check failure, có inline comment.
   - Fixture semgrep WARNING cho Medium $\to$ `BLOCKED`.
   - Fixture chỉ có Low $\to$ exit 0, Check success, inline đúng dòng, đúng 1 ticket gán cho tác giả PR.
   - Chạy lại: 0 comment mới, 0 ticket mới.
-- [ ] Trên $\ge 20$ finding fixture có vị trí: $\ge 90\%$ comment đúng dòng. 100% finding không có vị trí nằm trong thân review.
-- [ ] Jira trả 401/5xx thì verdict giữ nguyên và summary có cảnh báo.
-- [ ] Luồng PR chạy khi không có `QC_DATABASE_URL`. `grep -r apply_debt src/` rỗng. Migration 0005 còn nguyên.
-- [ ] `CONTRACT.lock = 2.0.0` và `freeze_contract --check` exit 0.
+- [x] Trên $\ge 20$ finding fixture có vị trí: $\ge 90\%$ comment đúng dòng. 100% finding không có vị trí nằm trong thân review. *Bằng chứng:* `tests/test_pr_review.py::test_inline_only_on_right_side_and_outside_in_body` (20 finding có vị trí + 1 không vị trí; 10 nằm trong diff đều thành inline đúng `path`/`line`/`side=RIGHT`; phần còn lại và finding không vị trí nằm trong thân review).
+- [x] Jira trả 401/5xx thì verdict giữ nguyên và summary có cảnh báo. *Bằng chứng:* `tests/test_gatekeeper_e2e.py::test_jira_401_and_503_are_visible_in_check_run`, `test_jira_failure_keeps_gate_verdict`; `tests/test_jira_sync.py::test_auth_failure_does_not_expose_key`.
+- [x] Luồng PR chạy khi không có `QC_DATABASE_URL`. `grep -r apply_debt src/` rỗng. Migration 0005 còn nguyên. *Bằng chứng:* `grep -r apply_debt src/` rỗng; `0005_test_debt.py` còn nguyên; `core/` và `integrations/{ci,pr_review,jira}.py` không import `jobs`/`sqlalchemy`; `test_trigger_manual`, `test_gatekeeper_e2e`, `test_floor_enforced`, `test_report` chạy xanh với `QC_DATABASE_URL` và `QC_TEST_DATABASE_URL` bị bỏ (`env -u`).
+- [x] `CONTRACT.lock = 2.0.0` và `freeze_contract --check` exit 0. *Bằng chứng:* `python tools/freeze_contract.py --check` → "CONTRACT NGUYÊN VẸN: 3 file (v2.0.0)".
 
 ---
 
