@@ -1,11 +1,17 @@
 // {{todo}}
+// Khung Tầng 2 (đuôi .example = chưa hoạt động): trình duyệt của chính test mở UI của SUT; hệ thống ngoài (b_host) phát lại từ HAR.
+// Hạn chế: HAR chỉ áp lên browser context của test này. Nếu việc gọi hệ thống ngoài do một process khác thực hiện
+// (không đi qua trình duyệt của test) thì HAR không thấy traffic đó: chọn thiết kế khác cho tầng này.
+// Dùng khung: bỏ đuôi .example ở cả 5 file integration, viết luồng thật, đổi tên test (tên test = tên check trong oracle.required).
 import { test, expect } from './support.mjs';
 
-test('filter_applied', async ({ page }) => {
-  await page.goto(process.env.APP_UI_URL);
-  throw new Error('Điền selector/flow thật rồi xoá marker VERIFY');
-});
+function requiredEnv(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`thiếu biến môi trường ${name}`);
+  return value;
+}
 
-test('report_downloaded', async () => {
-  throw new Error('Điền bước tải report thật rồi xoá marker VERIFY');
+test('todo_replace_me', async ({ page }) => {
+  await page.goto(requiredEnv('APP_UI_URL'));
+  throw new Error('Khung chưa viết: thay bằng luồng thật qua UI (và đổi tên test này)');
 });

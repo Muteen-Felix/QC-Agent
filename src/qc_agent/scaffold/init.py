@@ -124,7 +124,9 @@ def build(opts: Options) -> Plan:
         if opts.no_api and not (opts.ui_dockerfile or found.ui):
             raise InitError("--no-api mà không có UI thì không có gì để sinh")
         suites_security.add_suites(add, opts)      # Làn A (sast/secrets/deps)
-        suites_integration.add_suites(add, opts)   # Làn B (integration)
+        suites_integration.add_suites(add, opts)   # Làn B (integration): khung .example, chưa hoạt động
+        if any(planned.label.endswith(suites_integration.EXAMPLE) for planned in plan.files):
+            plan.notes.append(suites_integration.EXAMPLE_NOTE)
 
         ui_dockerfile, ui_context, ui_port = opts.ui_dockerfile, opts.ui_context, opts.ui_port
         ui_build_args = list(opts.ui_build_args)
@@ -254,8 +256,11 @@ def _explore_flow(opts: Options, root: Path, plan: Plan) -> str:
     return t.midscene_explore_flow(tasks=flows, suggested_by=model)
 
 
-def _todos(content: str) -> list[str]:
-    return [f"dòng {number}: {line.strip()[:110]}" for number, line in enumerate(content.splitlines(), 1) if t.TODO in line]
+def _todos(planned: Planned) -> list[str]:
+    """Khung `.example` chưa hoạt động nên dấu TODO của nó chưa phải việc cho người (note của build() đã báo cách kích hoạt)."""
+    if planned.label.endswith(suites_integration.EXAMPLE):
+        return []
+    return [f"dòng {number}: {line.strip()[:110]}" for number, line in enumerate(planned.content.splitlines(), 1) if t.TODO in line]
 
 
 def _owner(root: Path | None) -> tuple[int, int] | None:
@@ -280,7 +285,7 @@ def apply(plan: Plan, *, force: bool = False, dry_run: bool = False) -> list[Out
             diff = "".join(difflib.unified_diff(old.splitlines(True), planned.content.splitlines(True), f"a/{planned.label}", f"b/{planned.label}")) if dry_run and not same else ""
             if not dry_run and not same:
                 _write(planned.path, planned.content, plan.root, owner)
-            outcomes.append(Outcome(planned.label, status, diff, _todos(planned.content) if not same else []))
+            outcomes.append(Outcome(planned.label, status, diff, _todos(planned) if not same else []))
             continue
         if exists and not force:
             status = "would-keep" if dry_run else "kept"
@@ -291,7 +296,7 @@ def apply(plan: Plan, *, force: bool = False, dry_run: bool = False) -> list[Out
             diff = "".join(difflib.unified_diff(old.splitlines(True), planned.content.splitlines(True), f"a/{planned.label}", f"b/{planned.label}"))
         if not dry_run and status in ("created", "overwritten"):
             _write(planned.path, planned.content, plan.root, owner)
-        outcomes.append(Outcome(planned.label, status, diff, _todos(planned.content) if status in ("created", "overwritten", "would-create", "would-overwrite") else []))
+        outcomes.append(Outcome(planned.label, status, diff, _todos(planned) if status in ("created", "overwritten", "would-create", "would-overwrite") else []))
     return outcomes
 
 

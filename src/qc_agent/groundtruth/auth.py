@@ -7,7 +7,7 @@
       json:                                  # giá trị là hằng, hoặc {env: QC_TEST_...} lấy từ biến môi trường lúc chạy
         username: {env: QC_TEST_USERNAME}
         password: {env: QC_TEST_PASSWORD}
-      token_path: $.access_token             # chỗ lấy token trong response (tập con JSONPath: $, .key, [n])
+      token_path: $.token                    # chỗ lấy token trong response (tập con JSONPath: $, .key, [n]); ĐỔI theo tên trường thật của SUT
     header: {name: Authorization, scheme: Bearer}
     scope: session                           # session (mặc định): đăng nhập một lần; case: mỗi test case một phiên
 
@@ -56,7 +56,7 @@ def validate(data) -> list[str]:
             problems.append("login.path phải là đường dẫn tương đối bắt đầu bằng / (không URL tuyệt đối, không ..)")
         token_path = login.get("token_path")
         if not (isinstance(token_path, str) and _JSONPATH.fullmatch(token_path)):
-            problems.append("login.token_path phải dạng JSONPath đơn giản, vd $.access_token")
+            problems.append("login.token_path phải dạng JSONPath đơn giản, vd $.token")
         body = login.get("json", {})
         if not isinstance(body, dict):
             problems.append("login.json phải là object")

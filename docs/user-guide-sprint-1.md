@@ -80,13 +80,13 @@ Kiểm tra parse **offline**, không tốn tiền, trước khi push:
 docker run --rm -v "$PWD:/work:ro" -w /work <IMAGE> gt info --prd docs/prd/orders.md
 ```
 
-> **PowerShell:** viết `"${PWD}:/work:ro"` thay vì `"$PWD:/work:ro"`, và đặt biến bằng `$env:TEN = "giá trị"`. Hoặc chạy các khối bash trong Git Bash.
+> **PowerShell:** viết `"${PWD}:/work:ro"` thay vì `"$PWD:/work:ro"`, nối dòng bằng backtick `` ` `` thay vì `\`, đặt giá trị bắt đầu bằng `@` trong dấu nháy đơn (`'@my-org/qa-team'`), và đặt biến bằng `$env:TEN = "giá trị"`. Hoặc chạy các khối bash trong Git Bash (kèm `MSYS_NO_PATHCONV=1`). Lệnh `init` có sẵn bản PowerShell ở mục 3.
 
 Kết quả là JSON có `prd_id`, số story, số AC. Số AC lệch với PRD thì sửa định dạng trước khi push.
 
 ### 2.2. File `openapi.json`
 
-CI **chỉ đọc file nằm trong repo**, nên phải xuất rồi commit. Có OpenAPI thì LLM biết đúng endpoint/ràng buộc và bật được bộ chấm coverage (5.3); không có vẫn chạy nhưng chỉ chấm được chiều AC.
+**Tuỳ chọn.** CI **chỉ đọc file nằm trong repo**, nên nếu team muốn dùng thì phải có một file OpenAPI được commit (xuất bằng cách nào tuỳ team; các lệnh dưới chỉ là ví dụ). Chưa có thì bỏ qua mục này và bỏ `--openapi` ở mục 3. Có OpenAPI thì LLM biết đúng endpoint/ràng buộc và bật được bộ chấm coverage (5.3); không có vẫn chạy nhưng chỉ chấm được chiều AC.
 
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json -o openapi.json          # FastAPI đang chạy
@@ -119,7 +119,7 @@ login:
   json:
     username: {env: QC_TEST_USERNAME}     # giá trị lấy từ biến môi trường lúc chạy, KHÔNG viết thẳng vào file
     password: {env: QC_TEST_PASSWORD}
-  token_path: $.access_token              # chỗ lấy token trong response (tập con JSONPath)
+  token_path: $.token                     # chỗ lấy token trong response (tập con JSONPath); ĐỔI theo đúng tên trường trong response đăng nhập của SUT
 header: {name: Authorization, scheme: Bearer}
 scope: session                            # session: đăng nhập một lần cho cả lượt chạy; case: mỗi test case một phiên
 ```
@@ -134,14 +134,25 @@ scope: session                            # session: đăng nhập một lần c
 
 ## 3. Tích hợp vào repo SUT: một lệnh Docker
 
-Chạy ở **gốc repo SUT** (ví dụ monorepo có Dockerfile ở `apps/api-server/`):
+Chạy ở **gốc repo SUT**. Lệnh tối thiểu (scanner tự tìm Dockerfile, cổng, health path):
 
 ```bash
 docker run --rm -v "$PWD:/sut" -w /sut <IMAGE> init \
   --sut-root /sut --qa-team @my-org/qa-team --image <IMAGE> \
-  --prd-glob "docs/prd/**" --openapi /sut/openapi.json \
-  --sut-dockerfile "apps/api-server/Dockerfile" --sut-context "apps/api-server"
+  --prd-glob "docs/prd/**"
 ```
+
+Chỉ thêm các tham số tuỳ chọn khi cần (xem bảng): `--openapi /sut/openapi.json` nếu repo đã commit file OpenAPI; `--sut-dockerfile PATH --sut-context DIR` nếu Dockerfile của API không ở vị trí scanner tìm (ví dụ monorepo: `--sut-dockerfile "apps/api-server/Dockerfile" --sut-context "apps/api-server"`).
+
+**PowerShell** (không chạy được khối bash ở trên: `$PWD:` bị đọc như biến có drive, `\` cuối dòng không nối dòng, `@team` bị hiểu là splatting):
+
+```powershell
+docker run --rm -v "${PWD}:/sut" -w /sut <IMAGE> init `
+  --sut-root /sut --qa-team '@my-org/qa-team' --image <IMAGE> `
+  --prd-glob "docs/prd/**"
+```
+
+Backtick phải là ký tự cuối dòng, không có khoảng trắng phía sau.
 
 Thêm `--dry-run` để xem trước, không ghi gì (nên chạy thử một lần). Windows Git Bash: đặt `MSYS_NO_PATHCONV=1` trước lệnh. Linux: thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` để file sinh ra không thuộc root.
 
@@ -150,8 +161,8 @@ Thêm `--dry-run` để xem trước, không ghi gì (nên chạy thử một l�
 | `--qa-team` | team QA (hoặc `@username`) làm **code owner** của `/.qc-agent/`. Thiếu thì CODEOWNERS dùng owner giữ chỗ và `validate` từ chối |
 | `--image` | image mà **workflow trên CI** kéo về để chạy `gt generate`/`gt validate` |
 | `--prd-glob` | PRD nào kích hoạt workflow khi push `main` (mặc định `docs/prd/**`) |
-| `--openapi` | OpenAPI đã commit. **Bỏ thì CI không có OpenAPI** (mất chiều kỹ thuật và mã trạng thái của bộ chấm) |
-| `--sut-dockerfile`, `--sut-context` | chỉ cần khi Dockerfile không nằm ở gốc, `*/Dockerfile` hay `docker/*Dockerfile*` (monorepo `apps/<tên>/…` thì bắt buộc) |
+| `--openapi` | **Tuỳ chọn.** Chỉ truyền khi repo đã có file OpenAPI được commit (đường dẫn trong repo, vd. `/sut/openapi.json`); chưa có thì **bỏ dòng này**, `init` vẫn chạy. Bỏ thì CI không có OpenAPI (mất chiều kỹ thuật và mã trạng thái của bộ chấm), và `api-contract`/`perf-smoke` có vùng `qc-agent:todo REFINE` để điền sau |
+| `--sut-dockerfile`, `--sut-context` | **Tuỳ chọn.** Scanner tự tìm theo thứ tự `Dockerfile` ở gốc > `*/Dockerfile` (sâu 1 cấp) > `docker/*Dockerfile*`; nhiều ứng viên thì chọn một và đánh dấu `qc-agent:todo VERIFY` để bạn kiểm. Không thấy cái nào thì `init` báo lỗi và bạn mới phải chỉ đường dẫn (vd. `apps/api-server/Dockerfile` sâu 2 cấp nên không tự tìm được). `--sut-context` mặc định suy từ vị trí Dockerfile |
 
 Tuỳ chọn khác: `--qc-ref` (ghim workflow), `--slug`, `--sut-port`, `--health-path`, `--sut-env KEY=VALUE` khi scanner đoán sai.
 

@@ -37,7 +37,11 @@ CODEOWNERS_FILES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")   # t
 PASSTHROUGH = frozenset({"OPENAI_API_KEY", "GEMINI_API_KEY", "MIDSCENE_MODEL_BASE_URL", "MIDSCENE_MODEL_API_KEY", "MIDSCENE_MODEL_NAME",
                          "MIDSCENE_MODEL_FAMILY", "QC_JUDGE_PROVIDER", "QC_JUDGE_MODEL", "QC_JUDGE_FALLBACK_PROVIDER", "QC_JUDGE_FALLBACK_MODEL",
                          "QC_TEST_USERNAME", "QC_TEST_PASSWORD"})
-FILE_INPUTS = ("flow", "script")   # inputs.<khoá> là đường dẫn file trong repo SUT (cộng inputs.collect.golden)
+FILE_INPUTS = ("flow", "script", "spec_file")   # inputs.<khoá> là đường dẫn file trong repo SUT (cộng inputs.collect.golden); tồn tại + quét dấu TODO
+EXISTS_ONLY_INPUTS = ("har",)   # chỉ kiểm tồn tại: nội dung là bản ghi HAR (JSON lớn), không phải file do người điền
+ADAPTER_CHECKS = frozenset({"no_external_requests", "har_covers_all_requests"})   # check do adapter playwright tự thêm, không có test title tương ứng
+SKIPPED_TEST = re.compile(r"\btest\.(?:describe\.)?(?:fixme|skip)\b")   # adapter bỏ test bị skip khỏi `checks`, check bắt buộc thiếu thì task thành error
+RESERVED_PREFIX = "todo_"   # tên check/test của khung chưa viết (scaffold/suites_integration.py)
 
 
 @dataclass(frozen=True)
@@ -93,6 +97,47 @@ def _todo_lines(path: Path) -> list[tuple[int, str]]:
     except (OSError, UnicodeError):
         return []
     return [(number, line.strip()) for number, line in enumerate(text.splitlines(), 1) if t.TODO in line]
+
+
+def _check_spec_task(report: Report, sut_root: Path, where: str, inputs: dict, oracle: dict) -> None:
+    """Task có `inputs.spec_file` (worker playwright): kiểm những lỗi mà adapter/oracle chỉ báo lúc chạy, để `validate` bắt trước khi gate chạy.
+    File không tồn tại đã được báo ở vòng `referenced`; ở đây chỉ kiểm nội dung khi đọc được."""
+    if "b_host" in inputs:
+        host = inputs["b_host"]
+        if not isinstance(host, str) or not host.strip() or host.strip().lower().endswith(".invalid"):
+            report.add(ERROR, f"{where} inputs.b_host", f"b_host còn rỗng hoặc là placeholder ({host!r}): thay bằng host của hệ thống ngoài thật")
+    target = sut_root / str(inputs["spec_file"])
+    if not _inside(sut_root, target) or not target.is_file():
+        return
+    try:
+        text = target.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        return
+    from qc_agent.adapters import playwright_adapter   # import lười: chỉ cần khi có task spec_file
+    titles = [match[1] for match in playwright_adapter._TEST_CALL.findall(text)]
+    rel = inputs["spec_file"]
+    if SKIPPED_TEST.search(text):
+        report.add(ERROR, f"{rel}", "spec còn test.fixme/test.skip: adapter bỏ test bị skip nên check tương ứng không có kết quả và task thành error")
+    reserved = sorted({title for title in titles if title.startswith(RESERVED_PREFIX)})
+    if reserved:
+        report.add(ERROR, f"{rel}", f"còn test của khung chưa viết ({', '.join(reserved)}): viết kiểm tra thật và đổi tên test")
+    if "change-me" in text:
+        report.add(ERROR, f"{rel}", "spec còn giá trị mặc định 'change-me': bỏ fallback, thiếu biến môi trường thì phải báo lỗi rõ")
+    required = [name for name in (oracle.get("required") or []) if isinstance(name, str)] if oracle.get("kind") == "checks" else []
+    unmatched = [name for name in dict.fromkeys(required) if name not in ADAPTER_CHECKS and name not in titles]
+    if unmatched:
+        report.add(ERROR, f"{where} oracle.required", f"check bắt buộc không có test cùng tên trong {rel}: {', '.join(unmatched)}")
+
+
+def _check_ref(report: Report, sut_root: Path, rel: str, origin: str, *, scan_todo: bool) -> None:
+    target = sut_root / rel
+    if Path(rel).is_absolute() or not _inside(sut_root, target):
+        report.add(ERROR, origin, f"đường dẫn {rel!r} phải nằm trong repo SUT (tương đối, không thoát ra ngoài)")
+    elif not target.is_file():
+        report.add(ERROR, origin, f"file tham chiếu không tồn tại: {rel}")
+    elif scan_todo:
+        for line, text in _todo_lines(target):
+            report.add(ERROR, f"{rel}:{line}", _todo_message(text))
 
 
 def _check_groundtruth_setup(report: Report, sut_root: Path) -> None:
@@ -217,6 +262,8 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
     wanted_modes = modes or sorted(project["modes"])
     env_by_mode: dict[str, set[str]] = {}
     referenced: dict[str, str] = {}   # đường dẫn file tham chiếu -> nơi khai
+    exists_only: dict[str, str] = {}
+    spec_checked: set[tuple] = set()   # kiểm nội dung spec một lần dù task xuất hiện ở nhiều mode
     for mode in wanted_modes:
         if mode not in project["modes"]:
             report.add(ERROR, where_project, f"không có mode {mode!r} (có: {', '.join(sorted(project['modes']))})")
@@ -255,22 +302,26 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
             for key in FILE_INPUTS:
                 if isinstance(inputs.get(key), str):
                     referenced[inputs[key]] = f"{where} inputs.{key}"
+            for key in EXISTS_ONLY_INPUTS:
+                if isinstance(inputs.get(key), str):
+                    exists_only[inputs[key]] = f"{where} inputs.{key}"
             if isinstance((inputs.get("collect") or {}).get("golden"), str):
                 referenced[inputs["collect"]["golden"]] = f"{where} inputs.collect.golden"
+            if isinstance(inputs.get("spec_file"), str):
+                oracle = spec.get("oracle") or {}
+                marker = (task_id, inputs["spec_file"], repr(inputs.get("b_host")), repr(oracle.get("required")))
+                if marker not in spec_checked:
+                    spec_checked.add(marker)
+                    _check_spec_task(report, sut_root, where, inputs, oracle)
         if secrets:
             needed_by = sorted({task_id for tasks in secrets.values() for task_id in tasks})
             report.add(NOTE, f"mode {mode}", f"cần secret {', '.join(sorted(secrets))} ở repo SUT cho task {', '.join(needed_by)} (thiếu thì các task đó bị skipped)")
         env_by_mode[mode] = used
 
     for rel, origin in sorted(referenced.items()):
-        target = sut_root / rel
-        if Path(rel).is_absolute() or not _inside(sut_root, target):
-            report.add(ERROR, origin, f"đường dẫn {rel!r} phải nằm trong repo SUT (tương đối, không thoát ra ngoài)")
-        elif not target.is_file():
-            report.add(ERROR, origin, f"file tham chiếu không tồn tại: {rel}")
-        else:
-            for line, text in _todo_lines(target):
-                report.add(ERROR, f"{rel}:{line}", _todo_message(text))
+        _check_ref(report, sut_root, rel, origin, scan_todo=True)
+    for rel, origin in sorted(exists_only.items()):
+        _check_ref(report, sut_root, rel, origin, scan_todo=False)
 
     _check_workflow(report, slug, project, suites, sut_root, env_by_mode.get("pr", set()))
     return report

@@ -145,12 +145,17 @@ PR từ **fork** không nhận secret: task cần key sẽ `skipped`; project n�
 
 ### Integration với hệ thống ngoài qua HAR
 
-Suite `integration` gồm Tier 1 (runner giả) và Tier 2 (phát lại trang ngoài từ HAR), đều có thể chặn merge. Repo cần hoàn tất `.qc-agent/integration/tier1.spec.mjs`, `tier2.spec.mjs`, đặt HAR đã lọc tại `.qc-agent/har/vahan-b.har` và thay `b_host` trong suite. `qc-agent validate` từ chối khung còn `qc-agent:todo VERIFY`.
+`init` sinh khung trung tính cho mọi repo, đuôi `.example` nên **chưa hoạt động**: `.qc-agent/suites/integration.yaml.example`, `integration-live.yaml.example` và `.qc-agent/integration/{support,tier1.spec,tier2.spec}.mjs.example`. Kích hoạt (chỉ khi repo thật sự cần):
+
+1. Bỏ đuôi `.example` ở cả 5 file; viết kiểm tra thật trong hai spec (đổi tên test `todo_replace_me`, tên test = tên check trong `oracle.required`); thay `b_host` bằng host thật; ghi HAR đã lọc vào `.qc-agent/har/external.har` (hoặc đổi đường dẫn trong suite). `qc-agent validate` từ chối khung còn dấu `qc-agent:todo`, test `todo_*`, `b_host` placeholder, HAR không tồn tại, `test.fixme/skip`, `change-me`, và check bắt buộc không có test cùng tên.
+2. Đăng ký suite trong policy project (`configs/projects/<slug>.yaml`, PR vào qc-agent): thêm `integration` vào `modes.pr.blocking_suites`. **Chưa đăng ký thì mode `pr` không chạy suite này** (`_default` không liệt kê nó); chỉ mode `manual` (`suites: "*"`) chạy.
+
+Khi đã đăng ký, Tier 1 (thành phần nội bộ giả lập) và Tier 2 (phát lại trang ngoài từ HAR) chặn merge. Hạn chế của Tier 2: HAR chỉ áp lên trình duyệt của chính test; nếu hệ thống ngoài được gọi từ process khác thì HAR không thấy traffic đó.
 
 Ghi lại HAR bằng tài khoản thử nghiệm hoặc dữ liệu ẩn danh, rồi chạy:
 
 ```bash
-python tools/har_scrub.py raw.har .qc-agent/har/vahan-b.har
+python tools/har_scrub.py raw.har .qc-agent/har/external.har
 git grep -i -E "authorization|cookie|bearer|eyJ" .qc-agent/har/
 ```
 

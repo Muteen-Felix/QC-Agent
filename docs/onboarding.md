@@ -93,7 +93,7 @@ Không có cách tự đăng ký từ repo của bạn: chủ ý, để phòng Q
 
 ## Giới hạn cần biết
 
-- Repo có chuỗi RPA/tích hợp với hệ thống ngoài cần hoàn tất hai spec trong `.qc-agent/integration/`, cung cấp `b_host` và một `.qc-agent/har/vahan-b.har` đã lọc. Khung do `init` sinh có `qc-agent:todo VERIFY`, nên gate chưa thể bật trước khi team xác nhận giao thức runner, selector UI và HAR. Gate PR chỉ dùng bản phát lại; suite `integration-live` chạm hệ thống thật chỉ chạy manual.
+- `init` luôn sinh một **khung integration trung tính** cho mọi repo, đuôi `.example` (suite `integration`, `integration-live` và ba file trong `.qc-agent/integration/`): **chưa hoạt động**, qc-agent bỏ qua nó. Repo không cần tích hợp thì không phải làm gì. Repo có thành phần nội bộ giả lập hoặc hệ thống ngoài thì bỏ đuôi `.example` ở cả 5 file, viết kiểm tra thật (qc-agent không biết giao thức của sản phẩm), điền `b_host` thật và `.qc-agent/har/<tên>.har` đã lọc nếu dùng Tầng 2, rồi chạy `qc-agent validate` tới khi sạch. Muốn PR chạy suite thì còn phải đăng ký `integration` trong `blocking_suites` của policy project (PR vào qc-agent). Gate PR chỉ dùng bản phát lại; suite `integration-live` chạm hệ thống thật chỉ chạy manual.
 - Scanner là heuristic: lựa chọn không chắc thì có `VERIFY`, nhưng **một ứng viên duy nhất mà sai thì không có VERIFY** (vd. health route nằm dưới router có prefix `/api` được đọc là `/health`).
   Pha 2 bắt được lỗi health nhờ OpenAPI sống; cổng và biến API của UI chỉ lộ ra khi gate chạy.
 - `Dockerfile.ui` chỉ cho SPA tĩnh (Vite, CRA, Next `output: 'export'`) và cần lockfile cạnh `package.json`.

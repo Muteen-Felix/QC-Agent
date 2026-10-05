@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from qc_agent.core import project as pj
 from qc_agent.core.cli import main as cli_main
 from qc_agent.scaffold import init as init_mod
 from qc_agent.scaffold import templates as t
@@ -44,14 +45,7 @@ def generate(tmp_path, *, ui=True, pins=True, finish_flow=True, **over):
     init_mod.apply(init_mod.build(init_mod.Options(**opts)))
     if ui and finish_flow:
         (sut / ".qc-agent" / "midscene" / "explore.yaml").write_text(t.midscene_explore_flow(steps=[("aiTap", "tab Settings")]), encoding="utf-8")
-        for name in ("tier1.spec.mjs", "tier2.spec.mjs"):
-            path = sut / ".qc-agent" / "integration" / name
-            path.write_text("\n".join(line for line in path.read_text(encoding="utf-8").splitlines()
-                                      if "qc-agent:todo VERIFY:" not in line) + "\n", encoding="utf-8")
-        har = sut / ".qc-agent" / "har" / "vahan-b.har"
-        har.parent.mkdir(parents=True, exist_ok=True)
-        har.write_text('{"log":{"version":"1.2","creator":{"name":"test","version":"1"},"entries":[]}}\n', encoding="utf-8")
-    return sut, policy_dir(tmp_path)
+    return sut, policy_dir(tmp_path)   # khung integration là .example nên không cần hoàn tất để validate sạch
 
 
 def check(tmp_path, sut, projects, **kwargs):
@@ -515,3 +509,101 @@ def test_cli_validate_fails_when_ground_truth_is_not_locked(tmp_path, capsys):
     (sut / ".github" / "CODEOWNERS").write_text("* @o/core\n", encoding="utf-8")
     argv = ["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--mode", "pr"]
     assert cli_main(argv) == 3 and "thiếu quy tắc `/.qc-agent/" in capsys.readouterr().out
+
+
+# ---------- khung integration (.example) và các kiểm tra của spec_file ----------
+
+INTEGRATION_FILES = ("suites/integration.yaml", "suites/integration-live.yaml", "integration/support.mjs",
+                     "integration/tier1.spec.mjs", "integration/tier2.spec.mjs")
+
+
+def activate_integration(sut):
+    """Người dùng kích hoạt khung: bỏ đuôi .example ở cả 5 file."""
+    for rel in INTEGRATION_FILES:
+        (sut / ".qc-agent" / (rel + ".example")).rename(sut / ".qc-agent" / rel)
+
+
+def complete_integration(sut):
+    """Người dùng điền khung: test thật (đổi tên), b_host thật, xoá dấu TODO, có file HAR."""
+    qc = sut / ".qc-agent"
+
+    def without_todo(path):
+        return chr(10).join(line for line in path.read_text(encoding="utf-8").splitlines() if t.TODO not in line) + chr(10)
+
+    for name, check_name in (("tier1", "tier1_ok"), ("tier2", "tier2_ok")):
+        path = qc / "integration" / f"{name}.spec.mjs"
+        path.write_text(without_todo(path).replace("todo_replace_me", check_name), encoding="utf-8")
+    gate = qc / "suites" / "integration.yaml"
+    head, marker, tail = without_todo(gate).partition("- task_id: t-021")
+    gate.write_text((head.replace("todo_replace_me", "tier1_ok") + marker + tail.replace("todo_replace_me", "tier2_ok")).replace("example.invalid", "partner.example.org"),
+                    encoding="utf-8")
+    live = qc / "suites" / "integration-live.yaml"
+    live.write_text(without_todo(live).replace("todo_replace_me", "tier2_ok").replace("example.invalid", "partner.example.org"), encoding="utf-8")
+    har = qc / "har" / "external.har"
+    har.parent.mkdir(parents=True, exist_ok=True)
+    har.write_text('{"log":{"version":"1.2","creator":{"name":"test","version":"1"},"entries":[]}}', encoding="utf-8")
+
+
+def test_the_integration_skeleton_is_inert_after_init(tmp_path):
+    sut, projects = generate(tmp_path)
+    for rel in INTEGRATION_FILES:
+        assert (sut / ".qc-agent" / (rel + ".example")).is_file() and not (sut / ".qc-agent" / rel).exists()
+    assert not by_level(check(tmp_path, sut, projects), v.ERROR)
+
+
+def test_activating_the_skeleton_without_filling_it_is_blocked_by_validate(tmp_path):
+    sut, projects = generate(tmp_path)
+    activate_integration(sut)
+    text = messages(check(tmp_path, sut, projects))
+    assert ".qc-agent/integration/tier1.spec.mjs:1" in text        # dấu TODO trong spec_file (trước đây không bị quét)
+    assert ".qc-agent/suites/integration.yaml:" in text
+    assert "còn test của khung chưa viết (todo_replace_me)" in text
+    assert "b_host còn rỗng hoặc là placeholder ('example.invalid')" in text
+    assert "file tham chiếu không tồn tại: .qc-agent/har/external.har" in text
+
+
+def test_a_filled_skeleton_validates_clean(tmp_path):
+    sut, projects = generate(tmp_path)
+    activate_integration(sut)
+    complete_integration(sut)
+    report = check(tmp_path, sut, projects)
+    assert not by_level(report, v.ERROR), messages(report)
+
+
+@pytest.mark.parametrize("edit, expected", [
+    (lambda text: text + chr(10) + "test.fixme('x', async () => {});", "test.fixme/test.skip"),
+    (lambda text: text + chr(10) + "const TOKEN = process.env.TOKEN || 'change-me';", "'change-me'"),
+    (lambda text: text.replace("tier1_ok", "other_name"), "check bắt buộc không có test cùng tên"),
+])
+def test_validate_catches_spec_problems_the_adapter_only_reports_at_run_time(tmp_path, edit, expected):
+    sut, projects = generate(tmp_path)
+    activate_integration(sut)
+    complete_integration(sut)
+    spec = sut / ".qc-agent" / "integration" / "tier1.spec.mjs"
+    spec.write_text(edit(spec.read_text(encoding="utf-8")), encoding="utf-8")
+    assert expected in messages(check(tmp_path, sut, projects))
+
+
+def test_a_missing_har_is_reported_with_the_task(tmp_path):
+    sut, projects = generate(tmp_path)
+    activate_integration(sut)
+    complete_integration(sut)
+    (sut / ".qc-agent" / "har" / "external.har").unlink()
+    assert "t-021 inputs.har: file tham chiếu không tồn tại: .qc-agent/har/external.har" in messages(check(tmp_path, sut, projects))
+
+
+def test_an_activated_integration_suite_runs_on_pr_only_when_the_policy_lists_it(tmp_path):
+    sut, projects = generate(tmp_path)
+    activate_integration(sut)
+    complete_integration(sut)
+    suites = pj.load_suites(sut / ".qc-agent" / "suites")
+    ids = lambda plan: {task["task_id"] for task in plan["tasks"]}   # noqa: E731
+    default_pr, _ = pj.build_plan(pj.load_project("vahan-rpa", projects), "pr", suites)
+    assert not ids(default_pr) & {"t-020", "t-021"}                     # policy mặc định không liệt kê integration
+    (projects / "listed.yaml").write_text(
+        "slug: listed\nrepo: o/l\nmodes:\n  pr:\n    blocking_suites: [api-contract, sast, secrets, deps, integration]\n", encoding="utf-8")
+    listed_pr, _ = pj.build_plan(pj.load_project("listed", projects), "pr", suites)
+    assert {"t-020", "t-021"} <= ids(listed_pr)
+    manual, _ = pj.build_plan(pj.load_project("vahan-rpa", projects), "manual", suites)
+    assert {"t-020", "t-021", "t-022"} <= ids(manual)                   # manual có suites: "*"
+
