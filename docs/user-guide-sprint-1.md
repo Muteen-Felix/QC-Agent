@@ -142,7 +142,9 @@ docker run --rm -v "$PWD:/sut" -w /sut <IMAGE> init \
   --prd-glob "docs/prd/**"
 ```
 
-Chỉ thêm các tham số tuỳ chọn khi cần (xem bảng): `--openapi /sut/openapi.json` nếu repo đã commit file OpenAPI; `--sut-dockerfile PATH --sut-context DIR` nếu Dockerfile của API không ở vị trí scanner tìm (ví dụ monorepo: `--sut-dockerfile "apps/api-server/Dockerfile" --sut-context "apps/api-server"`).
+Chỉ thêm các tham số tuỳ chọn khi cần (xem bảng): `--openapi /sut/openapi.json` nếu repo đã commit file OpenAPI; `--sut-dockerfile PATH --sut-context DIR` để chốt Dockerfile và context khi `init` để lại dấu `qc-agent:todo VERIFY` hoặc không tự tìm được. Với monorepo kiểu `apps/api-server/Dockerfile`, context phụ thuộc vào đường dẫn trong `COPY`, không phải vị trí Dockerfile: Dockerfile có `COPY apps/api-server/pyproject.toml ./` thì context là gốc repo (`--sut-context "."`), còn `COPY pyproject.toml ./` thì context là `apps/api-server`.
+
+**Tìm thấy ≠ xác nhận.** `init` chỉ gợi ý, không biết chắc Dockerfile nào là của API. Nó tự chọn (không dấu) chỉ khi có đủ bằng chứng loại trừ: một Dockerfile duy nhất không có dấu hiệu web, và (với context) đúng một context khiến mọi nguồn `COPY`/`ADD` đều tồn tại. Các ca còn lại `init` vẫn ghi giá trị gợi ý vào `qc.yml` kèm dấu `VERIFY`, và `qc-agent validate` báo ERROR tới khi bạn xoá dấu: có từ hai Dockerfile ứng viên; một Dockerfile mà tên thư mục hay nội dung giống web (`web|ui|frontend|client|admin|www`, `FROM nginx|httpd|caddy`, `http.server`, `serve -s`); `COPY . .` hợp lệ ở nhiều cấp; hoặc `COPY` có heredoc/`$ARG` nên không đọc được. Cách chốt: kiểm Dockerfile và `COPY`, sửa giá trị nếu sai, rồi xoá phần comment `# qc-agent:todo VERIFY ...` ở cuối dòng. Nếu bạn tự đặt `--sut-context` mà nguồn `COPY` không tồn tại tính từ context đó, `init` chỉ in cảnh báo (không dấu `VERIFY`, không lỗi).
 
 **PowerShell** (không chạy được khối bash ở trên: `$PWD:` bị đọc như biến có drive, `\` cuối dòng không nối dòng, `@team` bị hiểu là splatting):
 
@@ -162,7 +164,7 @@ Thêm `--dry-run` để xem trước, không ghi gì (nên chạy thử một l�
 | `--image` | image mà **workflow trên CI** kéo về để chạy `gt generate`/`gt validate` |
 | `--prd-glob` | PRD nào kích hoạt workflow khi push `main` (mặc định `docs/prd/**`) |
 | `--openapi` | **Tuỳ chọn.** Chỉ truyền khi repo đã có file OpenAPI được commit (đường dẫn trong repo, vd. `/sut/openapi.json`); chưa có thì **bỏ dòng này**, `init` vẫn chạy. Bỏ thì CI không có OpenAPI (mất chiều kỹ thuật và mã trạng thái của bộ chấm), và `api-contract`/`perf-smoke` có vùng `qc-agent:todo REFINE` để điền sau |
-| `--sut-dockerfile`, `--sut-context` | **Tuỳ chọn.** Scanner tự tìm theo thứ tự `Dockerfile` ở gốc > `*/Dockerfile` (sâu 1 cấp) > `docker/*Dockerfile*`; nhiều ứng viên thì chọn một và đánh dấu `qc-agent:todo VERIFY` để bạn kiểm. Không thấy cái nào thì `init` báo lỗi và bạn mới phải chỉ đường dẫn (vd. `apps/api-server/Dockerfile` sâu 2 cấp nên không tự tìm được). `--sut-context` mặc định suy từ vị trí Dockerfile |
+| `--sut-dockerfile`, `--sut-context` | **Tuỳ chọn.** Scanner tìm `Dockerfile` ở gốc > `*/Dockerfile` (sâu 1 cấp) > `docker/*Dockerfile*` > `{apps,services,packages}/*/Dockerfile` (sâu 2 cấp). Thứ tự này chỉ để **sắp xếp gợi ý** (ứng viên có dấu hiệu web xếp sau). Từ hai ứng viên, hoặc một ứng viên có dấu hiệu web ("chưa chắc đây là API"), `init` ghi giá trị gợi ý kèm `qc-agent:todo VERIFY` cho bạn xác nhận. Không thấy cái nào thì `init` báo lỗi và bạn chỉ đường dẫn. `--sut-context` mặc định suy từ nguồn `COPY`/`ADD` (không phải từ vị trí Dockerfile): chọn khi đúng một context khiến mọi nguồn tồn tại, còn lại có `VERIFY`. Đặt `--sut-dockerfile` không có nghĩa context đã chắc chắn; đặt `--sut-context` thì không có `VERIFY`, chỉ cảnh báo khi `COPY` không khớp |
 
 Tuỳ chọn khác: `--qc-ref` (ghim workflow), `--slug`, `--sut-port`, `--health-path`, `--sut-env KEY=VALUE` khi scanner đoán sai.
 

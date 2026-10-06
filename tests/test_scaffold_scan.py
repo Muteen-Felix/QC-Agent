@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from qc_agent.scaffold import scan
+from qc_agent.scaffold import dockerfile_copy, scan
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "scan" / "vahan-rpa"
 
@@ -78,6 +78,7 @@ def test_dockerfile_priority_root_then_shallow_then_alphabetical_with_verify(tmp
     assert found.verify.startswith("chọn Dockerfile trong [")
     nested = tree(tmp_path / "b", {"web/Dockerfile": "FROM x\n", "api/Dockerfile": "FROM x\n"})
     result = scan.scan(nested)
+    # S4-08: trước đây `api/` thắng chỉ vì `a` đứng trước `w`. Nay `web/` có dấu hiệu web nên xếp sau; vẫn chỉ là GỢI Ý nên có VERIFY.
     assert result.dockerfile.value == "api/Dockerfile" and result.context == "api" and result.dockerfile.verify
 
 
@@ -164,3 +165,201 @@ def test_scan_never_writes(vahan):
     before = sorted(p.relative_to(vahan).as_posix() for p in vahan.rglob("*"))
     scan.scan(vahan)
     assert before == sorted(p.relative_to(vahan).as_posix() for p in vahan.rglob("*"))
+
+
+# ---------- S4-08: tìm thấy ≠ xác nhận ----------
+
+API_DF = "FROM python:3.12\nCOPY . .\nEXPOSE 8000\n"
+SPA_DF = "FROM node:22 AS build\nRUN npm run build\nFROM nginx:1.27\nCOPY --from=build /app/dist /usr/share/nginx/html\n"
+
+
+def test_two_unhinted_candidates_are_ordered_by_letters_only_and_still_verify(tmp_path):
+    """Không có dấu hiệu nào: thứ tự chữ là tiebreak duy nhất, nên kết quả KHÔNG phải nhận biết API và phải có VERIFY."""
+    found = scan.scan(tree(tmp_path, {"alpha/Dockerfile": API_DF, "zeta/Dockerfile": API_DF})).dockerfile
+    assert found.value == "alpha/Dockerfile" and found.candidates == ("alpha/Dockerfile", "zeta/Dockerfile") and found.verify
+    flipped = scan.scan(tree(tmp_path / "f", {"zeta/Dockerfile": API_DF, "alpha/Dockerfile": API_DF})).dockerfile
+    assert flipped.value == "alpha/Dockerfile"            # cùng cây: thứ tự tạo file không ảnh hưởng
+
+
+def test_web_hint_demotes_a_candidate_regardless_of_letter_order(tmp_path):
+    """Đảo tên để chứng minh luật không ăn may theo chữ cái: `client` đứng trước `zserver` mà vẫn xếp sau."""
+    found = scan.scan(tree(tmp_path, {"client/Dockerfile": API_DF, "zserver/Dockerfile": API_DF})).dockerfile
+    assert found.value == "zserver/Dockerfile" and found.candidates == ("zserver/Dockerfile", "client/Dockerfile")
+    assert "chưa xác nhận" in found.verify and "client/Dockerfile (tên 'client'" in found.verify
+
+
+def test_root_dockerfile_plus_web_picks_root_with_two_candidates_and_verify(tmp_path):
+    result = scan.scan(tree(tmp_path, {"Dockerfile": API_DF, "web/Dockerfile": SPA_DF}))
+    assert result.dockerfile.value == "Dockerfile" and result.dockerfile.candidates == ("Dockerfile", "web/Dockerfile")
+    assert result.dockerfile.verify.startswith("chọn Dockerfile trong [Dockerfile, web/Dockerfile]")
+    assert "FROM nginx" in result.dockerfile.verify
+
+
+def test_web_beside_deep_api_server_prefers_the_api_server_but_asks(tmp_path):
+    """Luật cũ "nông hơn thắng" sẽ chọn web/; dấu hiệu web xếp web/ xuống cuối. Kết quả chỉ là gợi ý."""
+    result = scan.scan(tree(tmp_path, {"web/Dockerfile": SPA_DF, "apps/api-server/Dockerfile": API_DF}))
+    assert result.dockerfile.value == "apps/api-server/Dockerfile"
+    assert result.dockerfile.candidates == ("apps/api-server/Dockerfile", "web/Dockerfile")
+    assert "gợi ý xếp hạng, chưa xác nhận" in result.dockerfile.verify
+    for banned in ("đã xác định", "chắc chắn", "nhận biết"):
+        assert banned not in result.dockerfile.verify
+
+
+def test_single_candidate_with_web_hints_says_not_sure_it_is_the_api(tmp_path):
+    found = scan.scan(tree(tmp_path, {"web/Dockerfile": SPA_DF})).dockerfile
+    assert found.value == "web/Dockerfile" and found.verify.startswith("chưa chắc web/Dockerfile là Dockerfile của API")
+    assert "FROM nginx" in found.verify and "đây là web" not in found.verify
+    plain = scan.scan(tree(tmp_path / "p", {"service/Dockerfile": API_DF})).dockerfile
+    assert plain.verify is None
+
+
+def test_build_command_alone_is_not_a_web_hint(tmp_path):
+    """`npm run build` có mặt cả trong API Node: nếu coi là dấu hiệu web thì VERIFY dư thừa làm mất giá trị cảnh báo."""
+    node_api = 'FROM node:22\nRUN npm run build\nCMD ["node", "dist/server.js"]\n'
+    assert scan.scan(tree(tmp_path, {"Dockerfile": node_api})).dockerfile.verify is None
+
+
+def test_two_level_monorepo_candidates_come_after_the_shallow_group_in_stable_order(tmp_path):
+    files = {"apps/b/Dockerfile": API_DF, "services/c/Dockerfile": API_DF, "apps/a/Dockerfile": API_DF, "packages/p/Dockerfile": API_DF}
+    assert scan._dockerfile_candidates(tree(tmp_path, files)) == ["apps/a/Dockerfile", "apps/b/Dockerfile", "packages/p/Dockerfile", "services/c/Dockerfile"]
+    found = scan.scan(tmp_path).dockerfile
+    assert found.value == "apps/a/Dockerfile" and found.verify and len(found.candidates) == 4
+    shallow = tree(tmp_path / "s", {**files, "zz/Dockerfile": API_DF})
+    assert scan._dockerfile_candidates(shallow)[0] == "zz/Dockerfile"       # sâu 1 đứng trước sâu 2
+
+
+def test_context_is_ambiguous_when_copy_dot_is_valid_at_every_level(tmp_path):
+    result = scan.scan(tree(tmp_path, {"apps/api-server/Dockerfile": API_DF}))
+    assert result.dockerfile.verify is None
+    assert result.context == "apps/api-server" and result.context_finding.verify
+    assert result.copy.valid_contexts == ("apps/api-server", "apps", ".")
+    assert "gợi ý, chưa xác nhận" in result.context_finding.verify
+
+
+def test_vahan_style_copy_from_repo_root_selects_dot_without_verify(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY apps/api-server/pyproject.toml ./\nCOPY apps/api-server/app ./app\n",
+             "apps/api-server/pyproject.toml": "", "apps/api-server/app/main.py": ""}
+    result = scan.scan(tree(tmp_path, files))
+    assert (result.context, result.context_finding.verify, result.copy.valid_contexts) == (".", None, (".",))
+    chosen = result.copy.chosen_check
+    assert [(r.kind, r.repo_path) for r in chosen.resolved] == [("file", "apps/api-server/pyproject.toml"), ("dir", "apps/api-server/app")]
+
+
+def test_copy_relative_to_the_service_directory_selects_that_directory(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""}
+    result = scan.scan(tree(tmp_path, files))
+    assert (result.context, result.context_finding.verify) == ("apps/api-server", None)
+
+
+@pytest.mark.parametrize("dockerfile", [
+    "FROM x\nCOPY <<EOF /app/run.sh\n#!/bin/sh\nEOF\n",
+    "FROM x\nARG SRC=app\nCOPY ${SRC} ./app\n",
+    "# escape=`\nFROM x\nCOPY app ./app\n",
+    'FROM x\nCOPY ["app", "./app"\n',
+])
+def test_unparseable_copy_asks_instead_of_claiming_a_context(tmp_path, dockerfile):
+    result = scan.scan(tree(tmp_path, {"api/Dockerfile": dockerfile, "api/app/main.py": ""}))
+    assert result.context_finding.verify.startswith("không suy được context") and result.copy.unparsed
+
+
+def test_no_context_satisfies_the_copy_sources_asks_with_the_missing_paths(tmp_path):
+    result = scan.scan(tree(tmp_path, {"api/Dockerfile": "FROM x\nCOPY nowhere ./n\n"}))
+    assert result.context_finding.verify.startswith("không context nào") and "nowhere" in result.context_finding.verify
+    assert result.copy.valid_contexts == ()
+
+
+def test_dockerfile_flag_without_context_flag_still_infers_context_and_asks(tmp_path):
+    root = tree(tmp_path, {"apps/api-server/Dockerfile": API_DF, "web/Dockerfile": SPA_DF})
+    flagged = scan.scan(root, scan.Overrides(dockerfile="apps/api-server/Dockerfile"))
+    assert flagged.dockerfile.source == "flag" and flagged.dockerfile.verify is None and flagged.context_finding.verify
+    decided = tree(tmp_path / "d", {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""})
+    assert scan.scan(decided, scan.Overrides(dockerfile="apps/api-server/Dockerfile")).context_finding.verify is None
+
+
+def test_context_flag_never_asks_but_warns_when_copy_sources_do_not_exist(tmp_path):
+    root = tree(tmp_path, {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""})
+    ok = scan.scan(root, scan.Overrides(context="apps/api-server"))
+    assert (ok.context, ok.context_finding.source, ok.context_finding.verify, ok.warnings) == ("apps/api-server", "flag", None, [])
+    bad = scan.scan(root, scan.Overrides(context="."))
+    assert bad.context_finding.verify is None and bad.context_finding.source == "flag"
+    assert len(bad.warnings) == 1 and "pyproject.toml" in bad.warnings[0] and "--sut-context ." in bad.warnings[0]
+
+
+def test_vahan_fixture_and_noteboard_get_no_new_verify_on_dockerfile_or_context(vahan):
+    result = scan.scan(vahan)
+    assert result.dockerfile.verify is None and result.context_finding.verify is None and result.warnings == []
+    noteboard = scan.scan(Path(__file__).resolve().parent / "fixtures" / "sut" / "noteboard")
+    assert noteboard.context == "." and noteboard.context_finding.verify is None and noteboard.warnings == []
+    assert noteboard.dockerfile.verify is not None          # đã có từ trước ở tầng scan (gốc + ui/); chỉ init từng làm rơi mất
+
+
+# ---------- S4-08: hàm đọc COPY/ADD (dùng lại ở S4-10, S4-11) ----------
+
+def test_copy_parser_classifies_every_source_and_records_why_it_skips():
+    text = """FROM node AS build
+COPY --from=build /app/dist /srv
+COPY --chown=1:1 package.json package-lock.json ./
+ADD https://example.com/x.tgz /tmp/
+COPY . .
+COPY src/*.py ./src/
+COPY ../outside /x
+ADD ["dir with space/f", "./"]
+RUN cat <<EOF > /x
+COPY not-an-instruction /y
+EOF
+COPY \\
+  # comment in the middle
+  last.txt ./
+"""
+    sources = dockerfile_copy.parse_sources(text)
+    assert [(s.raw, s.kind) for s in sources] == [
+        ("/app/dist", "skipped"), ("package.json", "path"), ("package-lock.json", "path"), ("https://example.com/x.tgz", "skipped"),
+        (".", "context"), ("src/*.py", "glob"), ("../outside", "skipped"), ("dir with space/f", "path"), ("last.txt", "path")]
+    reasons = {s.raw: s.reason for s in sources if s.kind == "skipped"}
+    assert "--from" in reasons["/app/dist"] and "URL" in reasons["https://example.com/x.tgz"] and "context" in reasons["../outside"]
+
+
+def test_copy_check_separates_dir_file_context_and_glob_per_context(tmp_path):
+    root = tree(tmp_path, {"svc/Dockerfile": "FROM x\nCOPY app ./a\nCOPY pyproject.toml ./\nCOPY . .\nCOPY conf/*.ini /c/\nCOPY --from=b /x /y\n",
+                           "svc/app/m.py": "", "svc/pyproject.toml": "", "svc/conf/a.ini": ""})
+    analysis = dockerfile_copy.analyze(root, "svc/Dockerfile")
+    assert analysis.valid_contexts == ("svc",) and analysis.chosen == "svc" and analysis.verify is None
+    assert [(r.kind, r.repo_path) for r in analysis.check("svc").resolved] == [
+        ("dir", "svc/app"), ("file", "svc/pyproject.toml"), ("context", "svc"), ("glob", "svc/conf/*.ini"), ("skipped", None)]
+    assert not analysis.check(".").valid and {r.repo_path for r in analysis.check(".").missing} == {"app", "pyproject.toml", "conf/*.ini"}
+    assert [s.raw for s in analysis.skipped] == ["/x"]
+
+
+def test_context_candidates_follow_the_dockerfile_up_to_the_root():
+    assert dockerfile_copy.context_candidates("Dockerfile") == ["."]
+    assert dockerfile_copy.context_candidates("api/Dockerfile") == ["api", "."]
+    assert dockerfile_copy.context_candidates("apps/api-server/Dockerfile") == ["apps/api-server", "apps", "."]
+    assert dockerfile_copy.context_candidates("docker/prod.Dockerfile") == ["docker", "."]
+    assert dockerfile_copy.default_context("docker/prod.Dockerfile") == "." and dockerfile_copy.default_context("api/Dockerfile") == "api"
+
+
+# ---------- S4-08 (sửa sau review): cú pháp COPY và thiếu nguồn ----------
+
+def test_copy_flags_before_json_form_and_tab_separators_are_parsed(tmp_path):
+    text = 'FROM x\nCOPY --chown=1:1 ["src.txt", "/app/"]\nCOPY\tsrc.txt /app/\nADD  --chmod=644   a.txt\tb.txt  /app/\ncopy --from=b --chown=1:1 /x /y\n'
+    sources = dockerfile_copy.parse_sources(text)
+    assert [(s.instruction, s.raw, s.kind) for s in sources] == [
+        ("COPY", "src.txt", "path"), ("COPY", "src.txt", "path"), ("ADD", "a.txt", "path"), ("ADD", "b.txt", "path"), ("COPY", "/x", "skipped")]
+    root = tree(tmp_path, {"Dockerfile": text, "src.txt": "", "a.txt": "", "b.txt": ""})
+    analysis = dockerfile_copy.analyze(root, "Dockerfile")
+    assert analysis.chosen_check.valid and analysis.verify is None and not analysis.chosen_check.missing
+
+
+def test_tab_after_the_instruction_name_still_counts_as_a_missing_source(tmp_path):
+    result = scan.scan(tree(tmp_path, {"Dockerfile": "FROM x\nCOPY\tabsent.txt /app/\n"}))
+    assert result.copy.valid_contexts == () and "absent.txt" in result.context_finding.verify
+
+
+def test_root_dockerfile_with_a_missing_copy_source_asks_instead_of_staying_silent(tmp_path):
+    """Chỉ một context khả dĩ cũng phải VERIFY khi không context nào hợp lệ: nguồn thiếu có thể là Dockerfile sai hoặc build từ chỗ khác."""
+    result = scan.scan(tree(tmp_path, {"Dockerfile": "FROM x\nCOPY absent.txt /app/\n"}))
+    assert result.copy.valid_contexts == () and result.context == "."
+    assert result.context_finding.verify.startswith("không context nào") and "absent.txt" in result.context_finding.verify
+    assert result.dockerfile.verify is None
+    unparsed = scan.scan(tree(tmp_path / "u", {"Dockerfile": "FROM x\nARG S=a\nCOPY ${S} /app/\n"}))
+    assert unparsed.context_finding.verify.startswith("không suy được context")

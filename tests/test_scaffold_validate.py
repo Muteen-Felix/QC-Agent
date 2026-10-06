@@ -607,3 +607,43 @@ def test_an_activated_integration_suite_runs_on_pr_only_when_the_policy_lists_it
     manual, _ = pj.build_plan(pj.load_project("vahan-rpa", projects), "manual", suites)
     assert {"t-020", "t-021", "t-022"} <= ids(manual)                   # manual có suites: "*"
 
+
+# ---------- S4-08: dấu VERIFY của Dockerfile/context chặn validate tới khi người xác nhận ----------
+
+API_DF = "FROM python:3.12\nCOPY . .\nEXPOSE 8000\n"
+SPA_DF = "FROM node:22 AS build\nFROM nginx:1.27\nCOPY --from=build /app/dist /usr/share/nginx/html\n"
+
+
+def generate_tree(tmp_path, files, **over):
+    sut = tmp_path / "sut"
+    for rel, text in files.items():
+        (sut / rel).parent.mkdir(parents=True, exist_ok=True)
+        (sut / rel).write_text(text, encoding="utf-8")
+    opts = dict(sut_root=sut, slug="vahan-rpa", openapi_source=str(VAHAN), qc_ref=SHA, image=IMAGE, qa_team="@o/qa", **over)
+    init_mod.apply(init_mod.build(init_mod.Options(**opts)))
+    return sut, policy_dir(tmp_path)
+
+
+@pytest.mark.parametrize("files, expected", [
+    ({"Dockerfile": API_DF, "web/Dockerfile": SPA_DF}, "sut_dockerfile"),
+    ({"web/Dockerfile": SPA_DF, "apps/api-server/Dockerfile": API_DF}, "sut_dockerfile"),
+    ({"web/Dockerfile": SPA_DF}, "sut_dockerfile"),
+    ({"apps/api-server/Dockerfile": API_DF}, "sut_context"),
+    ({"api/Dockerfile": "FROM x\nARG S=app\nCOPY ${S} ./app\n"}, "sut_context"),
+    ({"docker/prod.Dockerfile": API_DF}, "sut_context"),
+])
+def test_unconfirmed_dockerfile_or_context_blocks_validate_until_the_mark_is_removed(tmp_path, files, expected):
+    sut, projects = generate_tree(tmp_path, files)
+    report = check(tmp_path, sut, projects)
+    blocked = [f for f in by_level(report, v.ERROR) if "qc-agent:todo VERIFY" in f.message]
+    assert any(expected in f.message for f in blocked), messages(report)
+    workflow = sut / ".github" / "workflows" / "qc.yml"
+    workflow.write_text(re.sub(r"  # qc-agent:todo VERIFY[^\n]*", "", workflow.read_text(encoding="utf-8")), encoding="utf-8")   # người đã xác nhận
+    after = check(tmp_path, sut, projects)
+    assert not [f for f in by_level(after, v.ERROR) if "qc-agent:todo VERIFY" in f.message], messages(after)
+
+
+def test_clear_single_service_trees_validate_without_any_verify(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\nEXPOSE 8000\n", "apps/api-server/pyproject.toml": ""}
+    sut, projects = generate_tree(tmp_path, files)
+    assert not [f for f in by_level(check(tmp_path, sut, projects), v.ERROR) if "VERIFY" in f.message]

@@ -665,3 +665,91 @@ def test_the_groundtruth_workflow_explains_how_to_switch_to_gemini_without_chang
     with_ = gt_workflow(tmp_path)["jobs"]["groundtruth"]["with"]
     assert set(with_) == {"project", "image", "prd_path"}                                    # mặc định vẫn là Claude: các dòng Gemini chỉ là comment
     assert "qc-agent:todo" not in text and gt_workflow(tmp_path)["jobs"]["groundtruth"]["secrets"] == "inherit"
+
+
+# ---------- S4-08: tìm thấy ≠ xác nhận (dấu VERIFY của Dockerfile/context phải tới được caller) ----------
+
+API_DF = "FROM python:3.12\nCOPY . .\nEXPOSE 8000\n"
+SPA_DF = "FROM node:22 AS build\nFROM nginx:1.27\nCOPY --from=build /app/dist /usr/share/nginx/html\n"
+
+
+def caller_lines(tmp_path, **over):
+    """Các dòng khai input `sut_dockerfile`/`sut_context` trong qc.yml được sinh (đủ để thấy dấu qc-agent:todo cuối dòng)."""
+    run_init(tmp_path, **over)
+    return {line.split(":", 1)[0].strip(): line for line in read(tmp_path, ".github/workflows/qc.yml").splitlines()
+            if line.strip().startswith(("sut_dockerfile:", "sut_context:"))}
+
+
+def test_root_dockerfile_beside_web_declares_the_default_value_with_a_verify_mark(tmp_path):
+    lines = caller_lines(tmp_path, files={"Dockerfile": API_DF, "web/Dockerfile": SPA_DF})
+    assert 'sut_dockerfile: "Dockerfile"' in lines["sut_dockerfile"] and "qc-agent:todo VERIFY" in lines["sut_dockerfile"]
+    assert "Dockerfile, web/Dockerfile" in lines["sut_dockerfile"]
+    assert "sut_context" not in lines                      # gốc + một context khả dĩ, bằng mặc định: không khai
+
+
+def test_ambiguous_context_equal_to_the_default_is_still_declared_with_a_mark(tmp_path):
+    lines = caller_lines(tmp_path, files={"docker/prod.Dockerfile": API_DF})
+    assert 'sut_context: "."' in lines["sut_context"] and "qc-agent:todo VERIFY" in lines["sut_context"]
+    assert "sut_dockerfile: \"docker/prod.Dockerfile\"" in lines["sut_dockerfile"] and "VERIFY" not in lines["sut_dockerfile"]
+
+
+def test_single_service_with_copy_dot_marks_only_the_context(tmp_path):
+    lines = caller_lines(tmp_path, files={"apps/api-server/Dockerfile": API_DF})
+    assert "VERIFY" not in lines["sut_dockerfile"]
+    assert 'sut_context: "apps/api-server"' in lines["sut_context"] and "qc-agent:todo VERIFY" in lines["sut_context"]
+
+
+def test_vahan_style_copy_declares_the_dockerfile_but_not_the_default_context(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY apps/api-server/pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""}
+    lines = caller_lines(tmp_path, files=files)
+    assert lines["sut_dockerfile"].strip() == 'sut_dockerfile: "apps/api-server/Dockerfile"' and "sut_context" not in lines
+
+
+def test_copy_relative_to_the_service_declares_the_context_without_a_mark(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""}
+    lines = caller_lines(tmp_path, files=files)
+    assert lines["sut_context"].strip() == 'sut_context: "apps/api-server"'
+    assert "VERIFY" not in "".join(lines.values())
+
+
+def test_web_beside_api_server_marks_the_dockerfile_and_lists_both_candidates(tmp_path):
+    lines = caller_lines(tmp_path, files={"web/Dockerfile": SPA_DF, "apps/api-server/Dockerfile": API_DF})
+    assert "apps/api-server/Dockerfile, web/Dockerfile" in lines["sut_dockerfile"] and "chưa xác nhận" in lines["sut_dockerfile"]
+    for text in lines.values():
+        assert "đã xác định" not in text
+
+
+def test_only_a_web_looking_dockerfile_is_marked_not_sure_it_is_the_api(tmp_path):
+    lines = caller_lines(tmp_path, files={"web/Dockerfile": SPA_DF})
+    assert "chưa chắc web/Dockerfile là Dockerfile của API" in lines["sut_dockerfile"]
+
+
+def test_unparseable_copy_marks_the_context(tmp_path):
+    lines = caller_lines(tmp_path, files={"api/Dockerfile": "FROM x\nARG S=app\nCOPY ${S} ./app\n"})
+    assert "không suy được context" in lines["sut_context"] and 'sut_context: "api"' in lines["sut_context"]
+
+
+def test_dockerfile_flag_alone_still_marks_an_ambiguous_context(tmp_path):
+    lines = caller_lines(tmp_path, files={"apps/api-server/Dockerfile": API_DF}, sut_dockerfile="apps/api-server/Dockerfile")
+    assert "VERIFY" not in lines["sut_dockerfile"] and "qc-agent:todo VERIFY" in lines["sut_context"]
+
+
+def test_context_flag_is_declared_without_a_mark_but_warns_when_copy_does_not_match(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""}
+    plan, _ = run_init(tmp_path, files=files, sut_context=".", dry_run=True)
+    workflow = next(f.content for f in plan.files if f.label.endswith("qc.yml"))
+    assert 'sut_context: "."' in workflow and "VERIFY" not in workflow.split("sut_context")[1].splitlines()[0]
+    assert any("--sut-context ." in w and "pyproject.toml" in w for w in plan.warnings)
+
+
+def test_clear_trees_add_no_dockerfile_or_context_mark_and_no_extra_warning(tmp_path):
+    plan, _ = run_init(tmp_path, dry_run=True)             # bản cắt vahan-rpa
+    workflow = next(f.content for f in plan.files if f.label.endswith("qc.yml"))
+    assert "sut_dockerfile" not in workflow and "sut_context" not in workflow
+    assert not [w for w in plan.warnings if "COPY" in w or "context" in w]
+
+
+def test_root_dockerfile_with_a_missing_copy_source_marks_the_default_context(tmp_path):
+    lines = caller_lines(tmp_path, files={"Dockerfile": "FROM x\nCOPY absent.txt /app/\nEXPOSE 8000\n"})
+    assert 'sut_context: "."' in lines["sut_context"] and "qc-agent:todo VERIFY: không context nào" in lines["sut_context"]
+    assert "sut_dockerfile" not in lines
