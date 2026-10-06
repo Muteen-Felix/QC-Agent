@@ -375,6 +375,8 @@ def _check_workflow(report: Report, slug: str, project: dict, suites: dict, sut_
         if known_inputs is not None:
             for key in sorted(set(with_) - known_inputs):
                 report.add(ERROR, where, f"input `{key}` không có trong workflow tái sử dụng")
+        if path.relative_to(sut_root).as_posix() == t.LEGACY_WORKFLOW:
+            report.add(NOTE, where, f"tên cũ {t.LEGACY_WORKFLOW}: vẫn chạy, nhưng bản mới là {t.GATE_WORKFLOW} (có input `workers` cho chạy tay); đổi tên bằng `git mv`")
         _check_sut_build(report, sut_root, where, with_)
         _check_sut_db(report, sut_root, where, with_)
         mode = str(with_.get("mode", "pr"))

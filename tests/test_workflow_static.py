@@ -742,3 +742,56 @@ def test_a_sut_that_is_alive_but_never_answers_still_waits_the_full_loop_then_re
 def test_a_sut_that_answers_on_the_first_probe_is_not_affected(start):
     done, calls, _ = start()
     assert done.returncode == 0 and sum(c.startswith("run --rm") for c in calls) == 1 and not any(c.startswith("inspect") for c in calls)
+
+
+# ==================== S4-01: bản cuối của hai reusable workflow ====================
+
+ORDER = ["Log in to GHCR", "Pull qc-agent image", "Fetch policy", "Start SUT", "Refine (onboarding suggestions)", "Post refine review", "Upload refine patch",
+         "Cache Select results", "Select (PR)", "Run qc-agent gate", "PR review", "Jira (Low)", "Report (Check Run, PR comment, history, webhook)",
+         "Upload run artifacts", "Clean up SUT", "Enforce gate result"]
+
+
+def test_gate_steps_run_in_the_final_order_with_jira_before_the_report():
+    names = [n for n in NAMES if not n.startswith("actions/checkout@")]
+    assert names == ORDER
+    assert NAMES[0].startswith("actions/checkout@") and "fetch-depth: 0" in TEXT
+    assert NAMES.index("Jira (Low)") < NAMES.index("Report (Check Run, PR comment, history, webhook)")   # cảnh báo Jira phải hiện trong Check Run
+
+
+def test_every_action_in_both_reusable_workflows_is_pinned_to_a_40_char_sha_including_actions_cache():
+    gate_uses = [s["uses"] for s in STEPS if "uses" in s]
+    gt_uses = [s["uses"] for job in GT_JOBS.values() for s in job["steps"] if "uses" in s]
+    assert any(u.startswith("actions/cache@") for u in gate_uses)
+    for used in gate_uses + gt_uses:
+        assert USES.fullmatch(used), used
+
+
+def test_select_cache_step_is_a_pr_only_placeholder_before_select_and_is_mounted_into_the_container():
+    cache = step("Cache Select results")
+    assert cache["if"] == "github.event_name == 'pull_request'" and cache["with"]["path"] == "~/.cache/qc-agent/select"
+    assert "secrets." not in repr(cache) and "${{ inputs.project }}" in cache["with"]["key"]
+    assert NAMES.index("Cache Select results") + 1 == NAMES.index("Select (PR)")
+    select = step("Select (PR)")["run"]
+    assert '-v "$HOME/.cache/qc-agent/select:/cache"' in select and "QC_SELECT_CACHE_DIR=/cache" in select and 'mkdir -p runs "$HOME/.cache/qc-agent/select"' in select
+
+
+def test_refine_looks_for_its_markers_in_both_caller_names():
+    run = step("Refine (onboarding suggestions)")["run"]
+    assert ".github/workflows/qc-gate.yml" in run and ".github/workflows/qc.yml" in run
+
+
+def test_no_run_script_in_either_workflow_contains_an_input_or_secret_expression():
+    steps = list(STEPS) + [s for job in GT_JOBS.values() for s in job["steps"]]
+    for item in steps:
+        assert not re.search(r"\$\{\{\s*(inputs|secrets)\.", item.get("run", "")), item.get("name")
+
+
+def test_manual_dispatch_with_workers_goes_the_manual_path_and_without_it_the_full_set():
+    gate = step("Run qc-agent gate")
+    assert gate["env"]["WORKERS"] == "${{ inputs.workers }}" and '--trigger manual --workers "$WORKERS"' in gate["run"]
+    assert DATA[True]["workflow_call"]["inputs"]["workers"]["default"] == ""
+
+
+def test_the_groundtruth_workflow_keeps_a_marked_place_for_the_prd_cache_without_a_cache_action_yet():
+    assert "S4-02" in GT_TEXT and "prd_sha256" in GT_TEXT
+    assert not any(str(s.get("uses", "")).startswith("actions/cache@") for job in GT_JOBS.values() for s in job["steps"])

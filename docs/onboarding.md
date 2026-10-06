@@ -15,7 +15,9 @@ docker run --rm -v "$PWD:/sut" ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> ini
 ```
 Linux: thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` để file mới thuộc về bạn. Git Bash (Windows): đặt `MSYS_NO_PATHCONV=1`.
 
-Lệnh này chỉ **đọc** cây thư mục và **ghi trong repo của bạn**: `.github/workflows/qc.yml`, `.qc-agent/suites/*.yaml`, `.qc-agent/perf/smoke.js`, `.qc-agent/midscene/*.yaml`, và
+Một lệnh sinh đủ hai caller: `.github/workflows/qc-gate.yml` (gate PR, có `workflow_dispatch` với input `workers` để chạy tay) và `qc-groundtruth.yml`, cùng vùng `.github/CODEOWNERS`. Repo đã có `qc.yml` cũ vẫn chạy: `init` không sinh thêm `qc-gate.yml`, bạn tự `git mv` (xem [usage-ci.md](usage-ci.md), mục 2).
+
+Lệnh này chỉ **đọc** cây thư mục và **ghi trong repo của bạn**: `.github/workflows/qc-gate.yml`, `.qc-agent/suites/*.yaml`, `.qc-agent/perf/smoke.js`, `.qc-agent/midscene/*.yaml`, và
 `.qc-agent/Dockerfile.ui` nếu UI là SPA tĩnh, cùng `.github/workflows/qc-groundtruth.yml` và vùng `.github/CODEOWNERS` cho Ground-Truth (thêm `--qa-team @org/team` để giao `/.qc-agent/` cho QA, thay `@org/team` bằng team thật vì `validate` báo lỗi nếu còn owner mẫu; thiếu thì còn `qc-agent:todo` và `validate` từ chối; xem [groundtruth.md](groundtruth.md)). Nó cho biết đã đoán gì và còn việc gì (`--dry-run` để xem trước, không ghi gì).
 
 Nếu báo *không thấy Dockerfile API*: thêm `--sut-dockerfile PATH`. Nếu UI là Next.js SSR / monorepo workspace / không có lockfile: tự viết Dockerfile cho UI và thêm `--ui-dockerfile PATH`
@@ -26,7 +28,7 @@ Trước khi đẩy có thể kiểm nhanh: `qc-agent validate --sut-root .` (c�
 
 | Dấu | Nghĩa | Bạn làm gì |
 |---|---|---|
-| `qc-agent:todo …` | việc của người | ghim digest ở `qc.yml`, viết bước UI thật ở `explore.yaml`, rồi xoá dòng |
+| `qc-agent:todo …` | việc của người | ghim digest ở `qc-gate.yml`, viết bước UI thật ở `explore.yaml`, rồi xoá dòng |
 | `qc-agent:todo VERIFY: chọn X trong [X, Y] vì …` | scanner gặp ≥ 2 ứng viên và chọn theo luật ưu tiên | xác nhận (hoặc sửa) rồi xoá dòng |
 | `qc-agent:todo REFINE` | cần SUT đang chạy | **đợi comment refine trên PR** (bước 3), hoặc chạy lại `init --openapi <file|url>` |
 | `qc-agent:todo SUGGESTED …` | bước UI do LLM gợi ý | duyệt từng bước, sửa cho đúng sản phẩm rồi xoá dòng |
@@ -45,7 +47,7 @@ Kết quả là **một review** trên PR với các comment ```suggestion``` ch
 
 ## Bước 4 — duyệt, xoá TODO, xanh
 Áp gợi ý, xác nhận các dòng `VERIFY`, ghim digest, xoá TODO còn sót → `validate` sạch → gate chạy thật. Bật *Require status checks* cho job `qc-agent / <project>` trong branch protection.
-(Đây là chỗ chặn merge thật; chính sách gate không do file `qc.yml` của bạn quyết định, xem mục dưới.)
+(Đây là chỗ chặn merge thật; chính sách gate không do file `qc-gate.yml` của bạn quyết định, xem mục dưới.)
 
 ## Chính sách gate lấy ở đâu
 Gate đọc chính sách từ nhánh **`main` của qc-agent** lúc chạy (`configs/projects/_default.yaml` + `<slug>.yaml` nếu có); lấy không được thì job đỏ. Repo chưa đăng ký dùng `_default`:
@@ -93,11 +95,11 @@ Không có cách tự đăng ký từ repo của bạn: chủ ý, để phòng Q
 
 ## SUT cần database
 
-Gate chạy **một container** SUT và chờ nó trả lời HTTP trong 120 s. SUT đòi database lúc khởi động (vd. API đọc `DATABASE_URL` rồi thoát khi không nối được) không qua được nếu chỉ có `sut_env`. `init` và `validate` **cảnh báo** (không lỗi) khi mã SUT tham chiếu `DATABASE_URL` hoặc biến DB tương tự mà `qc.yml` không khai DB. Chọn một cách (chi tiết ở [usage-ci.md](usage-ci.md), mục "SUT cần database"):
+Gate chạy **một container** SUT và chờ nó trả lời HTTP trong 120 s. SUT đòi database lúc khởi động (vd. API đọc `DATABASE_URL` rồi thoát khi không nối được) không qua được nếu chỉ có `sut_env`. `init` và `validate` **cảnh báo** (không lỗi) khi mã SUT tham chiếu `DATABASE_URL` hoặc biến DB tương tự mà `qc-gate.yml` không khai DB. Chọn một cách (chi tiết ở [usage-ci.md](usage-ci.md), mục "SUT cần database"):
 
 - SUT có chế độ chạy không DB: bật bằng `sut_env`.
 - Đã có môi trường chạy sẵn: `sut_base_url`.
-- DB phụ: bỏ comment mẫu `sut_db_image` (ghim digest), `sut_db_env`, `sut_db_ready_cmd` trong `qc.yml`, và đặt hai secret của repo `SUT_SECRET_ENV` (cho SUT, chứa `DATABASE_URL=...@db:<cổng>/...`) và `SUT_DB_SECRET_ENV` (cho container DB, vd. `POSTGRES_PASSWORD=...`). Loại DB do SUT chọn; migration là việc của image SUT.
+- DB phụ: bỏ comment mẫu `sut_db_image` (ghim digest), `sut_db_env`, `sut_db_ready_cmd` trong `qc-gate.yml`, và đặt hai secret của repo `SUT_SECRET_ENV` (cho SUT, chứa `DATABASE_URL=...@db:<cổng>/...`) và `SUT_DB_SECRET_ENV` (cho container DB, vd. `POSTGRES_PASSWORD=...`). Loại DB do SUT chọn; migration là việc của image SUT.
 
 ## Giới hạn cần biết
 
@@ -106,5 +108,5 @@ Gate chạy **một container** SUT và chờ nó trả lời HTTP trong 120 s. 
   Pha 2 bắt được lỗi health nhờ OpenAPI sống; cổng và biến API của UI chỉ lộ ra khi gate chạy.
 - `Dockerfile.ui` chỉ cho SPA tĩnh (Vite, CRA, Next `output: 'export'`) và cần lockfile cạnh `package.json`.
 - Suggestion của GitHub chỉ gắn được vào dòng trong diff của PR và không tạo được file mới; phần còn lại ở `refine.patch`. Số dòng tính theo bản merge của PR, nếu nhánh đích đã đổi thì có thể lệch.
-- Tin cậy: *tin team SUT, chỉ chống sơ suất*. Sửa `qc.yml` để né gate vẫn làm được; chặn thật là branch protection + review thay đổi `.github/workflows/`.
+- Tin cậy: *tin team SUT, chỉ chống sơ suất*. Sửa `qc-gate.yml` để né gate vẫn làm được; chặn thật là branch protection + review thay đổi `.github/workflows/`.
 - Midscene tốn tiền và chậm; số đo k6 trên runner dùng chung không đại diện cho môi trường thật.

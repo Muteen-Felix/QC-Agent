@@ -1,5 +1,5 @@
 # qc-agent:generated — Dockerfile web UI (SPA tĩnh) cho gate: build ra {{output_dir}}/ rồi phục vụ bằng nginx ở cổng 8080.
-# Context build = thư mục UI (qc.yml: sut_ui_context). Địa chỉ API đi vào bằng build-arg (qc.yml: sut_ui_build_args), KHÔNG đặt bí mật ở đây.
+# Context build = thư mục UI (qc-gate.yml: sut_ui_context). Địa chỉ API đi vào bằng build-arg (qc-gate.yml: sut_ui_build_args), KHÔNG đặt bí mật ở đây.
 # `COPY <<` (heredoc) cần BuildKit: `docker build` trên ubuntu-latest đã bật sẵn.
 FROM node:{{node_major}}-alpine AS build
 WORKDIR /app

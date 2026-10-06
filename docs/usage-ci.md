@@ -17,7 +17,7 @@ Tải không được thì **job đỏ**, không có fallback về snapshot. `re
 - Hiệu lực = `deep_merge(_default, <slug>.yaml)`: dict gộp theo key, **list thay thế** (không cộng dồn). Sau merge, `modes.pr.blocking_suites` phải có ≥ 1 phần tử.
 - Suite *advisory* (`advisory_suites`) không có trong repo thì bị bỏ qua (validate ghi chú); suite *blocking* không có thì lỗi.
 - Project đã đăng ký thì `repo` trong file phải trùng `github.repository` của repo đang chạy (không phân biệt hoa/thường), sai thì exit 3.
-- Mô hình tin cậy: **tin team SUT, chỉ chống sơ suất**. PR của SUT vẫn sửa được `qc.yml` để né gate (đổi `project:` sang slug chưa đăng ký, thêm `suites:`, xoá job);
+- Mô hình tin cậy: **tin team SUT, chỉ chống sơ suất**. PR của SUT vẫn sửa được `qc-gate.yml` để né gate (đổi `project:` sang slug chưa đăng ký, thêm `suites:`, xoá job);
   chỗ chặn thật là branch protection (required check) và review thay đổi `.github/workflows/`, nằm ngoài qc-agent.
 - Một merge vào `main` của qc-agent đổi policy của PR **mọi team ngay lập tức**: review `_default.yaml` và `configs/projects/*` như code của gate. Mọi thay đổi schema policy phải tương thích ngược ít nhất một bản image
   (image ghim cũ mà gặp field lạ thì exit 3 ở mọi repo cùng lúc).
@@ -26,18 +26,24 @@ Tải không được thì **job đỏ**, không có fallback về snapshot. `re
 **Khi repo qc-agent hoặc image chuyển private** (hiện cả hai đang public):
 1. Settings → Actions → General → *Access* của repo qc-agent: chọn “Accessible from repositories owned by Muteen-Felix” (`uses:` từ repo private cần cài đặt này, token không thay được).
 2. Tạo Org Secret `QC_READ_TOKEN` (`contents:read` trên qc-agent + `read:packages`).
-3. Trong `qc.yml` của repo SUT thêm `secrets: inherit` (hoặc truyền tường minh `qc_read_token: ${{ secrets.QC_READ_TOKEN }}`). Workflow dùng nó để fetch policy và đăng nhập GHCR.
+3. Trong `qc-gate.yml` của repo SUT thêm `secrets: inherit` (hoặc truyền tường minh `qc_read_token: ${{ secrets.QC_READ_TOKEN }}`). Workflow dùng nó để fetch policy và đăng nhập GHCR.
 
 Ở máy dev, `qc-agent validate` lấy policy theo thứ tự `--projects-dir` > fetch `main` (đọc `QC_READ_TOKEN` nếu có) > snapshot trong image (kèm cảnh báo `using bundled policy snapshot from build <sha>`). Snapshot chỉ để `validate` chạy offline; gate CI không bao giờ dùng nó.
 API/Dashboard vẫn đọc `projects_dir` của bản deploy: đổi đăng ký thì phải redeploy, nên dashboard có thể lệch policy gate cho tới lúc đó.
 
-## 2. File gọi (trong repo SUT: `.github/workflows/qc.yml`)
+## 2. File gọi (trong repo SUT: `.github/workflows/qc-gate.yml`)
 
 ```yaml
-name: qc
+name: qc-gate
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:           # chạy tay từ tab Actions
+    inputs:
+      workers:
+        description: "vd semgrep,schemathesis — để trống = toàn bộ theo policy"
+        type: string
+        default: ""
 
 jobs:
   qc:
@@ -50,6 +56,7 @@ jobs:
     with:
       project: noteboard
       image: ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>
+      workers: ${{ inputs.workers }}   # input của `with:`, không bao giờ vào `run:`
       # sut_env: |               # biến môi trường cho container SUT (KHÔNG đặt bí mật)
       #   QC_BUGS=none
       # sut_base_url: http://...  # SUT đã chạy sẵn: bỏ qua build/chạy SUT. SUT cần database: xem "SUT cần database" bên dưới
@@ -58,6 +65,12 @@ jobs:
 ```
 
 Ghim `@<COMMIT-SHA>` (không dùng `@main`) để một thay đổi ở qc-agent không tự động đổi gate của bạn.
+
+**Chạy tay (`workflow_dispatch`):** có `workers` (vd. `semgrep,schemathesis`) thì gate chạy đúng các worker đó (không LLM, không floor); để trống thì chạy toàn bộ theo policy (FULL SET). Trên PR `workers` luôn rỗng và Select chọn phạm vi.
+
+**Tên file và job:** `init` sinh `.github/workflows/qc-gate.yml` (cùng `qc-groundtruth.yml`). Job id vẫn là `qc` nên Check Run `qc-agent / <project>` và branch protection không đổi. Repo cũ dùng `qc.yml` **vẫn chạy**: `validate` và `refine` nhận cả hai tên, `validate` chỉ ghi một NOTE. `init` thấy `qc.yml` thì **không** sinh `qc-gate.yml` (tránh hai job cùng project, hai Check Run) mà in hướng dẫn; việc đổi tên là của bạn: `git mv .github/workflows/qc.yml .github/workflows/qc-gate.yml`, rồi thêm khối `workflow_dispatch` ở trên nếu muốn chạy tay. Chạy `init --force` chỉ ghi thêm `qc-gate.yml`, không xoá `qc.yml`.
+
+Gate lưu cache kết quả Select ở `~/.cache/qc-agent/select` bằng `actions/cache` (ghim SHA). Hiện mới là chỗ đặt, nội dung và khoá cache thật do bước S4-02 quyết định.
 
 ### Web UI (tuỳ chọn, cho suite UI/Midscene)
 SUT có giao diện web dựng riêng khỏi API thì khai thêm; không khai thì workflow chạy như trước.
@@ -118,11 +131,11 @@ Lưu ý:
 - **Migration là việc của image SUT** (entrypoint tự chạy, hoặc SUT tạo bảng lúc khởi động). Workflow không chạy lệnh nào trong SUT ngoài `docker run`.
 - PR từ **fork** không nhận secret: `SUT_SECRET_ENV`/`SUT_DB_SECRET_ENV` rỗng, DB thường không khởi tạo được (Postgres đòi mật khẩu) và gate đỏ ở "Start SUT" thay vì xanh giả.
 - Container `db` nằm cùng mạng `qc-net` với gate nên mã của PR (vd. worker eval) với tới được DB: dùng DB dành riêng cho CI, không đặt dữ liệu thật.
-- `qc-agent init` / `qc-agent validate` **cảnh báo** (không lỗi) khi mã SUT tham chiếu `DATABASE_URL`, `SQLALCHEMY_DATABASE_URI`, `DB_URL`, `MONGODB_URI` hay `MONGO_URL` mà job không khai `sut_db_image` hay `sut_base_url`. Bỏ qua cảnh báo nếu SUT có chế độ không DB. `init` chỉ sinh comment mẫu trong `qc.yml`, không bật DB giúp bạn.
+- `qc-agent init` / `qc-agent validate` **cảnh báo** (không lỗi) khi mã SUT tham chiếu `DATABASE_URL`, `SQLALCHEMY_DATABASE_URI`, `DB_URL`, `MONGODB_URI` hay `MONGO_URL` mà job không khai `sut_db_image` hay `sut_base_url`. Bỏ qua cảnh báo nếu SUT có chế độ không DB. `init` chỉ sinh comment mẫu trong `qc-gate.yml`, không bật DB giúp bạn.
 
 ## 2b. Sinh sẵn cấu hình (khuyến nghị) và kiểm trước khi đẩy lên CI
 
-Thay vì viết tay suite/`qc.yml`/Dockerfile UI, chạy **một lệnh** ở gốc repo SUT (Pha 1 của onboarding, offline, không cần Python, không cần SUT đang chạy):
+Thay vì viết tay suite/`qc-gate.yml`/Dockerfile UI, chạy **một lệnh** ở gốc repo SUT (Pha 1 của onboarding, offline, không cần Python, không cần SUT đang chạy):
 
 ```
 docker run --rm -v "$PWD:/sut" ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> init
@@ -130,9 +143,9 @@ docker run --rm -v "$PWD:/sut" ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> ini
 
 Trên Linux, image chạy bằng user không phải root nên thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` để file mới thuộc về bạn (chạy bằng root thì `init` tự `chown` các file vừa tạo theo chủ của `/sut`). Trên Git Bash (Windows) đặt `MSYS_NO_PATHCONV=1`.
 
-`init` **chỉ đọc** cây thư mục (scanner tất định, không mạng, không chạy code SUT, không LLM) và **chỉ ghi trong repo SUT**: `.github/workflows/qc.yml`, `.qc-agent/suites/*.yaml`, `.qc-agent/perf/smoke.js`, `.qc-agent/midscene/{explore,canary}.yaml` và
+`init` **chỉ đọc** cây thư mục (scanner tất định, không mạng, không chạy code SUT, không LLM) và **chỉ ghi trong repo SUT**: `.github/workflows/qc-gate.yml`, `.qc-agent/suites/*.yaml`, `.qc-agent/perf/smoke.js`, `.qc-agent/midscene/{explore,canary}.yaml` và
 `.qc-agent/Dockerfile.ui` (chỉ cho **SPA tĩnh**: Vite → `dist/`, CRA → `build/`, Next.js `output: 'export'` → `out/`; build bằng đúng lockfile, phục vụ bằng nginx cổng 8080). Không sinh config bên qc-agent: repo chưa đăng ký dùng `_default` (xem 1b).
-Không ghi đè file đã có (trừ `--force`); `--dry-run` chỉ in kế hoạch. `--slug` mặc định lấy từ `origin` rồi tên thư mục. `qc.yml` được ghim sẵn `uses:` theo commit build của image; **digest** thì image không tự biết nên vẫn là TODO.
+Không ghi đè file đã có (trừ `--force`); `--dry-run` chỉ in kế hoạch. `--slug` mặc định lấy từ `origin` rồi tên thư mục. `qc-gate.yml` được ghim sẵn `uses:` theo commit build của image; **digest** thì image không tự biết nên vẫn là TODO.
 
 Scanner đọc: Dockerfile API và context (gợi ý: gốc > `*/Dockerfile` > `docker/*Dockerfile*` > `{apps,services,packages}/*/Dockerfile`, context theo nguồn `COPY`; chỗ không chắc có `VERIFY`), cổng (`EXPOSE`/`--port`), route health (`/api/health` > `/health` > `/healthz`), có FastAPI hay không, biến CORS (`*CORS*`), thư mục UI, package manager (theo lockfile), Node (`engines.node`/`.nvmrc`, mặc định 22), biến URL API của UI (`VITE_*`/`REACT_APP_*`/`NEXT_PUBLIC_*`). Bỏ qua `.git`, `node_modules`, `.venv`, `venv`, `dist`, `build`, `tests`... sâu tối đa 4.
 Không thấy Dockerfile API thì **lỗi** kèm hướng dẫn `--sut-dockerfile`. Next.js SSR, workspace monorepo (lockfile ở gốc) hoặc UI không có lockfile: không tự sinh `Dockerfile.ui`, dùng `--ui-dockerfile PATH` với Dockerfile của bạn.
@@ -160,12 +173,12 @@ qc-agent validate --sut-root <repo SUT> [--project myapp] [--projects-dir <thư 
 Dòng đầu luôn in nguồn policy đang dùng (xem 1b). `--project` mặc định suy từ `origin` của `--sut-root` (rồi tên thư mục). Project đã đăng ký mà `repo` khác `origin` chỉ bị cảnh báo (có thể là fork).
 `blocking_suites` rỗng là **lỗi**. Dấu chưa hoàn tất có 4 dạng, mỗi dạng kèm hướng dẫn: `qc-agent:todo` (hoàn tất), `todo VERIFY` (xác nhận lựa chọn của scanner), `todo REFINE` (đợi gợi ý có dữ liệu sống), `todo SUGGESTED` (duyệt bước do LLM gợi ý).
 Exit `0` = ổn, `3` = có lỗi. Nó bắt: schema suite/project, lane xung đột policy, task không có worker, file tham chiếu thiếu, biến `${env.X}` mà workflow không cấp
-(vd. `APP_UI_URL` khi chưa khai `sut_ui_dockerfile`), `qc.yml` chưa ghim SHA/digest hoặc sai tên input, và mọi dấu `qc-agent:todo` còn sót.
+(vd. `APP_UI_URL` khi chưa khai `sut_ui_dockerfile`), `qc-gate.yml` chưa ghim SHA/digest hoặc sai tên input, và mọi dấu `qc-agent:todo` còn sót.
 
 ## 2c. Refine trên CI (Pha 2)
 
 Bước `Refine (onboarding suggestions)` nằm **sau `Start SUT`, trước `Run qc-agent gate`** trong workflow tái sử dụng. Input `refine: auto|off` (mặc định `auto`); chạy khi event là `pull_request` **và** repo còn marker
-(`grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' .qc-agent .github/workflows/qc.yml`). Không còn marker thì bị bỏ qua ngay.
+(`grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' .qc-agent .github/workflows/qc-gate.yml`). Không còn marker thì bị bỏ qua ngay.
 
 - Chạy image qc-agent (đã ghim) với `-v "$PWD:/work:ro"`: repo SUT chỉ-đọc, kết quả ghi ra `$RUNNER_TEMP/refine` (`refine.patch`, `suggestions.json`). Chỉ viết lại vùng giữa `qc-agent:begin refine <tên>` và `qc-agent:end`; xoá marker = vùng thuộc về bạn.
 - OpenAPI lấy từ SUT đang chạy ở `${APP_BASE_URL}<schema_url của api-contract>` (mặc định `/openapi.json`). `--suggest-ui` chỉ khi có UI **và** secret `MIDSCENE_MODEL_*` (PR từ fork không có secret nên bỏ qua) và chỉ khi `explore.yaml` còn là khung TODO.
@@ -229,7 +242,7 @@ Khi gate Security (`sast`, `secrets`, `deps`) đỏ vì một finding mà bạn 
 - Rule id, mã CVE và `file:dòng` có trong review Security của PR. Fingerprint của gitleaks (ở chế độ quét working tree có dạng `file:rule-id:dòng`) nằm trong `gitleaks.json` của artifact `qc-runs-*` (cùng `semgrep.json`, `trivy.json`).
 - Nếu là **secret thật**: đừng bỏ qua. Thu hồi/xoay secret ngay rồi xoá khỏi mã (xoá khỏi commit cuối là chưa đủ, secret vẫn nằm trong lịch sử git).
 - Bỏ qua là quyết định của người review PR, không phải của tác giả một mình. Ghi lý do đủ để người đọc sau này hiểu tại sao lúc đó chấp nhận.
-- `trivy.db_age_days` đỏ (báo cáo nói DB CVE quá 14 ngày) **không phải finding của bạn** và không bỏ qua được bằng cách trên: image qc-agent đang dùng đã cũ, hãy cập nhật digest `image:` trong `qc.yml` lên bản mới hơn.
+- `trivy.db_age_days` đỏ (báo cáo nói DB CVE quá 14 ngày) **không phải finding của bạn** và không bỏ qua được bằng cách trên: image qc-agent đang dùng đã cũ, hãy cập nhật digest `image:` trong `qc-gate.yml` lên bản mới hơn.
 - Lỗi công cụ (`error`) hoặc công cụ thiếu (`skipped`) cũng làm gate đỏ nhưng là lỗi hạ tầng, không phải finding: báo cho phòng QC thay vì bỏ qua.
 
 ### 4c. Bề mặt chưa có test (`coverage-debt`)

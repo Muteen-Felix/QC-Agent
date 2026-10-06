@@ -307,7 +307,7 @@ def _default_only(tmp_path):
 def test_refine_after_phase1_posts_a_suggestion_review_reads_the_workspace_read_only_and_the_gate_still_runs(stack, tmp_path, ws_root):
     sut = _phase1_workspace(ws_root)
     before = _config_tree_hash(sut)
-    stack.gh.pr_files = [{"filename": name, "patch": WIDE_DIFF} for name in (".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".github/workflows/qc.yml")]
+    stack.gh.pr_files = [{"filename": name, "patch": WIDE_DIFF} for name in (".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".github/workflows/qc-gate.yml")]
     ok, log = run(stack, bugs="none", run_id="4001", project="brand-new-team", policy_dir=_default_only(tmp_path), workspace=sut)
     assert ok[REFINE]["returncode"] == 0 and ok[REFINE]["outputs"] == {"has_patch": "true"}, log
     assert ok["Post refine review"]["returncode"] == 0, log

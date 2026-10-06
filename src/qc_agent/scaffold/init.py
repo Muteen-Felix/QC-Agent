@@ -28,7 +28,7 @@ K6_SCRIPT = ".qc-agent/perf/smoke.js"
 EXPLORE_FLOW = ".qc-agent/midscene/explore.yaml"
 CANARY_FLOW = ".qc-agent/midscene/canary.yaml"
 UI_DOCKERFILE = ".qc-agent/Dockerfile.ui"
-WORKFLOW = ".github/workflows/qc.yml"
+WORKFLOW = t.GATE_WORKFLOW
 GT_WORKFLOW = ".github/workflows/qc-groundtruth.yml"
 CODEOWNERS_CANDIDATES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")   # thứ tự ưu tiên của GitHub
 DEFAULT_SUT_MOUNT = "/sut"   # `docker run -v "$PWD:/sut" <image> init` chạy nguyên văn
@@ -193,10 +193,16 @@ def build(opts: Options) -> Plan:
         plan.files.append(Planned(root / owners, owners, t.merge_codeowners(old_owners, opts.qa_team), managed=True))
         if not opts.qa_team:
             plan.warnings.append("thiếu --qa-team: CODEOWNERS dùng owner giữ chỗ kèm qc-agent:todo (`qc-agent validate` sẽ từ chối cho tới khi thay bằng team QA thật)")
-        add(WORKFLOW, t.qc_workflow(
+        gate_workflow = t.qc_workflow(
             project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image, sut_dockerfile=dockerfile, sut_context=context,
             sut_port=port, sut_health_path=health, sut_env=sut_env, ui_dockerfile=ui_dockerfile, ui_context=ui_context, ui_port=ui_port,
-            ui_health_path=opts.ui_health_path, ui_build_args=ui_build_args, marks=marks))
+            ui_health_path=opts.ui_health_path, ui_build_args=ui_build_args, marks=marks)
+        if (root / t.LEGACY_WORKFLOW).is_file() and not (root / WORKFLOW).exists() and not opts.force:
+            # Repo đang dùng tên cũ: sinh thêm qc-gate.yml sẽ tạo HAI job cùng project (hai Check Run). Việc đổi tên là của người dùng.
+            plan.warnings.append(f"{t.LEGACY_WORKFLOW} đã có nên KHÔNG sinh {WORKFLOW} (sẽ có hai job cùng project). Đổi tên để dùng bản mới "
+                                 f"(có input `workers` cho chạy tay): `git mv {t.LEGACY_WORKFLOW} {WORKFLOW}`; hoặc chạy lại init với --force để sinh {WORKFLOW} rồi tự xoá {t.LEGACY_WORKFLOW}")
+        else:
+            add(WORKFLOW, gate_workflow)
     except (t.TemplateError, openapi.OpenApiError) as error:
         raise InitError(str(error)) from None
     return plan

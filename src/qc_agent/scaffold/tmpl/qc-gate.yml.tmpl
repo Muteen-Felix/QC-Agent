@@ -1,10 +1,15 @@
 # qc-agent:generated — gate tự động của repo này. Ghim @<commit SHA> (không @main) và image theo digest.
 # Xem docs/usage-ci.md trong repo qc-agent. Bật chặn merge: branch protection yêu cầu job `qc-agent / {{project}}` xanh.
-name: qc
+name: qc-gate
 on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      workers:
+        description: "vd semgrep,schemathesis — để trống = toàn bộ theo policy"
+        type: string
+        default: ""
 
 jobs:
   qc:
@@ -17,6 +22,7 @@ jobs:
     with:
       project: {{project}}
       image: {{image}}
+      workers: ${{ inputs.workers }}   # chạy tay: danh sách worker (rỗng = theo policy); PR: luôn rỗng
 {{with_block}}
       # SUT cần database (tuỳ chọn, mặc định KHÔNG bật): bỏ comment và điền khi SUT không khởi động được chỉ bằng sut_env. Xem docs/usage-ci.md, mục "SUT cần database".
       # sut_db_image: <image DB>@sha256:<DIGEST>                   # ghim digest; loại DB do SUT chọn

@@ -360,7 +360,7 @@ jobs:
         run: |
           set -uo pipefail
           # Chỉ chạy khi repo còn marker của qc-agent (Pha 1 chưa được điền/duyệt xong). Workspace được mount CHỈ-ĐỌC; kết quả ghi vào $RUNNER_TEMP/refine.
-          if ! grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' .qc-agent .github/workflows/qc.yml >/dev/null 2>&1; then
+          if ! grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' .qc-agent .github/workflows/qc-gate.yml .github/workflows/qc.yml >/dev/null 2>&1; then
             echo "refine: không còn marker REFINE/SUGGESTED, bỏ qua"; exit 0
           fi
           out="$RUNNER_TEMP/refine"; rm -rf "$out"; mkdir -p "$out"; chmod 777 "$out"
@@ -395,6 +395,16 @@ jobs:
             ${{ runner.temp }}/refine/suggestions.json
           retention-days: 14
 
+      # Chỗ đặt cho cache kết quả Select (S4-02 quyết định nội dung và khoá thật). Khoá tạm theo project + SHA; restore-keys lấy bản mới nhất của project.
+      - name: Cache Select results
+        if: github.event_name == 'pull_request'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/qc-agent/select
+          key: qc-select-${{ inputs.project }}-${{ github.sha }}
+          restore-keys: |
+            qc-select-${{ inputs.project }}-
+
       - name: Select (PR)
         id: select
         if: github.event_name == 'pull_request'
@@ -407,9 +417,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set +e
-          mkdir -p runs
-          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e ANTHROPIC_API_KEY \
-            -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -w /work "$IMAGE" \
+          mkdir -p runs "$HOME/.cache/qc-agent/select"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e ANTHROPIC_API_KEY -e QC_SELECT_CACHE_DIR=/cache \
+            -v "$PWD:/work" -v "$RUNNER_TEMP/qc-policy:/policy:ro" -v "$HOME/.cache/qc-agent/select:/cache" -w /work "$IMAGE" \
             select --project "$PROJECT" --mode "$MODE" --sut-root /work --projects-dir /policy \
             --base "$BASE_SHA" --head "$HEAD_SHA" --out /work/runs/selection.json
           code=$?

@@ -369,7 +369,7 @@ def find_db_refs(root: Path, dockerfile: str | None, copy: dockerfile_copy.Conte
 def db_warning(refs: dict[str, list[str]]) -> str:
     shown = "; ".join(f"{var} ({', '.join(files[:2])}{f', +{len(files) - 2} file' if len(files) > 2 else ''})" for var, files in refs.items())
     return (f"mã SUT tham chiếu biến DB: {shown}. Workflow chỉ chạy MỘT container SUT với sut_env nên SUT cần database sẽ không qua health check. "
-            "Khai DB phụ trong qc.yml (sut_db_image ghim digest + sut_db_ready_cmd; secret SUT_SECRET_ENV, SUT_DB_SECRET_ENV) hoặc sut_base_url nếu đã có môi trường sẵn; "
+            "Khai DB phụ trong qc-gate.yml (sut_db_image ghim digest + sut_db_ready_cmd; secret SUT_SECRET_ENV, SUT_DB_SECRET_ENV) hoặc sut_base_url nếu đã có môi trường sẵn; "
             "bỏ qua nếu SUT có chế độ chạy không cần DB (docs/usage-ci.md, mục \"SUT cần database\")")
 
 

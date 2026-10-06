@@ -194,6 +194,7 @@ jobs:
           esac
           docker pull "$IMAGE"
 
+      # Chỗ đặt cho cache sinh Ground-Truth theo prd_sha256 (S4-02 chốt khoá, thư mục và logic). Chưa có actions/cache ở đây vì chưa có gì dùng nó.
       - name: Resolve PRD
         id: resolve
         env:

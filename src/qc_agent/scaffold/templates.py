@@ -1,4 +1,4 @@
-"""Mẫu cấu hình đóng gói kèm qc-agent (dùng cho `qc-agent init`, bước 26): suite, script k6, flow Midscene, qc.yml, config project.
+"""Mẫu cấu hình đóng gói kèm qc-agent (dùng cho `qc-agent init`, bước 26): suite, script k6, flow Midscene, qc-gate.yml, config project.
 
 Không dùng Jinja: mẫu là file văn bản (`tmpl/*.tmpl`) với chỗ trống `{{tên}}`, và mỗi hàm dựng ở đây kiểm tra + trích giá trị an toàn cho
 đúng ngữ cảnh (chuỗi YAML/JS được JSON-quote; đường dẫn/tên chỉ nhận ký tự cho phép) nên dữ liệu từ OpenAPI của SUT không thể chèn cấu trúc.
@@ -18,6 +18,9 @@ TODO_KINDS = ("VERIFY", "REFINE", "SUGGESTED")   # bốn dạng dấu: `todo` tr
 REFINE_BEGIN = "qc-agent:begin refine"           # vùng do `init --refine` (Pha 2) được viết lại; người xoá marker = vùng thuộc về người
 REFINE_END = "qc-agent:end"
 DEFAULT_QC_REPO = "Muteen-Felix/QC-Agent"
+GATE_WORKFLOW = ".github/workflows/qc-gate.yml"
+LEGACY_WORKFLOW = ".github/workflows/qc.yml"   # tên cũ: vẫn được validate/refine nhận, init không sinh nữa
+CALLERS = (GATE_WORKFLOW, LEGACY_WORKFLOW)   # thứ tự ưu tiên khi tìm caller của gate
 MIDSCENE_COMMANDS = ("aiAct", "aiTap", "aiAssert", "aiWaitFor")
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
@@ -309,7 +312,7 @@ def qc_workflow(*, project: str, qc_ref: str | None = None, image: str | None = 
                 sut_port: str | None = None, sut_health_path: str | None = None, sut_env: list[str] = (),
                 ui_dockerfile: str | None = None, ui_context: str | None = None, ui_port: str | None = None,
                 ui_health_path: str | None = None, ui_build_args: list[str] = (), marks: dict[str, str] | None = None) -> str:
-    """qc.yml của repo SUT. `qc_ref`/`image` thiếu => điền chỗ giữ + TODO (ghim SHA/digest là việc người làm). Không khai `suites:`.
+    """qc-gate.yml của repo SUT. `qc_ref`/`image` thiếu => điền chỗ giữ + TODO (ghim SHA/digest là việc người làm). Không khai `suites:`.
     `marks` = {tên input: nội dung dấu (dùng `todo_mark`)}: ghi thành comment cuối dòng của input đó (block `|` thì ở dòng khai báo)."""
     _need(_SLUG, project, "project")
     _need(_REPO, qc_repo, "qc_repo")
@@ -336,5 +339,5 @@ def qc_workflow(*, project: str, qc_ref: str | None = None, image: str | None = 
             with_lines.append(f"      {key}: |{tail(key)}")
             for item in items:
                 with_lines.append("        " + _need(pattern, item, key))
-    return render("qc.yml.tmpl", {"project": project, "qc_repo": qc_repo, "qc_ref": ref_text, "image": image_text,
+    return render("qc-gate.yml.tmpl", {"project": project, "qc_repo": qc_repo, "qc_ref": ref_text, "image": image_text,
                                   "with_block": "\n".join(with_lines)})

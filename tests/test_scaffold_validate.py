@@ -90,7 +90,7 @@ def test_fresh_init_output_is_rejected_with_every_todo_located(tmp_path):
     sut, projects = generate(tmp_path, pins=False, finish_flow=False)
     report = check(tmp_path, sut, projects)
     text = messages(report)
-    assert ".qc-agent/midscene/explore.yaml:2" in text and ".github/workflows/qc.yml:16" in text and ".github/workflows/qc.yml:19" in text
+    assert ".qc-agent/midscene/explore.yaml:2" in text and ".github/workflows/qc-gate.yml:21" in text and ".github/workflows/qc-gate.yml:24" in text
     assert "ghim commit SHA 40 ký tự" in text and "ghim theo digest" in text
 
 
@@ -187,7 +187,7 @@ def test_referenced_files_may_not_escape_the_sut_root(tmp_path, bad):
 # ---------- qc.yml ----------
 
 def edit_workflow(sut, fn):
-    path = sut / ".github" / "workflows" / "qc.yml"
+    path = sut / ".github" / "workflows" / "qc-gate.yml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     fn(data["jobs"]["qc"])
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
@@ -231,7 +231,7 @@ def test_ui_suite_without_ui_container_in_the_workflow_is_an_error(tmp_path):
 
 def test_missing_workflow_is_only_a_warning(tmp_path):
     sut, projects = generate(tmp_path)
-    (sut / ".github" / "workflows" / "qc.yml").unlink()
+    (sut / ".github" / "workflows" / "qc-gate.yml").unlink()
     report = check(tmp_path, sut, projects)
     assert not by_level(report, v.ERROR) and any("không thấy job nào" in f.message for f in by_level(report, v.WARN))
 
@@ -259,7 +259,7 @@ def test_cli_validate_exit_codes_and_strict(tmp_path, capsys):
     sut, projects = generate(tmp_path)
     argv = ["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--workers-dir", str(ROOT / "workers")]
     assert cli_main(argv) == 0 and "OK: 0 lỗi, 0 cảnh báo, 2 ghi chú" in capsys.readouterr().out
-    (sut / ".github" / "workflows" / "qc.yml").unlink()
+    (sut / ".github" / "workflows" / "qc-gate.yml").unlink()
     assert cli_main(argv) == 0 and "1 cảnh báo" in capsys.readouterr().out
     assert cli_main(argv + ["--strict"]) == 3 and "FAIL" in capsys.readouterr().out  # --strict: cảnh báo thành lỗi
     fresh = tmp_path / "f" / "sut"
@@ -322,7 +322,7 @@ def unregistered_sut(tmp_path, monkeypatch):
     sut, projects = generate(tmp_path, ui=False)
     (projects / "vahan-rpa.yaml").unlink()
     (projects / "_default.yaml").write_text(_MAIN_DEFAULT, encoding="utf-8")
-    workflow = sut / ".github" / "workflows" / "qc.yml"
+    workflow = sut / ".github" / "workflows" / "qc-gate.yml"
     workflow.write_text(workflow.read_text(encoding="utf-8").replace("project: vahan-rpa", "project: newrepo"), encoding="utf-8")
     monkeypatch.delenv("QC_READ_TOKEN", raising=False)
     return sut, projects
@@ -637,7 +637,7 @@ def test_unconfirmed_dockerfile_or_context_blocks_validate_until_the_mark_is_rem
     report = check(tmp_path, sut, projects)
     blocked = [f for f in by_level(report, v.ERROR) if "qc-agent:todo VERIFY" in f.message]
     assert any(expected in f.message for f in blocked), messages(report)
-    workflow = sut / ".github" / "workflows" / "qc.yml"
+    workflow = sut / ".github" / "workflows" / "qc-gate.yml"
     workflow.write_text(re.sub(r"  # qc-agent:todo VERIFY[^\n]*", "", workflow.read_text(encoding="utf-8")), encoding="utf-8")   # người đã xác nhận
     after = check(tmp_path, sut, projects)
     assert not [f for f in by_level(after, v.ERROR) if "qc-agent:todo VERIFY" in f.message], messages(after)
@@ -663,7 +663,7 @@ def build_errors(tmp_path, sut, projects):
 
 
 def replace_in_workflow(sut, old, new):
-    path = sut / ".github" / "workflows" / "qc.yml"
+    path = sut / ".github" / "workflows" / "qc-gate.yml"
     text = path.read_text(encoding="utf-8")
     assert old in text, text
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
@@ -805,7 +805,7 @@ def test_unconfirmed_health_path_blocks_validate_until_the_mark_is_removed(tmp_p
     report = check(tmp_path, sut, projects)
     blocked = [f for f in by_level(report, v.ERROR) if "qc-agent:todo VERIFY" in f.message and "sut_health_path" in f.message]
     assert blocked and "TẠM" in blocked[0].message, messages(report)
-    workflow = sut / ".github" / "workflows" / "qc.yml"
+    workflow = sut / ".github" / "workflows" / "qc-gate.yml"
     workflow.write_text(re.sub(r"  # qc-agent:todo VERIFY[^\n]*", "", workflow.read_text(encoding="utf-8")), encoding="utf-8")   # người đã đặt path thật
     after = check(tmp_path, sut, projects)
     assert not [f for f in by_level(after, v.ERROR) if "qc-agent:todo VERIFY" in f.message], messages(after)
@@ -853,3 +853,31 @@ def test_strict_turns_the_database_warning_into_a_failure_but_the_default_does_n
     assert cli_main(args) == 0
     assert cli_main([*args, "--strict"]) == 3
     assert "DATABASE_URL" in capsys.readouterr().out
+
+
+# ---------- S4-01: nhận cả qc-gate.yml lẫn tên cũ qc.yml ----------
+
+def edit_workflow_at(path, fn):
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    fn(data["jobs"]["qc"])
+    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+
+def test_both_caller_names_validate_and_only_the_old_one_gets_a_rename_note(tmp_path):
+    sut, projects = generate(tmp_path)
+    first = check(tmp_path, sut, projects)
+    assert not by_level(first, v.ERROR) and "tên cũ" not in messages(first, v.NOTE)
+    workflows = sut / ".github" / "workflows"
+    (workflows / "qc-gate.yml").rename(workflows / "qc.yml")
+    report = check(tmp_path, sut, projects)
+    assert not by_level(report, v.ERROR) and not by_level(report, v.WARN), messages(report) + messages(report, v.WARN)
+    assert "tên cũ .github/workflows/qc.yml" in messages(report, v.NOTE) and "git mv" in messages(report, v.NOTE)
+
+
+def test_the_old_name_is_still_checked_for_pins_and_inputs(tmp_path):
+    sut, projects = generate(tmp_path)
+    workflows = sut / ".github" / "workflows"
+    (workflows / "qc-gate.yml").rename(workflows / "qc.yml")
+    edit_workflow_at(workflows / "qc.yml", lambda job: job["with"].update(image="ghcr.io/muteen-felix/qc-agent:latest", typo_input="x"))
+    text = messages(check(tmp_path, sut, projects))
+    assert "ghim theo digest" in text and "typo_input" in text and "qc.yml" in text
