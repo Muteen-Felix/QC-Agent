@@ -360,8 +360,21 @@ jobs:
         run: |
           set -uo pipefail
           # Chỉ chạy khi repo còn marker của qc-agent (Pha 1 chưa được điền/duyệt xong). Workspace được mount CHỈ-ĐỌC; kết quả ghi vào $RUNNER_TEMP/refine.
-          if ! grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' .qc-agent .github/workflows/qc-gate.yml .github/workflows/qc.yml >/dev/null 2>&1; then
+          # Chỉ dò ở đường dẫn CÓ THẬT (repo chỉ có một trong hai tên caller): grep trả 2 khi một đường dẫn vắng, kể cả khi đã thấy marker ở file khác.
+          # Mã của grep: 0 = thấy marker, 1 = không thấy; mọi giá trị khác là LỖI và không được coi là "không có marker".
+          targets=()
+          for path in .qc-agent .github/workflows/qc-gate.yml .github/workflows/qc.yml; do
+            if [ -e "$path" ]; then targets+=("$path"); fi
+          done
+          found=1
+          if [ "${#targets[@]}" -gt 0 ]; then
+            found=0   # runner chạy bash -e: grep trả khác 0 phải đi qua `||`, nếu không step thoát ngay trước khi đọc được mã
+            grep -rlE 'qc-agent:todo (REFINE|SUGGESTED)|qc-agent:begin refine' "${targets[@]}" >/dev/null || found=$?
+          fi
+          if [ "$found" -eq 1 ]; then
             echo "refine: không còn marker REFINE/SUGGESTED, bỏ qua"; exit 0
+          elif [ "$found" -ne 0 ]; then
+            echo "::error::refine: grep lỗi (mã $found) khi dò marker, không coi là không có marker"; exit 1
           fi
           out="$RUNNER_TEMP/refine"; rm -rf "$out"; mkdir -p "$out"; chmod 777 "$out"
           schema_path=$(sed -n 's#^ *schema_url: [$]{env.APP_BASE_URL}\(/[^ ]*\).*#\1#p' .qc-agent/suites/api-contract.yaml 2>/dev/null | head -1)

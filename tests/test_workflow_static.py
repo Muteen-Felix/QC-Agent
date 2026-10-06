@@ -795,3 +795,86 @@ def test_manual_dispatch_with_workers_goes_the_manual_path_and_without_it_the_fu
 def test_the_groundtruth_workflow_keeps_a_marked_place_for_the_prd_cache_without_a_cache_action_yet():
     assert "S4-02" in GT_TEXT and "prd_sha256" in GT_TEXT
     assert not any(str(s.get("uses", "")).startswith("actions/cache@") for job in GT_JOBS.values() for s in job["steps"])
+
+
+# ---- step Refine: chạy THẬT lệnh dò marker (bash, docker giả) với repo chỉ có một trong hai tên caller ----
+
+REFINE_STEP = "Refine (onboarding suggestions)"
+MARKER_LINE = "# qc-agent:todo REFINE exclude_path\n"
+
+
+@pytest.fixture
+def refine_run(tmp_path):
+    """Chạy `run:` của step Refine trong một workspace tự dựng. `docker` giả ghi lệnh ra file (không có patch nên step kết thúc bằng 'không có gì để đề xuất').
+    `grep_rc` != None thay grep bằng bản giả trả đúng mã đó (mô phỏng lỗi thật của grep)."""
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir()
+    (bindir / "docker").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$DOCKER_LOG"\nexit 0\n', encoding="utf-8", newline="\n")
+    (bindir / "docker").chmod(0o755)
+    script = tmp_path / "refine.sh"
+    script.write_text(step(REFINE_STEP)["run"], encoding="utf-8", newline="\n")
+
+    def run(files, *, grep_rc=None):
+        workspace = tmp_path / "ws"
+        shutil.rmtree(workspace, ignore_errors=True)
+        for rel, text in files.items():
+            (workspace / rel).parent.mkdir(parents=True, exist_ok=True)
+            (workspace / rel).write_text(text, encoding="utf-8", newline="\n")
+        workspace.mkdir(exist_ok=True)
+        log, output, runner_temp = tmp_path / "docker.log", tmp_path / "output.txt", tmp_path / "rt"
+        log.write_text("", encoding="utf-8")
+        output.write_text("", encoding="utf-8")
+        runner_temp.mkdir(exist_ok=True)
+        if grep_rc is not None:
+            (bindir / "grep").write_text(f"#!/usr/bin/env bash\nexit {grep_rc}\n", encoding="utf-8", newline="\n")
+            (bindir / "grep").chmod(0o755)
+        else:
+            (bindir / "grep").unlink(missing_ok=True)
+        env = {**os.environ, **{key: "" for key in step(REFINE_STEP)["env"]}, "IMAGE": "qc-agent:dev", "BASE_URL": "http://sut:8000", "GITHUB_OUTPUT": output.as_posix(),
+               "RUNNER_TEMP": runner_temp.as_posix(), "DOCKER_LOG": log.as_posix(), "PATH": str(bindir) + os.pathsep + os.environ["PATH"]}
+        # đúng cách runner của Actions chạy `run:` (shell: bash): có -e, nên một lệnh trả mã khác 0 mà không được xử lý sẽ làm step thoát ngay
+        done = subprocess.run([BASH, "--noprofile", "--norc", "-eo", "pipefail", script.as_posix()], cwd=workspace, env=env, capture_output=True, text=True, encoding="utf-8", timeout=120)
+        return done, [line for line in log.read_text(encoding="utf-8").splitlines() if line]
+    return run
+
+
+def refine_started(calls):
+    return any(call.startswith("run --rm --network qc-net") and " init --refine " in call for call in calls)
+
+
+@needs_bash
+@pytest.mark.parametrize("caller", [".github/workflows/qc-gate.yml", ".github/workflows/qc.yml"])
+def test_refine_keeps_running_when_the_marker_is_in_the_only_caller_file_of_the_repo(refine_run, caller):
+    done, calls = refine_run({caller: MARKER_LINE + "name: x\n", ".qc-agent/suites/api-contract.yaml": "tasks: []\n"})     # chỉ MỘT trong hai tên có mặt
+    assert done.returncode == 0 and "không còn marker" not in done.stdout and refine_started(calls), done.stdout + done.stderr
+
+
+@needs_bash
+def test_refine_keeps_running_when_the_marker_is_only_under_dot_qc_agent_and_no_caller_file_exists(refine_run):
+    done, calls = refine_run({".qc-agent/suites/api-contract.yaml": MARKER_LINE})
+    assert done.returncode == 0 and refine_started(calls), done.stdout + done.stderr
+
+
+@needs_bash
+@pytest.mark.parametrize("files", [
+    {".github/workflows/qc-gate.yml": "name: x\n", ".qc-agent/suites/api-contract.yaml": "tasks: []\n"},
+    {".github/workflows/qc.yml": "name: x\n", ".qc-agent/suites/api-contract.yaml": "tasks: []\n"},
+    {"README.md": "x\n"},                                                                                                 # không có .qc-agent lẫn caller
+])
+def test_refine_is_skipped_only_when_no_marker_exists_in_the_paths_that_exist(refine_run, files):
+    done, calls = refine_run(files)
+    assert done.returncode == 0 and "refine: không còn marker REFINE/SUGGESTED, bỏ qua" in done.stdout and not calls
+
+
+@needs_bash
+@pytest.mark.parametrize("rc", [2, 127])
+def test_a_real_grep_error_fails_the_step_instead_of_pretending_there_is_no_marker(refine_run, rc):
+    done, calls = refine_run({".github/workflows/qc-gate.yml": MARKER_LINE, ".qc-agent/suites/api-contract.yaml": MARKER_LINE}, grep_rc=rc)
+    assert done.returncode == 1 and f"::error::refine: grep lỗi (mã {rc})" in done.stdout
+    assert "không còn marker" not in done.stdout and not calls                                                          # không chạy docker, không báo "bỏ qua"
+
+
+def test_the_refine_marker_search_never_passes_a_path_that_may_be_missing_straight_to_grep():
+    run = step(REFINE_STEP)["run"]
+    assert 'if [ -e "$path" ]; then targets+=("$path"); fi' in run and '"${targets[@]}"' in run
+    assert "grep -rlE" in run and ".qc-agent .github/workflows/qc-gate.yml .github/workflows/qc.yml >" not in run     # không còn dạng liệt kê cứng
