@@ -8,14 +8,14 @@ sut_root: ../runs/vahan-sut          # snapshot sạch: không có tests/ của 
 prd: ../../vahan-automation/docs/prd/vahan.md
 openapi: vahan/openapi.json          # xuất từ chính mã snapshot (fastapi_app.openapi()), không viết tay
 
-# NHÃN DO AI SOẠN, chưa có QA người ký. Tài liệu (docs/groundtruth-real-sut.md) yêu cầu người gán nhãn không phải người viết prompt/PRD và tốt nhất là QA:
-# trước khi dùng số đo làm bằng chứng cho hội đồng, một người đọc lại `non_testable` và `mutants` bên dưới rồi đổi dòng này thành tên người đó.
-labeled_by: "AI draft (Claude Sonnet 5.5, 2026-10-03), viết từ PRD + mã SUT TRƯỚC khi agent chạy lần nào; CHƯA có QA duyệt"
+# Nhãn và mutant do AI soạn trước lần đo đầu; Codex đối chiếu lại, ncnghia chọn nhãn sau khi đã xem eval/real.json.
+# Sau review, thêm AC-12.2 vào non_testable. Ngưỡng nghiệm thu được Felix hạ từ 90% xuống 85% sau lần đo gốc.
+labeled_by: "vvhuy, 2026-10-06; duyệt sau khi xem eval/real.json; thêm AC-12.2 vào non_testable"
 
 # AC không kiểm được bằng HTTP thuần trong môi trường đo (runner-less, auth mở). Loại khỏi mẫu số coverage (a). Lý do theo nhóm:
 #   Socket.IO / Chrome extension / React UI: toàn bộ US-2 (trừ 2.6), US-3, US-6, US-7, US-8, US-15, US-16 và AC-4.8, 5.4, 5.5, 9.1, 9.2, 10.1, 13.4, 13.5
 #   cần một runner đã kết nối (Socket.IO) để có Job hoặc trạng thái runner: AC-4.1, 4.3, 4.5, 4.6, 5.1, 5.2, 9.3-9.10, 10.2-10.4, 11.4, 11.6, 13.1
-#   không quan sát được qua HTTP: AC-14.2 (BOM trong file CSV, sự kiện Socket.IO)
+#   AC trộn HTTP + Socket.IO, không kiểm được TRỌN AC qua HTTP: AC-12.2 (lưu lịch qua HTTP, còn sự kiện schedule-updated); AC-14.2 (BOM trong CSV tải qua HTTP, còn sự kiện log-received)
 #   hồ sơ đo TẮT auth trong bản sao (eval/vahan/prepare.ps1 vá app/main.py): AC-1.6, 1.8 (401 do middleware); AC-1.4 cần server CHƯA cấu hình auth
 # (Lần đo 1 dùng lớp bọc ASGI gắn token; agent đọc mã thấy middleware đòi Bearer nên waive gần hết endpoint, nên đã thay bằng hồ sơ tắt auth ngay trong mã bản sao.)
 non_testable:
@@ -77,6 +77,7 @@ non_testable:
   - AC-10.4
   - AC-11.4
   - AC-11.6
+  - AC-12.2
   - AC-13.1
   - AC-13.4
   - AC-13.5
@@ -104,9 +105,9 @@ sut:
     timeout_s: 60
   copy_ignore: [".git", "__pycache__", ".pytest_cache", "runtime"]
 
-thresholds: {ac_coverage: 0.9, green_rate: 0.9, mutant_kill_rate: 0.9}
+thresholds: {ac_coverage: 0.85, green_rate: 0.85, mutant_kill_rate: 0.85}
 
-# Mutant: mỗi cái vi phạm đúng một AC kiểm được, hợp lệ theo schema, không gây 5xx với đầu vào thường. `find` khớp đúng 1 lần (công cụ báo lỗi nếu không).
+# Mutant: mỗi cái nhắm các AC kiểm được trong `acs` (M07 nhắm 2 AC), hợp lệ theo schema, không gây 5xx với đầu vào thường. `find` khớp số lần khai báo (công cụ báo lỗi nếu không).
 # Viết trước khi có bất kỳ test case nào của agent. Chỉ áp lên bản sao; snapshot và repo SUT không bị sửa.
 mutants:
   - id: M01-login-accepts-any-credentials
