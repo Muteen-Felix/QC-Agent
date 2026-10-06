@@ -3,6 +3,7 @@
 - Branch: `feat/s4-06-e2e-sandbox` (trong repo qc-agent: script và runbook)
 - Tiền điều kiện: S4-05 xanh trên máy local.
 - **Bên ngoài** (plan §3): repo sandbox GitHub, Jira sandbox kèm `user_map`, `ANTHROPIC_API_KEY` có trần ngân sách, image qc-agent đã publish và ghim digest.
+- **Pháp lý** (plan §3, câu hỏi #3): đã có xác nhận bằng văn bản được gửi PRD, diff (và mã nguồn nếu bật GT agent) qua LLM bên ngoài. Chưa có thì mọi lượt LLM thật ở bước này là **PENDING**; vẫn chạy được các kịch bản không gọi LLM (B, E) và đường FULL SET.
 
 ## Đọc trước
 
@@ -13,11 +14,14 @@
 ## HỎI TRƯỚC
 
 Liệt kê cho tôi các thông tin cần có, rồi **dừng lại chờ tôi điền**:
-- tên repo sandbox;
+- tên repo sandbox, và **gói GitHub của repo đó**: GitHub Free + repo private **không có** branch protection, nên kịch bản (B) không chạy được. Sandbox phải là repo public, hoặc private thuộc gói trả phí. Xác nhận điều này **trước khi** dựng gì;
+- SUT dùng cho E2E: `noteboard` (không cần DB, đề xuất mặc định) hay một SUT thật. SUT cần DB (vd VAHAN) chỉ chạy được sau khi S4-09 đã merge và đã có cấu hình dịch vụ DB + secret tương ứng; vahan-rpa hiện chưa có quyền push (plan §3.1);
 - team QA dùng trong CODEOWNERS;
 - một tài khoản không phải QA để thử push;
 - project key của Jira và `user_map`;
-- digest của image.
+- digest của image;
+- xác nhận câu hỏi #3 (xem Tiền điều kiện);
+- trần ngân sách API cho cả bước. Trước khi chạy 10 lần C+D, báo ước tính chi phí (số lời gọi Haiku cho Select, có hoặc không có cache) và chờ tôi đồng ý.
 
 Mọi hành động có tác động ra ngoài đều phải được tôi xác nhận **từng hành động một**: push, mở hay merge PR, bật branch protection, tạo secret, tạo ticket thật. Cách làm mặc định: viết script và lệnh để **tôi** tự chạy, còn bạn đọc kết quả qua `gh`/API ở chế độ chỉ-đọc.
 
@@ -34,6 +38,7 @@ Mọi hành động có tác động ra ngoài đều phải được tôi xác 
 2. **Năm kịch bản** (plan S4.6; bảng kỳ vọng giống S4-05)
    - **(A)** BA commit PRD → PR sinh GT được mở.
    - **(B)** QA duyệt rồi merge. Tài khoản không phải QA thử đổi `.qc-agent/` → **bị chặn**: không merge được khi thiếu QA approve, và không push thẳng vào main được.
+     - (B) **đồng thời đóng phần kiểm tay của DoD Sprint 1** (S1.9; chủ dự án chuyển sang S4.6 ngày 2026-10-06). Lưu bằng chứng (ảnh chụp hoặc output `gh api` của lần push/merge bị từ chối, kèm thời điểm) để ghi ngược vào dòng DoD S1 tương ứng ở phiên `dod-verify`.
    - **(C)** Dev mở PR có lỗi Critical → PR đỏ.
    - **(D)** Dev mở PR chỉ có lỗi Low → PR xanh, có inline comment, có ticket Jira gán cho tác giả.
    - **(E)** `workflow_dispatch` với danh sách worker → chạy đúng những worker đó.
@@ -41,6 +46,7 @@ Mọi hành động có tác động ra ngoài đều phải được tôi xác 
    - Script chạy lại chuỗi C+D **10 lần liên tiếp** và ghi lại kết quả từng lần.
    - Lần fail → phân loại: flaky hạ tầng, lỗi thật, hay LLM.
    - Tính tỉ lệ xanh; DoD cần ≥ 9/10.
+   - Chỉ chạy sau khi tôi đồng ý ước tính chi phí ở mục HỎI TRƯỚC.
 4. **Hiệu năng và chi phí**
    - So thời gian job gate với baseline, tức cùng SUT nhưng dùng workflow trước v2 hoặc chạy FULL SET không có Select. DoD: chậm thêm ≤ 1 phút.
    - Tổng hợp dòng chi phí mỗi PR từ `llm_usage.json`.
@@ -49,7 +55,7 @@ Mọi hành động có tác động ra ngoài đều phải được tôi xác 
 
 ## Nghiệm thu
 
-Điền bảng bằng chứng cho từng dòng DoD Sprint 4. Dòng nào chưa làm được vì thiếu tài nguyên bên ngoài thì ghi **PENDING** kèm lý do, không đánh dấu đạt.
+Điền bảng bằng chứng cho từng dòng DoD Sprint 4, cộng một dòng cho phần kiểm tay mang từ DoD Sprint 1 (kịch bản B). Dòng nào chưa làm được vì thiếu tài nguyên bên ngoài hoặc thiếu xác nhận câu hỏi #3 thì ghi **PENDING** kèm lý do, không đánh dấu đạt.
 
 ## Ngoài phạm vi
 

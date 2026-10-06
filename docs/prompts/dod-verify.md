@@ -69,4 +69,5 @@ Mỗi dòng trong **"DoD Sprint N"** và **"Điều kiện chung"** của plan c
 | Token giảm ≥ 40% (median), recall S2 vẫn ≥ 90% | `python tools/eval_cost.py --llm-tokens count` + `eval_selector --llm real` (**hỏi**) |
 | Chạy lại → cache hit, 0 LLM · `cache_read_input_tokens > 0` từ lần 2 | `tests/test_selector_cache.py`, `tests/test_gt_cache.py`; dòng cache theo quyết định ở S4-03 (Haiku 4.5 cần prefix ≥ 4096 token) |
 | Vượt trần → FULL SET, gate không đỏ · Check Run có dòng chi phí · gate chậm thêm ≤ 1 phút | test S4-03 + số đo ở S4-06 |
-| Mọi action và image ghim SHA/digest | `tests/test_workflow_static.py`, `tests/test_dockerfile_static.py` |
+| Mọi action và image ghim SHA/digest (kể cả image DB phụ của S4-09) | `tests/test_workflow_static.py`, `tests/test_dockerfile_static.py` |
+| *(Mang từ DoD S1)* Kiểm tay trên repo thật: tài khoản không phải QA push vào `.qc-agent/` thì bị từ chối | bằng chứng kịch bản (B) của S4-06; đạt thì ghi thêm link bằng chứng vào dòng DoD S1 tương ứng trong plan (**hỏi**; cần sandbox public/gói trả phí) |

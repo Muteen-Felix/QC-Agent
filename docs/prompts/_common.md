@@ -48,6 +48,8 @@ Các phiên làm việc không nhìn thấy nhau, nên mọi bước phải dùn
 |---|---|---|---|
 | LLM client | `qc_agent.llm.client.call_tool(...) -> ToolCall` (`.data`, `.usage`, `.model`, `.stop_reason`, `.duration_s`) · `LLMError.kind ∈ {missing_key, egress_denied, timeout, unavailable, bad_request, bad_output, refused}` | S1-01 | S1-04, S2-04, S4-03 |
 | Env LLM | `ANTHROPIC_API_KEY` · `ANTHROPIC_BASE_URL` (tuỳ chọn, trỏ vào fake server khi test) · `QC_GT_MODEL=claude-sonnet-5` · `QC_SELECTOR_MODEL=claude-haiku-4-5-20251001` · `QC_LLM_TIMEOUT_S` | S1-01 | mọi bước có LLM |
+| Env Gemini | provider chọn theo tiền tố `gemini-*` · `GEMINI_API_KEY` · `GEMINI_BASE_URL` · `QC_LLM_MAX_RETRIES` · `QC_LLM_MIN_INTERVAL_S` · `QC_LLM_FALLBACK_MODELS` · `QC_GEMINI_THINKING_LEVEL` (chỉ Gemini) | sau S1 | S4-03, S4-07 |
+| GT agent | `qc_agent.llm.agent_loop.run_agent(...) -> AgentRun` · `groundtruth/agent.py` · `gt generate/regen --agent` hoặc `QC_GT_GENERATOR=agent` · `QC_GT_AGENT_MODEL` · `QC_GT_AGENT_MAX_COST_USD` / `_MAX_TURNS` / `_MAX_WALL_S` · egress `source_code` | sau S1 | S4-02, S4-03, S4-07 |
 | Fake Anthropic | `tests/fakes.py: FakeAnthropic` (HTTP server, phát response từ fixture, đếm số lời gọi) | S1-06 | S1-08, S2-04/05/07, S4-02/05 |
 | GT catalog | `<sut>/.qc-agent/ground-truth/test-cases.yaml`, theo schema `schemas/ground_truth.json` (gốc = catalog QA đọc/sửa; `$defs/emit_test_cases` = dạng LLM phát ra) | S1-02 / S1-05 | S1-06, S1-08 |
 | GT schema API | `qc_agent.groundtruth.schema`: `catalog_schema()`, `emit_schema()` (đã inline `$ref`), `validate_catalog(data) -> list[str]`, `validate_module_map(data)`. Lỗi chỉ có "đường/dẫn (từ-khoá)", không kèm giá trị | S1-02 | S1-04, S1-05, S1-06 |
@@ -63,6 +65,10 @@ Các phiên làm việc không nhìn thấy nhau, nên mọi bước phải dùn
 | Verdict (từ S3) | `BLOCKED` (exit 1) · `PASSED_WITH_WARNINGS` (exit = `--warn-exit`, mặc định 0) · `PASSED` (0) · lỗi hệ thống/plan: 3 | S3-03 | S3-05…S4 |
 | Finding chuẩn hoá (từ S3) | `report.json.findings[]` = `{fingerprint, severity, task_id, suite, worker, rule_id, title, path, line, end_line, lane, verdict_source}` | S3-02 / S3-03 | S3-05, S3-06 |
 | Log event | `llm.*`, `gt.*`, `selector.*`, `review.*`, `jira.*`, ghi qua `logging_setup.event` | — | — |
+| Cache (S4) | `selector/cache.py` · `QC_SELECT_CACHE_DIR` (mặc định `~/.cache/qc-agent/select`) · `QC_GT_CACHE_DIR` · `selection.json.llm.cache_hit` · event `selector.cache`, `gt.cache` | S4-02 | S4-05, S4-06, S4-07 |
+| Chi phí LLM (S4) | `src/qc_agent/llm/prices.py` (bảng giá DUY NHẤT, chuyển từ `agent_loop.PRICES`) · `QC_LLM_MAX_INPUT_TOKENS` · `fallback_reason: token_cap` · `runs/<run_id>/llm_usage.json` · `client.count_tokens(...)` (chỉ Claude) | S4-03 | S4-04, S4-06, S4-07 |
+| SUT có DB (S4) | input DB của `qc-gate.reusable.yml` + một secret gom `KEY=VALUE` cho SUT/DB (tên chốt ở S4-09); container `db` trong mạng `qc-net` | S4-09 | S4-01, S4-06, S4-07 |
+| Harness (S4) | `tools/run_reusable_locally.py --base-sha` (SHA thật) · `--anthropic-api` · `--jira-api` · `--scenario full-chain` | S4-05b, S4-05 | S4-06 |
 
 ## 4. Quy trình mỗi bước
 
