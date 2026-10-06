@@ -183,9 +183,7 @@ def build(opts: Options) -> Plan:
         port = found.port.value if not opts.no_api and (found.port.value != scan.DEFAULT_PORT or found.port.verify) else None
         if port and _verify(found.port):
             marks["sut_port"] = _verify(found.port)
-        health = found.health_path.value if not opts.no_api and found.health_path.value != scan.DEFAULT_HEALTH else None
-        if health and _verify(found.health_path):
-            marks["sut_health_path"] = _verify(found.health_path)
+        health = None if opts.no_api else _declare(marks, "sut_health_path", found.health_path.value, scan.DEFAULT_HEALTH, found.health_path)
         add(GT_WORKFLOW, t.groundtruth_workflow(project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image,
                                                 prd_glob=opts.prd_glob, openapi=_repo_file(root, opts.openapi_source)))
         owners = next((rel for rel in CODEOWNERS_CANDIDATES if (root / rel).is_file()), CODEOWNERS_CANDIDATES[0])

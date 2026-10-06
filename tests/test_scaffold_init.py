@@ -753,3 +753,41 @@ def test_root_dockerfile_with_a_missing_copy_source_marks_the_default_context(tm
     lines = caller_lines(tmp_path, files={"Dockerfile": "FROM x\nCOPY absent.txt /app/\nEXPOSE 8000\n"})
     assert 'sut_context: "."' in lines["sut_context"] and "qc-agent:todo VERIFY: không context nào" in lines["sut_context"]
     assert "sut_dockerfile" not in lines
+
+
+# ---------- S4-11: sut_health_path có VERIFY thì luôn tới caller, kể cả khi là `/` ----------
+
+def _svc(route=None):
+    body = f'@app.get("{route}")\ndef health():\n    return {{}}\n' if route else ""
+    return f"from fastapi import FastAPI\napp = FastAPI()\n{body}"
+
+
+def health_line(tmp_path, **over):
+    run_init(tmp_path, **over)
+    return next((line for line in read(tmp_path, ".github/workflows/qc.yml").splitlines() if line.strip().startswith("sut_health_path:")), None)
+
+
+TWO_SERVICES = {"Dockerfile": "FROM x\nCOPY . .\nEXPOSE 8000\n", "apps/a/main.py": _svc("/health"), "apps/b/main.py": _svc("/api/health")}
+
+
+def test_unproven_health_scope_declares_a_temporary_slash_with_a_verify_mark(tmp_path):
+    line = health_line(tmp_path, files=TWO_SERVICES)
+    assert line.strip().startswith('sut_health_path: "/"') and "qc-agent:todo VERIFY" in line
+    for needle in ("TẠM", "--health-path", "2xx", "/health (apps/a/main.py)", "/api/health (apps/b/main.py)"):
+        assert needle in line, needle
+    for banned in ("đã xác định", "chắc chắn", "an toàn"):
+        assert banned not in line
+
+
+def test_proven_scope_declares_the_health_path_of_the_api_without_a_mark(tmp_path):
+    files = {"Dockerfile": "FROM x\nCOPY apps/a/ ./a\nEXPOSE 8000\n", "apps/a/main.py": _svc("/health"), "apps/b/main.py": _svc("/api/health")}
+    assert health_line(tmp_path, files=files).strip() == 'sut_health_path: "/health"'
+
+
+def test_health_flag_is_declared_without_scanning_or_a_mark(tmp_path):
+    line = health_line(tmp_path, files=TWO_SERVICES, sut_health_path="/x")
+    assert line.strip() == 'sut_health_path: "/x"'
+
+
+def test_no_health_route_anywhere_keeps_the_workflow_default_and_declares_nothing(tmp_path):
+    assert health_line(tmp_path, files={"Dockerfile": "FROM x\nCOPY . .\nEXPOSE 8000\n", "main.py": _svc()}) is None

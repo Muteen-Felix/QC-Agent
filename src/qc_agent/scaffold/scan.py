@@ -7,6 +7,10 @@ thuộc một trong ba loại: có flag (không VERIFY); có bằng chứng lo�
 Dockerfile: >= 2 ứng viên thì VERIFY; MỘT ứng viên mà có dấu hiệu web (thư mục tên web|ui|frontend|client|admin|www, FROM nginx|httpd|caddy,
 `http.server`/`serve -s`/`npm run serve|preview`/`vite preview`) thì cũng VERIFY "chưa chắc là API". Dấu hiệu web làm ứng viên xếp SAU, không loại nó.
 Context: xem dockerfile_copy.py (nguồn COPY/ADD tồn tại ở đúng một context thì chọn, còn lại VERIFY).
+Health path (S4-11): chỉ đọc `.py` trong phạm vi mã API ĐÃ CHỨNG MINH; vị trí Dockerfile không bao giờ đủ một mình. Thang bằng chứng:
+E1 = Dockerfile ở thư mục con D có nguồn COPY/ADD là thư mục nằm trong D, hoặc `COPY .` với context đúng bằng D; E2 = các nguồn COPY/ADD là thư mục cụ thể
+(kể cả nằm ngoài thư mục chứa Dockerfile); E1/E2 chỉ dùng khi context không VERIFY; E3 = repo chỉ có một Dockerfile, một gốc dự án Python, một file khởi tạo
+web app. Chưa đạt thì `/` chỉ là giá trị TẠM kèm VERIFY liệt kê route health toàn repo (để tham khảo). Route tĩnh không biết prefix `include_router`.
 """
 from __future__ import annotations
 
@@ -33,6 +37,7 @@ UI_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".vue", ".svelte")
 UI_OUTPUT = {"vite": "dist", "cra": "build", "next-export": "out"}
 UI_ENV_PREFIX = {"vite": "VITE_", "cra": "REACT_APP_", "next-export": "NEXT_PUBLIC_"}
 
+_APP_CTOR = re.compile(r"\b(?:FastAPI|Flask|Starlette|Sanic|Quart)\s*\(")
 _HEALTH_ROUTE = re.compile(r"""@\w+(?:\.\w+)*\.(?:get|head|api_route)\(\s*['"](/[^'"{}]*)['"]""")
 _CORS_ENV_PY = re.compile(r"""(?:getenv|environ(?:\.get)?)\s*[(\[]\s*['"]([A-Z0-9_]*CORS[A-Z0-9_]*)['"]""")
 _CORS_ENV_FILE = re.compile(r"^\s*(?:export\s+)?([A-Z0-9_]*CORS[A-Z0-9_]*)\s*=", re.M)
@@ -253,19 +258,89 @@ def _rank_health(paths: set[str]) -> list[str]:
     return known + sorted(paths - set(known))
 
 
-def _scan_health(root: Path, flag: str | None) -> Finding:
-    if flag:
-        return _flag(flag)
-    paths: set[str] = set()
+def _health_routes(root: Path, scope: list[str] | None) -> dict[str, list[str]]:
+    """{route health/ready: [file .py chứa nó]}. `scope` = các thư mục tương đối gốc repo; None = cả repo."""
+    routes: dict[str, set[str]] = {}
     for rel in _python_files(root):
+        posix = rel.as_posix()
+        if scope is not None and not any(posix.startswith(directory + "/") for directory in scope):
+            continue
         for route in _HEALTH_ROUTE.findall(_read(root / rel)):
             if re.search(r"health|ready", route, re.I):
-                paths.add(route)
-    ranked = _rank_health(paths)
-    if not ranked:
-        return Finding(DEFAULT_HEALTH, "default", (), "không thấy route health/ready: readiness của workflow nhận mọi mã HTTP")
+                routes.setdefault(route, set()).add(posix)
+    return {route: sorted(files) for route, files in routes.items()}
+
+
+def _describe_route(route: str, files: list[str]) -> str:
+    shown = ", ".join(files[:2]) + (f", +{len(files) - 2} file" if len(files) > 2 else "")
+    return f"{route} ({shown})"
+
+
+def _single_service(root: Path) -> bool:
+    """E3 (hẹp): repo trông như MỘT service. Cần cả ba, thiếu một là không đủ bằng chứng: chỉ một file Dockerfile* trong repo; chỉ một thư mục gốc dự án Python
+    (pyproject.toml | setup.py | requirements*.txt); chỉ một file khởi tạo web app (FastAPI|Flask|Starlette|Sanic|Quart)."""
+    dockerfiles, project_dirs, app_files = 0, set(), 0
+    for rel, files in walk(root):
+        for name in files:
+            lower = name.lower()
+            if lower == "dockerfile" or lower.startswith("dockerfile.") or lower.endswith(".dockerfile"):
+                dockerfiles += 1
+            if name in ("pyproject.toml", "setup.py") or re.fullmatch(r"requirements[\w.-]*\.txt", name):
+                project_dirs.add(rel.as_posix())
+            if name.endswith(".py") and _APP_CTOR.search(_read(root / rel / name)):
+                app_files += 1
+    return dockerfiles == 1 and len(project_dirs) <= 1 and app_files <= 1
+
+
+def _health_scope(root: Path, dockerfile: str, copy: dockerfile_copy.ContextAnalysis | None, context: Finding | None) -> tuple[str, list[str], str]:
+    """(loại, thư mục phạm vi, mô tả bằng chứng). Loại: `scope` (E1/E2: các thư mục mà COPY/ADD đưa vào image), `repo` (E3: cả repo), `unproven`.
+    Vị trí Dockerfile KHÔNG BAO GIỜ đủ một mình. E1/E2 chỉ dùng khi context đã chốt không VERIFY: context chỉ để phân giải đường dẫn nguồn."""
+    if copy is not None and context is not None and context.verify is None:
+        check = copy.chosen_check
+        dirs = {item.repo_path: item for item in check.resolved
+                if item.kind == "dir" and item.source.kind == "path" and item.repo_path not in (None, ".")}   # thư mục cụ thể, không phải tệp/`.`/glob
+        evidence = [f"E2 {item.source.instruction} {item.source.raw} -> {path}" for path, item in sorted(dirs.items())]
+        parts = dockerfile.split("/")
+        if len(parts) >= 2 and parts[0] != "docker":   # E1: thư mục chứa Dockerfile, có đối chiếu
+            folder = "/".join(parts[:-1])
+            inside = [path for path in dirs if path == folder or path.startswith(folder + "/")]
+            copies_dot = check.context == folder and any(item.kind == "context" for item in check.resolved)
+            if inside or copies_dot:
+                dirs.setdefault(folder, None)
+                evidence.insert(0, f"E1 {folder} ({'COPY . . với context đúng bằng thư mục này' if copies_dot and not inside else 'có nguồn COPY/ADD là thư mục trong đó'})")
+        if dirs:
+            return "scope", sorted(dirs), "; ".join(evidence)
+    if _single_service(root):
+        return "repo", [], "E3 một Dockerfile, một gốc dự án Python, một file khởi tạo web app"
+    why = ("context chưa chốt nên không dùng COPY/ADD làm bằng chứng" if context is not None and context.verify
+           else "COPY/ADD không có thư mục cụ thể nào làm bằng chứng mã API")
+    return "unproven", [], why
+
+
+def _scan_health(root: Path, flag: str | None, dockerfile: str | None = None, copy: dockerfile_copy.ContextAnalysis | None = None,
+                 context: Finding | None = None) -> Finding:
+    """Health path. Flag thắng. Còn lại chỉ đọc `.py` trong phạm vi mã API đã CHỨNG MINH (xem `_health_scope`); chưa chứng minh thì `/` TẠM + VERIFY."""
+    if flag:
+        return _flag(flag)
+    kind, dirs, evidence = _health_scope(root, dockerfile, copy, context) if dockerfile else ("repo", [], "không có Dockerfile (--no-api)")
+    everywhere = _health_routes(root, None)
     rule = "ưu tiên /api/health > /health > /healthz > còn lại theo thứ tự chữ"
-    return Finding(ranked[0], "detected", tuple(ranked), rule, _rank_note(rule, ranked[0], ranked))
+    if kind == "unproven":
+        if not everywhere:
+            return Finding(DEFAULT_HEALTH, "default", (), "không thấy route health/ready: readiness của workflow nhận mọi mã HTTP")
+        listed = tuple(_describe_route(route, everywhere[route]) for route in _rank_health(set(everywhere)))
+        verify = (f"giá trị `{DEFAULT_HEALTH}` chỉ là TẠM, chưa chọn được health path của API ({evidence}). Route health thấy trong repo, chỉ để tham khảo "
+                  f"(không biết cái nào thuộc API): {'; '.join(listed)}. Đặt --health-path hoặc sửa sut_health_path thành path trả 2xx thật rồi mới xoá dấu: "
+                  f"readiness của workflow nhận mọi mã HTTP nhưng k6 smoke đòi 2xx, nên giữ `{DEFAULT_HEALTH}` mà API không trả 2xx ở đó vẫn làm k6 lỗi")
+        return Finding(DEFAULT_HEALTH, "default", listed, f"chưa chứng minh phạm vi mã API: {evidence}", verify)
+    routes = everywhere if kind == "repo" else _health_routes(root, dirs)
+    basis = f"{evidence}" + (f"; phạm vi {', '.join(dirs)}" if dirs else "")
+    if not routes:
+        return Finding(DEFAULT_HEALTH, "default", (), f"không thấy route health/ready trong phạm vi ({basis}): readiness của workflow nhận mọi mã HTTP")
+    ranked = _rank_health(set(routes))
+    listed = tuple(_describe_route(route, routes[route]) for route in ranked)
+    verify = f"chọn {ranked[0]} trong [{', '.join(listed)}] vì gợi ý xếp hạng, chưa xác nhận: {rule}" if len(ranked) > 1 else None
+    return Finding(ranked[0], "detected", listed, f"{rule}; bằng chứng phạm vi: {basis}", verify)
 
 
 def _deps_mention_fastapi(root: Path) -> bool:
@@ -411,7 +486,7 @@ def scan(root, overrides: Overrides | None = None, *, api: bool = True) -> ScanR
         result.context_finding, result.copy, result.warnings = _scan_context(root, result.dockerfile.value, overrides.context)
         result.context = result.context_finding.value
         result.port = _scan_port(root, result.dockerfile.value, overrides.port)
-        result.health_path = _scan_health(root, overrides.health_path)
+        result.health_path = _scan_health(root, overrides.health_path, result.dockerfile.value, result.copy, result.context_finding)
         result.fastapi = _deps_mention_fastapi(root)
         result.openapi_path = _scan_openapi(root, result.fastapi)
         result.cors_env = _scan_cors(root)

@@ -790,3 +790,28 @@ def test_the_noteboard_reference_project_still_validates_clean_with_its_fake_tea
                         workers_dirs=[ROOT / "workers"])
     assert not by_level(report, v.ERROR), messages(report)
     assert not [f for f in report.findings if "owner mẫu" in f.message]
+
+
+# ---------- S4-11: dấu VERIFY của health path chặn validate ----------
+
+def _health_svc(route):
+    body = f'@app.get("{route}")\ndef health():\n    return {{}}\n' if route else ""
+    return f"from fastapi import FastAPI\napp = FastAPI()\n{body}"
+
+
+def test_unconfirmed_health_path_blocks_validate_until_the_mark_is_removed(tmp_path):
+    files = {"Dockerfile": "FROM x\nCOPY . .\nEXPOSE 8000\n", "apps/a/main.py": _health_svc("/health"), "apps/b/main.py": _health_svc("/api/health")}
+    sut, projects = generate_tree(tmp_path, files)
+    report = check(tmp_path, sut, projects)
+    blocked = [f for f in by_level(report, v.ERROR) if "qc-agent:todo VERIFY" in f.message and "sut_health_path" in f.message]
+    assert blocked and "TẠM" in blocked[0].message, messages(report)
+    workflow = sut / ".github" / "workflows" / "qc.yml"
+    workflow.write_text(re.sub(r"  # qc-agent:todo VERIFY[^\n]*", "", workflow.read_text(encoding="utf-8")), encoding="utf-8")   # người đã đặt path thật
+    after = check(tmp_path, sut, projects)
+    assert not [f for f in by_level(after, v.ERROR) if "qc-agent:todo VERIFY" in f.message], messages(after)
+
+
+def test_proven_health_scope_validates_without_a_health_verify(tmp_path):
+    files = {"Dockerfile": "FROM x\nCOPY apps/a/ ./a\nEXPOSE 8000\n", "apps/a/main.py": _health_svc("/health"), "apps/b/main.py": _health_svc("/api/health")}
+    sut, projects = generate_tree(tmp_path, files)
+    assert not [f for f in by_level(check(tmp_path, sut, projects), v.ERROR) if "sut_health_path" in f.message]

@@ -39,7 +39,8 @@ def test_vahan_rpa_shape(vahan):
 def test_false_positive_health_prefix_is_one_candidate_so_no_verify(vahan):
     """Scan tĩnh ra /health dù thực tế là /api/health (router có prefix /api): giới hạn đã biết, chỉ MỘT ứng viên nên không có VERIFY."""
     health = scan.scan(vahan).health_path
-    assert (health.value, health.candidates, health.verify) == ("/health", ("/health",), None)
+    # S4-11: ứng viên kèm file nguồn; kết quả (giá trị, không VERIFY) giữ nguyên nhờ bằng chứng E2 (COPY apps/api-server/app).
+    assert (health.value, health.candidates, health.verify) == ("/health", ("/health (apps/api-server/app/api/health.py)",), None)
 
 
 def test_two_cors_names_pick_the_http_one_and_ask_for_verification(vahan):
@@ -93,7 +94,9 @@ def test_port_from_expose_cmd_or_default_with_verify(tmp_path):
 def test_health_priority_and_default(tmp_path):
     routes = '@app.get("/healthz")\n@app.get("/ready")\n@router.get("/api/health")\n@app.get("/health")\n@app.get("/users/{id}")\n'
     health = scan.scan(tree(tmp_path / "a", {"Dockerfile": "x", "main.py": routes})).health_path
-    assert health.value == "/api/health" and health.candidates == ("/api/health", "/health", "/healthz", "/ready") and health.verify
+    # S4-11: ứng viên kèm file nguồn (cây một service nên bằng chứng là E3); thứ tự và VERIFY giữ nguyên.
+    assert health.value == "/api/health" and health.verify
+    assert health.candidates == ("/api/health (main.py)", "/health (main.py)", "/healthz (main.py)", "/ready (main.py)")
     none = scan.scan(tree(tmp_path / "b", {"Dockerfile": "x", "main.py": "x = 1\n"})).health_path
     assert (none.value, none.source, none.verify) == ("/", "default", None)     # readiness nhận mọi mã HTTP
 
@@ -116,7 +119,7 @@ def test_env_example_and_environ_forms_are_recognised(tmp_path):
 
 def test_depth_limit_is_four(tmp_path):
     tree(tmp_path, {"Dockerfile": "x", "a/b/c/d/e/deep.py": '@app.get("/health")\n', "a/b/c/d/shallow.py": '@app.get("/healthz")\n'})
-    assert scan.scan(tmp_path).health_path.candidates == ("/healthz",)
+    assert scan.scan(tmp_path).health_path.candidates == ("/healthz (a/b/c/d/shallow.py)",)      # S4-11: ứng viên kèm file nguồn
 
 
 def test_cra_and_next_export_and_yarn_pnpm_and_node_versions(tmp_path):
@@ -363,3 +366,112 @@ def test_root_dockerfile_with_a_missing_copy_source_asks_instead_of_staying_sile
     assert result.dockerfile.verify is None
     unparsed = scan.scan(tree(tmp_path / "u", {"Dockerfile": "FROM x\nARG S=a\nCOPY ${S} /app/\n"}))
     assert unparsed.context_finding.verify.startswith("không suy được context")
+
+
+# ---------- S4-11: health path chỉ lấy từ phạm vi mã API đã chứng minh ----------
+
+def svc(route=None):
+    """Một service FastAPI nhỏ (có file khởi tạo app); `route` None = không có route health."""
+    body = f'@app.get("{route}")\ndef health():\n    return {{}}\n' if route else ""
+    return f"from fastapi import FastAPI\napp = FastAPI()\n{body}"
+
+
+def health_of(root, **overrides):
+    return scan.scan(root, scan.Overrides(**overrides)).health_path
+
+
+def test_health_e1_copy_dot_with_context_equal_to_the_dockerfile_directory(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY . .\n", "apps/api-server/main.py": svc("/health"), "apps/gateway/main.py": svc("/api/health")}
+    root = tree(tmp_path, files)
+    health = health_of(root, context="apps/api-server")
+    assert (health.value, health.verify) == ("/health", None) and health.candidates == ("/health (apps/api-server/main.py)",)
+    assert "E1 apps/api-server" in health.reason and not any("/api/health" in c for c in health.candidates)
+    ambiguous = scan.scan(root)       # không có flag: context mơ hồ (VERIFY) nên COPY . . không phải bằng chứng
+    assert ambiguous.context_finding.verify and ambiguous.health_path.value == "/" and ambiguous.health_path.verify
+
+
+def test_health_e2_copy_of_a_specific_directory_with_repo_root_context(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY apps/api-server/app ./app\n", "apps/api-server/app/main.py": svc("/health"),
+             "apps/gateway/main.py": svc("/api/health")}
+    result = scan.scan(tree(tmp_path, files))
+    assert result.context == "." and result.context_finding.verify is None
+    assert (result.health_path.value, result.health_path.verify) == ("/health", None)
+    assert "E2 COPY apps/api-server/app -> apps/api-server/app" in result.health_path.reason
+
+
+def test_health_e2_dockerfile_in_deploy_copies_code_from_another_directory(tmp_path):
+    files = {"deploy/api/Dockerfile": "FROM x\nCOPY apps/api/ ./app\n", "apps/api/main.py": svc("/health"), "apps/other/main.py": svc("/api/health")}
+    health = health_of(tree(tmp_path, files), dockerfile="deploy/api/Dockerfile")   # deploy/ nằm ngoài nhóm tự tìm: đặt bằng flag
+    assert (health.value, health.verify) == ("/health", None) and health.candidates == ("/health (apps/api/main.py)",)
+    assert "E2 COPY apps/api/ -> apps/api" in health.reason
+
+
+def test_health_dockerfile_location_alone_is_not_evidence(tmp_path):
+    """deploy/api chỉ COPY requirements.txt: mã API ở nơi khác nên phạm vi chưa chứng minh, `/` chỉ là giá trị tạm kèm VERIFY."""
+    files = {"deploy/api/Dockerfile": "FROM x\nCOPY requirements.txt ./\n", "deploy/api/requirements.txt": "",
+             "apps/api/main.py": svc("/health"), "apps/other/main.py": svc("/api/health")}
+    health = health_of(tree(tmp_path, files), dockerfile="deploy/api/Dockerfile")
+    assert health.value == "/" and health.source == "default"
+    assert health.candidates == ("/api/health (apps/other/main.py)", "/health (apps/api/main.py)")
+    for needle in ("TẠM", "--health-path", "sut_health_path", "2xx", "apps/api/main.py", "apps/other/main.py"):
+        assert needle in health.verify, needle
+    for banned in ("đã xác định", "chắc chắn", "an toàn"):
+        assert banned not in health.verify
+
+
+def test_health_unresolvable_copy_source_is_not_evidence(tmp_path):
+    files = {"deploy/api/Dockerfile": "FROM x\nARG SRC=apps/api\nCOPY ${SRC} ./app\n", "apps/api/main.py": svc("/health"), "apps/other/main.py": svc("/api/health")}
+    health = health_of(tree(tmp_path, files), dockerfile="deploy/api/Dockerfile")
+    assert health.value == "/" and health.verify and "context chưa chốt" in health.verify
+
+
+def test_health_single_file_copy_does_not_make_the_dockerfile_directory_a_code_scope(tmp_path):
+    """Dockerfile ở svc/ chỉ COPY pyproject.toml (tệp lẻ), svc/ không chứa mã: không đạt E1, không được chọn `/` im lặng."""
+    files = {"svc/Dockerfile": "FROM x\nCOPY pyproject.toml ./\n", "svc/pyproject.toml": "", "apps/api/main.py": svc("/health"), "apps/other/main.py": svc("/api/health")}
+    health = health_of(tree(tmp_path, files))
+    assert health.value == "/" and health.verify and "/health (apps/api/main.py)" in health.verify
+
+
+def test_health_root_dockerfile_copying_one_directory_keeps_vahan_like_result(tmp_path):
+    files = {"Dockerfile": "FROM x\nCOPY apps/api-server/app ./app\n", "apps/api-server/app/main.py": svc("/health"), "apps/web-ui/api.py": svc("/api/health")}
+    health = health_of(tree(tmp_path, files))
+    assert (health.value, health.verify) == ("/health", None)
+
+
+def test_health_root_copy_dot_with_two_services_asks_and_keeps_a_temporary_slash(tmp_path):
+    files = {"Dockerfile": "FROM x\nCOPY . .\n", "apps/a/main.py": svc("/health"), "apps/b/main.py": svc("/api/health")}
+    health = health_of(tree(tmp_path, files))
+    assert health.value == "/" and health.verify and health.candidates == ("/api/health (apps/b/main.py)", "/health (apps/a/main.py)")
+
+
+def test_health_single_service_repo_is_e3_and_two_routes_still_ask(tmp_path):
+    one = tree(tmp_path / "one", {"Dockerfile": "FROM x\nCOPY . .\n", "main.py": svc("/health")})
+    health = health_of(one)
+    assert (health.value, health.verify) == ("/health", None) and "E3" in health.reason
+    two = tree(tmp_path / "two", {"Dockerfile": "FROM x\nCOPY . .\n", "main.py": svc("/health") + '@app.get("/healthz")\ndef z():\n    return {}\n'})
+    assert health_of(two).verify.startswith("chọn /health trong [/health (main.py), /healthz (main.py)]")
+
+
+@pytest.mark.parametrize("extra", [{"web/Dockerfile": "FROM nginx\n"}, {"requirements.txt": "", "sub/requirements.txt": ""}, {"other.py": svc()}])
+def test_health_e3_needs_every_condition(tmp_path, extra):
+    """Có dấu hiệu service thứ hai (Dockerfile khác, hai gốc dự án Python, hai file khởi tạo app): không đủ bằng chứng."""
+    files = {"Dockerfile": "FROM x\nCOPY . .\n", "main.py": svc("/health"), **extra}
+    health = health_of(tree(tmp_path, files), dockerfile="Dockerfile")
+    assert health.value == "/" and health.verify and "TẠM" in health.verify
+
+
+def test_health_proven_scope_without_routes_ignores_other_services(tmp_path):
+    files = {"deploy/api/Dockerfile": "FROM x\nCOPY apps/api/ ./app\n", "apps/api/main.py": svc(), "apps/other/main.py": svc("/api/health")}
+    health = health_of(tree(tmp_path, files), dockerfile="deploy/api/Dockerfile")
+    assert (health.value, health.source, health.verify, health.candidates) == ("/", "default", None, ())
+
+
+def test_health_unproven_with_no_route_anywhere_stays_the_old_default(tmp_path):
+    health = health_of(tree(tmp_path, {"deploy/api/Dockerfile": "FROM x\nCOPY requirements.txt ./\n", "deploy/api/requirements.txt": "", "apps/a/main.py": svc(), "apps/b/main.py": svc()}), dockerfile="deploy/api/Dockerfile")
+    assert (health.value, health.source, health.verify) == ("/", "default", None)
+
+
+def test_health_flag_wins_and_scans_nothing(tmp_path):
+    files = {"deploy/api/Dockerfile": "FROM x\nCOPY requirements.txt ./\n", "deploy/api/requirements.txt": "", "apps/a/main.py": svc("/health"), "apps/b/main.py": svc("/api/health")}
+    health = health_of(tree(tmp_path, files), dockerfile="deploy/api/Dockerfile", health_path="/x")
+    assert (health.value, health.source, health.verify, health.candidates) == ("/x", "flag", None, ("/x",))
