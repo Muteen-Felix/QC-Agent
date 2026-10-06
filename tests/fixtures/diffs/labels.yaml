@@ -1,4 +1,7 @@
 labeled_by: "dev — CẦN QA DUYỆT"
+# expect_workers: minimum required workers in the final selection, beyond the always-run floor.
+# Floor workers semgrep and gitleaks are implicit; extra workers are allowed.
+# Dockerfile/lockfile changes require all PR suites (full_set).
 diff-001:
   category: api
   expect_workers: [schemathesis, pytest]
@@ -71,72 +74,72 @@ diff-014:
   notes: "Fixture docs 14"
 diff-015:
   category: dockerfile
-  expect_workers: []
+  expect_workers: [coverage-debt, deepeval, k6, midscene-cli, pytest, schemathesis]
   core_or_security: false
   notes: "Fixture dockerfile 15"
 diff-016:
   category: dockerfile
-  expect_workers: []
+  expect_workers: [coverage-debt, deepeval, k6, midscene-cli, pytest, schemathesis]
   core_or_security: false
   notes: "Fixture dockerfile 16"
 diff-017:
   category: dockerfile
-  expect_workers: []
+  expect_workers: [coverage-debt, deepeval, k6, midscene-cli, pytest, schemathesis]
   core_or_security: false
   notes: "Fixture dockerfile 17"
 diff-018:
   category: lockfile
-  expect_workers: []
+  expect_workers: [coverage-debt, deepeval, k6, midscene-cli, pytest, schemathesis]
   core_or_security: false
   notes: "Fixture lockfile 18"
 diff-019:
   category: lockfile
-  expect_workers: []
+  expect_workers: [coverage-debt, deepeval, k6, midscene-cli, pytest, schemathesis]
   core_or_security: false
   notes: "Fixture lockfile 19"
 diff-020:
   category: lockfile
-  expect_workers: []
+  expect_workers: [coverage-debt, deepeval, k6, midscene-cli, pytest, schemathesis]
   core_or_security: false
   notes: "Fixture lockfile 20"
 diff-021:
   category: security
-  expect_workers: [schemathesis]
+  expect_workers: [schemathesis, pytest]
   core_or_security: true
   notes: "Fixture security 21"
 diff-022:
   category: security
-  expect_workers: [schemathesis]
+  expect_workers: [schemathesis, pytest]
   core_or_security: true
   notes: "Fixture security 22"
 diff-023:
   category: security
-  expect_workers: [schemathesis]
+  expect_workers: [schemathesis, pytest]
   core_or_security: true
   notes: "Fixture security 23"
 diff-024:
   category: security
-  expect_workers: [schemathesis]
+  expect_workers: [schemathesis, pytest]
   core_or_security: true
   notes: "Fixture security 24"
 diff-025:
   category: mixed
-  expect_workers: [pytest, k6]
+  expect_workers: [schemathesis, pytest]
   core_or_security: false
   notes: "Fixture mixed 25"
 diff-026:
   category: mixed
-  expect_workers: [pytest, k6]
+  expect_workers: [schemathesis, pytest]
   core_or_security: false
   notes: "Fixture mixed 26"
 diff-027:
   category: mixed
-  expect_workers: [pytest, k6]
+  expect_workers: [schemathesis, pytest]
   core_or_security: false
   notes: "Fixture mixed 27"
 diff-028:
   category: mixed
-  expect_workers: [pytest, k6]
+  expect_workers: [schemathesis, pytest]
   core_or_security: false
   notes: "Fixture mixed 28"
 diff-029:
