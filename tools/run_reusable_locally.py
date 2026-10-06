@@ -9,6 +9,9 @@ inputs/secrets/github/steps giả, ghi/đọc $GITHUB_OUTPUT, và bắt chước
 `--policy-dir DIR` thay bước "Fetch policy": DIR được chép vào $RUNNER_TEMP/qc-policy y như bản fetch từ qc-agent@main. Không đặt thì bước đó chạy
 THẬT, gọi $GITHUB_API_URL (đổi bằng --github-api để trỏ vào server giả).
 
+`--base-sha SHA` (cùng `--sha` làm head) điền `github.event.pull_request.base.sha`, để bước "Select (PR)" có đủ base/head thật (workspace phải là repo git
+chứa cả hai commit). Không đặt thì event không có `base.sha` và Select lùi về FULL SET, đúng như trước.
+
 Cần bash (Git Bash trên Windows) và docker. Exit code = kết quả bước cuối (Enforce gate result).
 """
 from __future__ import annotations
@@ -184,6 +187,7 @@ def main(argv=None) -> int:
     ap.add_argument("--github-api", default="https://api.github.com")
     ap.add_argument("--repository", default="o/r")
     ap.add_argument("--sha", default="abc1234def5678")
+    ap.add_argument("--base-sha", default=None, help="base.sha của PR; thiếu thì Select (PR) lùi về FULL SET")
     ap.add_argument("--pr", type=int, default=7)
     ap.add_argument("--token", default="ghs_local_test_token")
     ap.add_argument("--runner-temp", metavar="DIR", help="dùng thư mục này làm $RUNNER_TEMP (giữ lại policy và refine/ sau khi chạy)")
@@ -192,9 +196,12 @@ def main(argv=None) -> int:
     kv = lambda items: dict(item.split("=", 1) for item in items)  # noqa: E731
     with tempfile.TemporaryDirectory() as tmp:
         event = Path(tmp) / "event.json"
-        event.write_text(json.dumps({"pull_request": {"number": args.pr, "head": {"sha": args.sha, "ref": "feat/x"}}}), encoding="utf-8")
+        pull_request = {"number": args.pr, "head": {"sha": args.sha, "ref": "feat/x"}}
+        if args.base_sha:
+            pull_request["base"] = {"sha": args.base_sha}
+        event.write_text(json.dumps({"pull_request": pull_request}), encoding="utf-8")
         github = {"token": args.token, "sha": "mergecommit0000", "actor": "tester", "run_attempt": "1", "event_name": "pull_request",
-                  "event": {"pull_request": {"number": args.pr, "head": {"sha": args.sha}}},
+                  "event": {"pull_request": {**pull_request, "head": {"sha": args.sha}}},
                   "env": {"GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": args.repository, "GITHUB_SHA": "mergecommit0000",
                           "GITHUB_RUN_ID": "1001", "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SERVER_URL": "https://github.com",
                           "GITHUB_API_URL": args.github_api, "GITHUB_REF_NAME": "feat/x"}}
