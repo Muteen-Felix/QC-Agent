@@ -299,6 +299,8 @@ scope: session                            # session: đăng nhập một lần c
 docker run --rm -v "$PWD:/sut" <image> init --qa-team @org/qa-team --prd-glob 'docs/prd/**'
 ```
 
+`@org/qa-team` chỉ là ví dụ: thay bằng team QA thật. `qc-agent validate` báo ERROR nếu quy tắc `/.qc-agent/` còn trỏ tới owner mẫu.
+
 `init` sinh, ngoài các suite gate: `.github/workflows/qc-groundtruth.yml` (gọi workflow tái sử dụng), và **vùng CODEOWNERS** do qc-agent quản lý:
 
 ```

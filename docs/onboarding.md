@@ -16,7 +16,7 @@ docker run --rm -v "$PWD:/sut" ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST> ini
 Linux: thêm `--user "$(id -u):$(id -g)" -e HOME=/tmp` để file mới thuộc về bạn. Git Bash (Windows): đặt `MSYS_NO_PATHCONV=1`.
 
 Lệnh này chỉ **đọc** cây thư mục và **ghi trong repo của bạn**: `.github/workflows/qc.yml`, `.qc-agent/suites/*.yaml`, `.qc-agent/perf/smoke.js`, `.qc-agent/midscene/*.yaml`, và
-`.qc-agent/Dockerfile.ui` nếu UI là SPA tĩnh, cùng `.github/workflows/qc-groundtruth.yml` và vùng `.github/CODEOWNERS` cho Ground-Truth (thêm `--qa-team @org/team` để giao `/.qc-agent/` cho QA; thiếu thì còn `qc-agent:todo` và `validate` từ chối; xem [groundtruth.md](groundtruth.md)). Nó cho biết đã đoán gì và còn việc gì (`--dry-run` để xem trước, không ghi gì).
+`.qc-agent/Dockerfile.ui` nếu UI là SPA tĩnh, cùng `.github/workflows/qc-groundtruth.yml` và vùng `.github/CODEOWNERS` cho Ground-Truth (thêm `--qa-team @org/team` để giao `/.qc-agent/` cho QA, thay `@org/team` bằng team thật vì `validate` báo lỗi nếu còn owner mẫu; thiếu thì còn `qc-agent:todo` và `validate` từ chối; xem [groundtruth.md](groundtruth.md)). Nó cho biết đã đoán gì và còn việc gì (`--dry-run` để xem trước, không ghi gì).
 
 Nếu báo *không thấy Dockerfile API*: thêm `--sut-dockerfile PATH`. Nếu UI là Next.js SSR / monorepo workspace / không có lockfile: tự viết Dockerfile cho UI và thêm `--ui-dockerfile PATH`
 (khi đó `init` không tự sinh `Dockerfile.ui`).
