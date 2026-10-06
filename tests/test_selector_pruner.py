@@ -82,3 +82,17 @@ def test_binary_generated_vendor_rename_delete_and_total_cap(tmp_path):
     assert by_path["new.py"].status == "R" and by_path["new.py"].old_path == "old.py"
     assert by_path["large.py"].truncated
     assert len(result.files) == 8
+
+
+def test_git_reads_ignore_directory_ownership(tmp_path, monkeypatch):
+    """Container gate chạy `--user` lệch chủ thư mục (Docker Desktop): thiếu safe.directory thì git từ chối và Select lùi về FULL SET (S4-05b)."""
+    from qc_agent.selector import pruner
+    seen = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(pruner.subprocess, "run", fake_run)
+    pruner._git(tmp_path, "rev-parse", "HEAD")
+    assert seen[0][:5] == ["git", "-c", "core.quotepath=off", "-c", "safe.directory=*"]
