@@ -309,3 +309,21 @@ def test_workflow_marks_annotate_the_right_line_and_keep_the_yaml_valid():
         t.qc_workflow(project="a", marks={"nope": "x"})
     with pytest.raises(t.TemplateError):
         t.qc_workflow(project="a", sut_dockerfile="../evil")
+
+
+def test_qc_yml_has_a_commented_db_sample_that_enables_nothing_and_only_names_declared_inputs():
+    text = t.qc_workflow(project="myapp", qc_ref=SHA, image=DIGEST)
+    job = yaml.safe_load(text)["jobs"]["qc"]
+    assert set(job["with"]) == {"project", "image"} and job["secrets"] == "inherit"                    # mặc định không bật DB
+    sampled = set(re.findall(r"^\s*#\s*(sut_db_\w+):", text, re.M))
+    assert sampled == {"sut_db_image", "sut_db_env", "sut_db_ready_cmd"} and sampled <= reusable_inputs()   # mẫu không lệch tên input của workflow
+    assert "SUT_SECRET_ENV" in text and "SUT_DB_SECRET_ENV" in text and "sut_base_url" in text and "@sha256:<DIGEST>" in text
+    assert t.TODO not in text
+
+
+def test_uncommenting_the_db_sample_gives_valid_yaml_with_declared_inputs():
+    text = t.qc_workflow(project="myapp", qc_ref=SHA, image=DIGEST)
+    lines = [re.sub(r"^(\s*)# ?", r"\1", line) if re.match(r"\s*#\s*(sut_db_\w+:|POSTGRES_DB=|  POSTGRES_DB=)", line) else line for line in text.splitlines()]
+    job = yaml.safe_load("\n".join(lines))["jobs"]["qc"]
+    assert {"sut_db_image", "sut_db_env", "sut_db_ready_cmd"} <= set(job["with"]) and set(job["with"]) <= reusable_inputs()
+    assert job["with"]["sut_db_env"].strip() == "POSTGRES_DB=app"

@@ -67,7 +67,7 @@ Các phiên làm việc không nhìn thấy nhau, nên mọi bước phải dùn
 | Log event | `llm.*`, `gt.*`, `selector.*`, `review.*`, `jira.*`, ghi qua `logging_setup.event` | — | — |
 | Cache (S4) | `selector/cache.py` · `QC_SELECT_CACHE_DIR` (mặc định `~/.cache/qc-agent/select`) · `QC_GT_CACHE_DIR` · `selection.json.llm.cache_hit` · event `selector.cache`, `gt.cache` | S4-02 | S4-05, S4-06, S4-07 |
 | Chi phí LLM (S4) | `src/qc_agent/llm/prices.py` (bảng giá DUY NHẤT, chuyển từ `agent_loop.PRICES`) · `QC_LLM_MAX_INPUT_TOKENS` · `fallback_reason: token_cap` · `runs/<run_id>/llm_usage.json` · `client.count_tokens(...)` (chỉ Claude) | S4-03 | S4-04, S4-06, S4-07 |
-| SUT có DB (S4) | input DB của `qc-gate.reusable.yml` + một secret gom `KEY=VALUE` cho SUT/DB (tên chốt ở S4-09); container `db` trong mạng `qc-net` | S4-09 | S4-01, S4-06, S4-07 |
+| SUT có DB (S4) | input `sut_db_image` (ghim digest) · `sut_db_env` · `sut_db_ready_cmd` · `sut_db_port` của `qc-gate.reusable.yml` + hai secret `KEY=VALUE` nhiều dòng: `SUT_SECRET_ENV` (cho SUT) và `SUT_DB_SECRET_ENV` (chỉ cho DB) · container `db` trong mạng `qc-net`, file env `$RUNNER_TEMP/{sut,db}-secret.env` (600, xoá ở cleanup) · fixture `tests/fixtures/sut/dbapp` | S4-09 | S4-01, S4-06, S4-07 |
 | Harness (S4) | `tools/run_reusable_locally.py --base-sha` (SHA thật) · `--anthropic-api` · `--jira-api` · `--scenario full-chain` | S4-05b, S4-05 | S4-06 |
 
 ## 4. Quy trình mỗi bước

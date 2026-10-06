@@ -21,7 +21,7 @@ from qc_agent.core import plan as plan_lib
 from qc_agent.core import project as pj
 from qc_agent.core import registry
 from qc_agent.core.plan import PlanError
-from qc_agent.scaffold import dockerfile_copy, gitinfo, policy_source
+from qc_agent.scaffold import dockerfile_copy, gitinfo, policy_source, scan
 from qc_agent.scaffold import templates as t
 
 SYSTEM_ERROR = 3
@@ -376,6 +376,7 @@ def _check_workflow(report: Report, slug: str, project: dict, suites: dict, sut_
             for key in sorted(set(with_) - known_inputs):
                 report.add(ERROR, where, f"input `{key}` không có trong workflow tái sử dụng")
         _check_sut_build(report, sut_root, where, with_)
+        _check_sut_db(report, sut_root, where, with_)
         mode = str(with_.get("mode", "pr"))
         if mode not in policy:
             report.add(ERROR, where, f"mode {mode!r} không có trong project (có: {', '.join(sorted(policy))})")
@@ -423,6 +424,22 @@ def _check_sut_build(report: Report, sut_root: Path, where: str, with_: dict) ->
         source = item.source
         report.add(ERROR, where, f"{dockerfile} dòng {source.line}: {source.instruction} '{source.raw}' không tồn tại tính từ sut_context {context!r} "
                                  f"({item.repo_path}): build SUT sẽ hỏng{hint}")
+
+
+def _check_sut_db(report: Report, sut_root: Path, where: str, with_: dict) -> None:
+    """WARN (không ERROR: SUT có thể có chế độ không DB) khi mã SUT tham chiếu biến DB mà job không khai DB phụ và không dùng `sut_base_url`."""
+    if str(with_.get("sut_base_url", "")).strip() or str(with_.get("sut_db_image", "")).strip():
+        return
+    dockerfile, context = str(with_.get("sut_dockerfile", "Dockerfile")), str(with_.get("sut_context", "."))
+    if "${{" in dockerfile or "${{" in context or Path(dockerfile).is_absolute() or not (sut_root / dockerfile).is_file():
+        return   # Dockerfile/context sai đã được _check_sut_build báo ERROR
+    base = posixpath.normpath(context.replace("\\", "/"))
+    if Path(context).is_absolute() or not _inside(sut_root, sut_root / base) or not (sut_root / base).is_dir():
+        return
+    copy = dockerfile_copy.analyze(sut_root, dockerfile, [base])
+    refs = scan.find_db_refs(sut_root, dockerfile, copy, scan.Finding(base, "flag"))
+    if refs:
+        report.add(WARN, where, scan.db_warning(refs))
 
 
 def _format(report: Report) -> list[str]:

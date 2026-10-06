@@ -18,7 +18,8 @@
 # comment dính, lịch sử tập trung, webhook) -> upload artifact -> job xanh/đỏ THEO EXIT CODE của gate (báo cáo lỗi không đổi kết quả).
 #
 # AN TOÀN: đầu vào (inputs) và bí mật đều đi qua biến môi trường của step, KHÔNG nội suy ${{ }} vào script (chống chèn lệnh);
-# bí mật truyền vào container bằng `-e NAME` (không nằm trên dòng lệnh); mọi action ghim theo commit SHA; image qc-agent phải ghim
+# bí mật truyền vào container bằng `-e NAME` (không nằm trên dòng lệnh); bí mật của SUT/DB (SUT_SECRET_ENV, SUT_DB_SECRET_ENV) ghi vào file 600
+# trong $RUNNER_TEMP rồi truyền bằng `--env-file`; mọi action ghim theo commit SHA; image qc-agent và image DB phụ phải ghim
 # theo digest (trừ khi allow_unpinned_image). Code của PR là input KHÔNG TIN CẬY: chạy trong container không phải root, mạng docker riêng.
 # Rủi ro còn lại: worker eval của chính repo SUT (vd. pytest tests/eval) chạy mã của PR với các key LLM trong env — dùng key giới hạn ngân sách.
 name: qc-gate (reusable)
@@ -69,6 +70,22 @@ on:
         description: "KEY=VALUE mỗi dòng cho container SUT (KHÔNG đặt bí mật ở đây)"
         type: string
         default: ""
+      sut_db_image:
+        description: "image DB phụ (tuỳ chọn, GHIM THEO DIGEST): có thì chạy container `db` trong mạng qc-net, chờ sẵn sàng rồi mới chạy SUT (SUT gọi db:<cổng>). Rỗng = không có DB"
+        type: string
+        default: ""
+      sut_db_env:
+        description: "KEY=VALUE mỗi dòng cho container db (KHÔNG đặt bí mật ở đây: dùng secret SUT_DB_SECRET_ENV)"
+        type: string
+        default: ""
+      sut_db_ready_cmd:
+        description: "lệnh chạy trong container db (docker exec db sh -c): exit 0 = DB sẵn sàng, vd. pg_isready -U app. Khai sut_db_image thì cần lệnh này hoặc sut_db_port"
+        type: string
+        default: ""
+      sut_db_port:
+        description: "cổng TCP của DB: dự phòng khi không có sut_db_ready_cmd (chỉ thăm dò kết nối được tới db:<cổng>)"
+        type: string
+        default: ""
       sut_ui_dockerfile:
         description: "Dockerfile của web UI (tuỳ chọn): có thì dựng thêm container `ui` để suite UI (Midscene) dùng qua APP_UI_URL"
         type: string
@@ -103,6 +120,8 @@ on:
         default: 30
     secrets:
       qc_read_token: { required: false }   # đọc policy (contents:read) + kéo image (read:packages) khi repo qc-agent/image chuyển private
+      SUT_SECRET_ENV: { required: false }      # nhiều dòng KEY=VALUE cho container SUT (DATABASE_URL, token...)
+      SUT_DB_SECRET_ENV: { required: false }   # nhiều dòng KEY=VALUE chỉ cho container db (POSTGRES_PASSWORD...)
       QC_API_TOKEN: { required: false }
       GHCR_PULL_TOKEN: { required: false }
       OPENAI_API_KEY: { required: false }
@@ -215,6 +234,13 @@ jobs:
           SUT_PORT: ${{ inputs.sut_port }}
           SUT_HEALTH_PATH: ${{ inputs.sut_health_path }}
           SUT_ENV: ${{ inputs.sut_env }}
+          ALLOW_UNPINNED: ${{ inputs.allow_unpinned_image }}
+          SUT_DB_IMAGE: ${{ inputs.sut_db_image }}
+          SUT_DB_ENV: ${{ inputs.sut_db_env }}
+          SUT_DB_READY_CMD: ${{ inputs.sut_db_ready_cmd }}
+          SUT_DB_PORT: ${{ inputs.sut_db_port }}
+          SUT_SECRET_ENV: ${{ secrets.SUT_SECRET_ENV }}
+          SUT_DB_SECRET_ENV: ${{ secrets.SUT_DB_SECRET_ENV }}
           SUT_UI_DOCKERFILE: ${{ inputs.sut_ui_dockerfile }}
           SUT_UI_CONTEXT: ${{ inputs.sut_ui_context }}
           SUT_UI_PORT: ${{ inputs.sut_ui_port }}
@@ -229,6 +255,9 @@ jobs:
               u.urlopen(sys.argv[1], timeout=2)
           except e.HTTPError:
               pass'
+          # DB sẵn sàng (khi chỉ khai sut_db_port) = mở được kết nối TCP tới db:<cổng>
+          DB_PROBE='import socket, sys
+          socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=2).close()'
           wait_ready() {  # $1 = tên container, $2 = URL thăm dò
             local ready=0
             for _ in $(seq 1 60); do
@@ -240,13 +269,67 @@ jobs:
               echo "::error::$1 không sẵn sàng sau 120s"; exit 1
             fi
           }
+          # Bí mật của SUT/DB (nhiều dòng KEY=VALUE) -> file 600 trong $RUNNER_TEMP, truyền bằng --env-file: không nằm trên dòng lệnh, không in giá trị.
+          # ::add-mask:: che từng giá trị (GitHub chỉ tự che nguyên khối secret, không che phần tách ra từ nó). Biến nguồn bị unset sau khi ghi file.
+          make_env_file() {  # $1 = TÊN biến chứa nội dung, $2 = file ra
+            local name="$1" out="$2" n=0 line
+            ( umask 077; : > "$out" )
+            chmod 600 "$out"
+            while IFS= read -r line || [ -n "$line" ]; do
+              n=$((n + 1)); line="${line%$'\r'}"
+              if [ -z "$line" ]; then continue; fi
+              if ! [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*=(.*)$ ]]; then
+                echo "::error::$name dòng $n không phải KEY=VALUE"; exit 1   # không in nội dung dòng
+              fi
+              if [ -n "${BASH_REMATCH[1]}" ]; then printf '::add-mask::%s\n' "${BASH_REMATCH[1]}"; fi
+              printf '%s\n' "$line" >> "$out"
+            done <<< "${!name}"
+            unset "$name"
+          }
+          db_secret="$RUNNER_TEMP/db-secret.env"
+          sut_secret="$RUNNER_TEMP/sut-secret.env"
           if [ -n "$SUT_BASE_URL" ]; then
             echo "base_url=$SUT_BASE_URL" >> "$GITHUB_OUTPUT"
+            if [ -n "$SUT_DB_IMAGE" ]; then echo "::warning::sut_db_image bị bỏ qua vì đã có sut_base_url"; fi
           else
+            # DB phụ (tuỳ chọn): chạy TRƯỚC SUT, trong qc-net với tên cố định `db` để SUT gọi db:<cổng>. Không publish cổng ra runner.
+            if [ -n "$SUT_DB_IMAGE" ]; then
+              if ! [[ "$SUT_DB_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]]; then echo "::error::sut_db_image không hợp lệ"; exit 1; fi
+              case "$SUT_DB_IMAGE" in
+                *@sha256:*) ;;
+                *) if [ "$ALLOW_UNPINNED" != "true" ]; then
+                     echo "::error::sut_db_image phải ghim theo digest (name@sha256:...), nhận: $SUT_DB_IMAGE"; exit 1
+                   fi
+                   echo "::warning::sut_db_image không ghim theo digest: $SUT_DB_IMAGE" ;;
+              esac
+              if [ -z "$SUT_DB_READY_CMD" ] && [ -z "$SUT_DB_PORT" ]; then
+                echo "::error::khai sut_db_image thì cần sut_db_ready_cmd hoặc sut_db_port để biết khi nào DB sẵn sàng"; exit 1
+              fi
+              if [ -n "$SUT_DB_PORT" ] && ! [[ "$SUT_DB_PORT" =~ ^[0-9]{1,5}$ ]]; then echo "::error::sut_db_port không hợp lệ"; exit 1; fi
+              db_args=()
+              while IFS= read -r line; do if [ -n "$line" ]; then db_args+=(-e "$line"); fi; done <<< "$SUT_DB_ENV"
+              if [ -n "${SUT_DB_SECRET_ENV:-}" ]; then make_env_file SUT_DB_SECRET_ENV "$db_secret"; db_args+=(--env-file "$db_secret"); fi
+              docker run -d --name db --network qc-net "${db_args[@]}" "$SUT_DB_IMAGE"
+              db_ready=0
+              for _ in $(seq 1 60); do
+                if [ "$(docker inspect -f '{{.State.Running}}' db 2>/dev/null)" != "true" ]; then break; fi   # DB đã thoát: không chờ tiếp
+                if [ -n "$SUT_DB_READY_CMD" ]; then
+                  if docker exec db sh -c "$SUT_DB_READY_CMD" >/dev/null 2>&1; then db_ready=1; break; fi
+                elif docker run --rm --network qc-net --entrypoint python "$IMAGE" -c "$DB_PROBE" db "$SUT_DB_PORT" 2>/dev/null; then db_ready=1; break
+                fi
+                sleep 2
+              done
+              if [ "$db_ready" != 1 ]; then
+                docker logs db 2>&1 | tail -50   # chỉ log của container, không in env
+                echo "::error::db không sẵn sàng sau 120s"; exit 1
+              fi
+            fi
             docker build -f "$SUT_DOCKERFILE" -t qc-sut "$SUT_CONTEXT"
             env_args=()
             while IFS= read -r line; do [ -n "$line" ] && env_args+=(-e "$line"); done <<< "$SUT_ENV"
-            docker run -d --name sut --network qc-net "${env_args[@]}" qc-sut
+            sut_args=()
+            if [ -n "${SUT_SECRET_ENV:-}" ]; then make_env_file SUT_SECRET_ENV "$sut_secret"; sut_args=(--env-file "$sut_secret"); fi
+            docker run -d --name sut --network qc-net "${env_args[@]}" "${sut_args[@]}" qc-sut
             wait_ready sut "http://sut:${SUT_PORT}${SUT_HEALTH_PATH}"
             echo "base_url=http://sut:${SUT_PORT}" >> "$GITHUB_OUTPUT"
           fi
@@ -464,8 +547,9 @@ jobs:
       - name: Clean up SUT
         if: always()
         run: |
-          docker rm -f sut ui >/dev/null 2>&1 || true
+          docker rm -f sut ui db >/dev/null 2>&1 || true
           docker network rm qc-net >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/sut-secret.env" "$RUNNER_TEMP/db-secret.env"
 
       - name: Enforce gate result
         if: always()

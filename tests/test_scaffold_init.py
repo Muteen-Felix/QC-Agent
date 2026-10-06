@@ -791,3 +791,34 @@ def test_health_flag_is_declared_without_scanning_or_a_mark(tmp_path):
 
 def test_no_health_route_anywhere_keeps_the_workflow_default_and_declares_nothing(tmp_path):
     assert health_line(tmp_path, files={"Dockerfile": "FROM x\nCOPY . .\nEXPOSE 8000\n", "main.py": _svc()}) is None
+
+
+# ---------- SUT cần database (S4-09): init chỉ cảnh báo, không đoán ----------
+
+def test_db_env_reference_in_api_code_warns_with_guidance_and_names_the_file(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", "app/main.py": "import os\nURL = os.environ['DATABASE_URL']\n", "app/db.py": "DATABASE_URL = 1\nMONGODB_URI = 2\n"}
+    plan, _ = run_init(tmp_path, files=files, dry_run=True)
+    warning = next(w for w in plan.warnings if "DATABASE_URL" in w)
+    assert "app/db.py" in warning and "app/main.py" in warning and "MONGODB_URI" in warning
+    assert "sut_db_image" in warning and "SUT_SECRET_ENV" in warning and "sut_base_url" in warning and "SUT cần database" in warning
+
+
+def test_db_reference_in_tests_or_lookalike_names_does_not_warn(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", "app/main.py": "import os\nX = os.environ['MY_DATABASE_URL_X']\n", "app/test_db.py": "DATABASE_URL = 1\n",
+             "app/conftest.py": "DATABASE_URL = 1\n", "tests/test_it.py": "DATABASE_URL = 1\n"}
+    plan, _ = run_init(tmp_path, files=files, dry_run=True)
+    assert not [w for w in plan.warnings if "biến DB" in w]
+
+
+def test_db_reference_outside_the_proven_api_scope_is_ignored_in_a_monorepo(tmp_path):
+    files = {"services/api/Dockerfile": "FROM x\nCOPY app /srv/app\nEXPOSE 8000\n", "services/api/app/main.py": "print(1)\n", "services/worker/job.py": "DATABASE_URL = 1\n"}
+    plan, _ = run_init(tmp_path, files=files, sut_dockerfile="services/api/Dockerfile", sut_context="services/api", dry_run=True)
+    assert not [w for w in plan.warnings if "biến DB" in w]
+
+
+def test_init_never_enables_the_db_service_by_itself(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", "app/main.py": "import os\nURL = os.environ['DATABASE_URL']\n"}
+    plan, _ = run_init(tmp_path, files=files, dry_run=True)
+    workflow = next(f.content for f in plan.files if f.label.endswith("qc.yml"))
+    assert not any(key.startswith("sut_db_") for key in yaml.safe_load(workflow)["jobs"]["qc"]["with"])      # chỉ có comment mẫu
+    assert "# sut_db_image:" in workflow

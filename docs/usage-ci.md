@@ -52,6 +52,7 @@ jobs:
       image: ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>
       # sut_env: |               # biến môi trường cho container SUT (KHÔNG đặt bí mật)
       #   QC_BUGS=none
+      # sut_base_url: http://...  # SUT đã chạy sẵn: bỏ qua build/chạy SUT. SUT cần database: xem "SUT cần database" bên dưới
       # qc_api_url: https://qc.example.com   # lưu lịch sử tập trung (cần secret QC_API_TOKEN)
     secrets: inherit
 ```
@@ -76,6 +77,48 @@ SUT có giao diện web dựng riêng khỏi API thì khai thêm; không khai th
 ```
 
 Workflow dựng container `ui` cùng mạng docker với `sut`, rồi gate nhận `APP_UI_URL=http://ui:<port>` (suite UI dùng `${env.APP_UI_URL}`). Trình duyệt của Midscene chạy trong container gate nên phân giải được cả `sut` và `ui`; UI nhúng địa chỉ API lúc build thì dùng `http://sut:<cổng>`.
+
+### SUT cần database
+
+Mặc định workflow chạy **một container** SUT chỉ với biến từ `sut_env` (không bí mật) và chờ nó trả lời HTTP tối đa 120 s. Điều kiện để dùng được mặc định: **SUT khởi động và trả lời được chỉ bằng `sut_env`**. SUT bắt buộc có database lúc khởi động (ví dụ API đọc `DATABASE_URL` trong `lifespan` rồi thoát khi không nối được) sẽ không qua được bước "Start SUT". Có ba cách, chọn theo SUT:
+
+1. **SUT có chế độ chạy không cần DB**: bật bằng `sut_env`, không cần gì thêm.
+2. **Môi trường có sẵn**: khai `sut_base_url` (URL SUT đã chạy). Workflow bỏ qua cả build/chạy SUT lẫn DB phụ (nếu có khai thì chỉ cảnh báo). Cổng gate phải với tới URL đó từ runner.
+3. **DB phụ** (mô tả dưới đây): workflow chạy thêm container `db` trong mạng `qc-net`, chờ DB sẵn sàng rồi mới chạy SUT.
+
+```yaml
+    with:
+      project: myapp
+      image: ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>
+      sut_db_image: postgres@sha256:<DIGEST>          # BẮT BUỘC ghim digest (trừ allow_unpinned_image: true); loại DB do SUT chọn
+      sut_db_env: |                                    # KHÔNG bí mật
+        POSTGRES_DB=app
+        POSTGRES_USER=app
+      sut_db_ready_cmd: pg_isready -h 127.0.0.1 -U app -d app   # chạy trong container db; exit 0 = sẵn sàng
+      # sut_db_port: "5432"                            # thay cho ready_cmd: chỉ thăm dò kết nối TCP tới db:<cổng>
+      sut_env: |                                       # cũng KHÔNG bí mật
+        APP_ENV=ci
+    secrets: inherit
+```
+
+| Input / secret | Ý nghĩa |
+|---|---|
+| `sut_db_image` | image DB; rỗng = không có DB (đường chạy cũ, không đổi một ký tự). Khai thì phải khai thêm `sut_db_ready_cmd` hoặc `sut_db_port` |
+| `sut_db_env` | `KEY=VALUE` mỗi dòng cho container `db`, không bí mật |
+| `sut_db_ready_cmd` | lệnh chạy bằng `docker exec db sh -c`; ưu tiên hơn `sut_db_port`. Với Postgres dùng `-h 127.0.0.1` để khỏi tính máy chủ tạm lúc khởi tạo (chỉ nghe socket) |
+| `sut_db_port` | cổng TCP dự phòng; "mở được kết nối" chưa chắc là "sẵn sàng nhận truy vấn" nên đây là lựa chọn yếu hơn |
+| secret `SUT_SECRET_ENV` | nhiều dòng `KEY=VALUE` cho **container SUT**: `DATABASE_URL=postgresql://app:<mật khẩu>@db:5432/app`, token ký, ... |
+| secret `SUT_DB_SECRET_ENV` | nhiều dòng `KEY=VALUE` chỉ cho **container `db`**: `POSTGRES_PASSWORD=<mật khẩu>`. Tách khỏi `SUT_SECRET_ENV` để image DB không nhận bí mật của SUT |
+
+Thứ tự: tạo mạng `qc-net` → chạy `db` (tên cố định, SUT gọi `db:<cổng>`; không publish cổng ra runner) → chờ sẵn sàng (tối đa 120 s) → build và chạy SUT → (UI). DB không sẵn sàng hoặc đã thoát thì step đỏ với `::error::db không sẵn sàng sau 120s` kèm 50 dòng log cuối của container `db` (không in env); SUT không nối được DB thì đỏ ở `sut không sẵn sàng sau 120s` kèm log của SUT.
+
+Về bí mật: hai secret được ghi vào file quyền 600 trong `$RUNNER_TEMP` rồi truyền bằng `--env-file`, nên không nằm trên dòng lệnh và không đi qua `${{ }}` trong script; từng giá trị được `::add-mask::` trước khi dùng; file bị xoá ở bước "Clean up SUT" cùng container `db`. Mỗi dòng phải là `KEY=VALUE` (dòng sai làm step đỏ mà **không in dòng đó**); `--env-file` của Docker không hỗ trợ giá trị nhiều dòng hay ngoặc kép. Cả hai secret để trống thì lệnh `docker run` của SUT y như trước.
+
+Lưu ý:
+- **Migration là việc của image SUT** (entrypoint tự chạy, hoặc SUT tạo bảng lúc khởi động). Workflow không chạy lệnh nào trong SUT ngoài `docker run`.
+- PR từ **fork** không nhận secret: `SUT_SECRET_ENV`/`SUT_DB_SECRET_ENV` rỗng, DB thường không khởi tạo được (Postgres đòi mật khẩu) và gate đỏ ở "Start SUT" thay vì xanh giả.
+- Container `db` nằm cùng mạng `qc-net` với gate nên mã của PR (vd. worker eval) với tới được DB: dùng DB dành riêng cho CI, không đặt dữ liệu thật.
+- `qc-agent init` / `qc-agent validate` **cảnh báo** (không lỗi) khi mã SUT tham chiếu `DATABASE_URL`, `SQLALCHEMY_DATABASE_URI`, `DB_URL`, `MONGODB_URI` hay `MONGO_URL` mà job không khai `sut_db_image` hay `sut_base_url`. Bỏ qua cảnh báo nếu SUT có chế độ không DB. `init` chỉ sinh comment mẫu trong `qc.yml`, không bật DB giúp bạn.
 
 ## 2b. Sinh sẵn cấu hình (khuyến nghị) và kiểm trước khi đẩy lên CI
 
@@ -139,6 +182,7 @@ Bước `Refine (onboarding suggestions)` nằm **sau `Start SUT`, trước `Run
 | `MIDSCENE_MODEL_*` | Midscene (discovery, không chặn merge) |
 | `ALERT_WEBHOOK_URL`, `ALERT_TELEGRAM_CHAT_ID`, `DASHBOARD_URL` | thông báo webhook |
 | `GHCR_PULL_TOKEN` | kéo image private (nếu không dùng quyền của package) |
+| `SUT_SECRET_ENV`, `SUT_DB_SECRET_ENV` (tuỳ chọn) | bí mật `KEY=VALUE` nhiều dòng cho container SUT / container DB phụ; xem mục "SUT cần database" |
 | `qc_read_token` (tuỳ chọn) | đọc policy từ qc-agent và kéo image khi repo/image chuyển private; hiện không cần truyền |
 
 PR từ **fork** không nhận secret: task cần key sẽ `skipped`; project nên đặt `on_skipped_gate_task: fail` cho mode `pr` để gate không xanh giả.

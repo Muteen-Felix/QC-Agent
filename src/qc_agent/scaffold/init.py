@@ -125,6 +125,8 @@ def build(opts: Options) -> Plan:
             raise InitError(str(error)) from None
         plan.notes.extend(found.notes)
         plan.warnings.extend(found.warnings)
+        if found.db_refs:
+            plan.warnings.append(scan.db_warning(found.db_refs))
 
         def add(rel: str, content: str) -> None:
             plan.files.append(Planned(root / rel, rel, content))

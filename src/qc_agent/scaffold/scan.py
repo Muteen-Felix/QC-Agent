@@ -46,6 +46,10 @@ _EXPOSE = re.compile(r"^\s*EXPOSE\s+(\d{2,5})(?:/\w+)?", re.M | re.I)
 _CMD_PORT = re.compile(r"""--port["',\s=]+(\d{2,5})""")
 _NEXT_EXPORT = re.compile(r"""output\s*:\s*['"]export['"]""")
 _INT = re.compile(r"\d+")
+DB_ENV_NAMES = ("DATABASE_URL", "SQLALCHEMY_DATABASE_URI", "DB_URL", "MONGODB_URI", "MONGO_URL")
+_DB_REF = re.compile(r"\b(" + "|".join(DB_ENV_NAMES) + r")\b")
+_DB_FILE = re.compile(r"(?:.*\.(?:py|js|mjs|ts)|(?:docker-)?compose[\w.-]*\.ya?ml|\.env\.(?:example|sample|template))")
+_TEST_FILE = re.compile(r"(?:test_.*\.py|.*_test\.py|conftest\.py|.*\.(?:test|spec)\.[jt]s)")
 WEB_NAMES = frozenset({"web", "ui", "frontend", "client", "admin", "www"})
 API_NAMES = frozenset({"api", "server", "backend"})
 MONOREPO_PARENTS = ("apps", "services", "packages")
@@ -90,6 +94,7 @@ class ScanResult:
     openapi_path: Finding | None = None       # None: không thấy FastAPI (api-contract vẫn sinh, với REFINE)
     fastapi: bool = False
     cors_env: Finding | None = None
+    db_refs: dict[str, list[str]] = field(default_factory=dict)   # {biến DB mã SUT tham chiếu: [file]}; rỗng = không thấy
     ui: UiScan | None = None
     ui_refused: str | None = None             # lý do KHÔNG tự sinh được Dockerfile.ui (hướng dẫn dùng --ui-dockerfile)
     notes: list[str] = field(default_factory=list)
@@ -343,6 +348,31 @@ def _scan_health(root: Path, flag: str | None, dockerfile: str | None = None, co
     return Finding(ranked[0], "detected", listed, f"{rule}; bằng chứng phạm vi: {basis}", verify)
 
 
+def find_db_refs(root: Path, dockerfile: str | None, copy: dockerfile_copy.ContextAnalysis | None, context: Finding | None) -> dict[str, list[str]]:
+    """{biến DB: [file]} mà MÃ SUT tham chiếu (DATABASE_URL, ...), để cảnh báo khi workflow không khai DB phụ. Cùng phạm vi mã API như health path
+    (`_health_scope`): chứng minh được thư mục thì chỉ quét ở đó, còn lại quét cả repo (WARN chỉ là gợi ý, không quyết định gì)."""
+    kind, dirs, _ = _health_scope(root, dockerfile, copy, context) if dockerfile else ("repo", [], "")
+    scope = dirs if kind == "scope" else None
+    found: dict[str, set[str]] = {}
+    for rel, files in walk(root):
+        for name in files:
+            if not _DB_FILE.fullmatch(name) or _TEST_FILE.fullmatch(name):
+                continue
+            posix = (rel / name).as_posix()
+            if scope is not None and not any(posix.startswith(directory + "/") for directory in scope):
+                continue
+            for var in set(_DB_REF.findall(_read(root / rel / name))):
+                found.setdefault(var, set()).add(posix)
+    return {var: sorted(files) for var, files in sorted(found.items())}
+
+
+def db_warning(refs: dict[str, list[str]]) -> str:
+    shown = "; ".join(f"{var} ({', '.join(files[:2])}{f', +{len(files) - 2} file' if len(files) > 2 else ''})" for var, files in refs.items())
+    return (f"mã SUT tham chiếu biến DB: {shown}. Workflow chỉ chạy MỘT container SUT với sut_env nên SUT cần database sẽ không qua health check. "
+            "Khai DB phụ trong qc.yml (sut_db_image ghim digest + sut_db_ready_cmd; secret SUT_SECRET_ENV, SUT_DB_SECRET_ENV) hoặc sut_base_url nếu đã có môi trường sẵn; "
+            "bỏ qua nếu SUT có chế độ chạy không cần DB (docs/usage-ci.md, mục \"SUT cần database\")")
+
+
 def _deps_mention_fastapi(root: Path) -> bool:
     for rel, files in walk(root):
         for name in files:
@@ -490,5 +520,6 @@ def scan(root, overrides: Overrides | None = None, *, api: bool = True) -> ScanR
         result.fastapi = _deps_mention_fastapi(root)
         result.openapi_path = _scan_openapi(root, result.fastapi)
         result.cors_env = _scan_cors(root)
+        result.db_refs = find_db_refs(root, result.dockerfile.value, result.copy, result.context_finding)
     _scan_ui(root, result)
     return result

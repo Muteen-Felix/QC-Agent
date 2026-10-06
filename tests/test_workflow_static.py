@@ -551,3 +551,173 @@ def test_gt_the_provider_switch_is_a_case_on_the_gemini_prefix_only():
     run = gt_step("generate", "Generate Ground-Truth")["run"]
     assert 'case "$model" in gemini-*) key_var=GEMINI_API_KEY ;; *) key_var=ANTHROPIC_API_KEY ;; esac' in run
     assert "${{" not in run and "${!key_var:-}" in run
+
+
+# ==================== DB phụ tuỳ chọn cho SUT (S4-09) ====================
+
+DB_INPUTS = ("sut_db_image", "sut_db_env", "sut_db_ready_cmd", "sut_db_port")
+DB_SECRETS = ("SUT_SECRET_ENV", "SUT_DB_SECRET_ENV")
+MARKER = "MARKER-s3cr3t-9f2c41"
+
+
+def test_db_inputs_and_secrets_are_declared_and_optional():
+    call = DATA[True]["workflow_call"]
+    for name in DB_INPUTS:
+        assert call["inputs"][name]["type"] == "string" and call["inputs"][name]["default"] == "" and not call["inputs"][name].get("required"), name   # rỗng = không DB
+    for name in DB_SECRETS:
+        assert call["secrets"][name] == {"required": False}, name
+    start = step("Start SUT")
+    assert start["env"]["SUT_DB_IMAGE"] == "${{ inputs.sut_db_image }}" and start["env"]["ALLOW_UNPINNED"] == "${{ inputs.allow_unpinned_image }}"
+    assert start["env"]["SUT_SECRET_ENV"] == "${{ secrets.SUT_SECRET_ENV }}" and start["env"]["SUT_DB_SECRET_ENV"] == "${{ secrets.SUT_DB_SECRET_ENV }}"
+    assert [s.get("name") for s in STEPS if "secrets.SUT_SECRET_ENV" in json.dumps(s) or "secrets.SUT_DB_SECRET_ENV" in json.dumps(s)] == ["Start SUT"]   # bí mật chỉ nằm ở một step
+
+
+def test_db_image_must_be_pinned_by_digest_like_the_qc_agent_image():
+    run = step("Start SUT")["run"]
+    assert "*@sha256:*) ;;" in run and '"$ALLOW_UNPINNED" != "true"' in run and "sut_db_image phải ghim theo digest" in run
+    assert run.index("sut_db_image phải ghim theo digest") < run.index("docker run -d --name db")      # kiểm trước khi chạy/pull
+    assert DATA[True]["workflow_call"]["inputs"]["allow_unpinned_image"]["default"] is False
+
+
+def test_start_sut_never_traces_and_never_passes_a_secret_on_the_command_line():
+    run = step("Start SUT")["run"]
+    assert not re.search(r"set\s+-\w*x", run) and "xtrace" not in run
+    assert "--env-file" in run and "::add-mask::" in run and "umask 077" in run and "chmod 600" in run
+    for command in re.findall(r"docker (?:run|exec)[^\n]*", run):
+        assert "SECRET" not in command.replace("--env-file", "").replace("db_secret", "").replace("sut_secret", ""), command   # secret chỉ vào qua --env-file
+    assert not re.search(r'-e\s+"?\$\{?SUT(_DB)?_SECRET_ENV', run) and 'echo "$SUT' not in run
+
+
+def test_db_starts_before_the_sut_and_the_cleanup_removes_it_with_the_env_files():
+    run = step("Start SUT")["run"]
+    assert run.index("docker run -d --name db") < run.index('docker build -f "$SUT_DOCKERFILE"') < run.index("docker run -d --name sut")
+    db_line = re.search(r"docker run -d --name db[^\n]*", run).group(0)
+    assert "--network qc-net" in db_line and "-p " not in db_line                                  # không publish cổng DB ra runner
+    clean = step("Clean up SUT")["run"]
+    assert "docker rm -f sut ui db" in clean and "sut-secret.env" in clean and "db-secret.env" in clean
+
+
+# ---- chạy THẬT bước "Start SUT" với `docker`/`sleep` giả (bash, không cần Docker) ----
+
+START_ENV = {key: "" for key in step("Start SUT")["env"]}
+
+
+@pytest.fixture
+def start(tmp_path):
+    """Chạy `run:` của "Start SUT". `docker` giả ghi mỗi lệnh (đối số nối bằng dấu cách) ra file; `sleep` giả để vòng chờ không tốn thời gian."""
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir()
+    (bindir / "docker").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$DOCKER_LOG"\n'
+                                   '[ "$1" = inspect ] && echo "${FAKE_DB_RUNNING:-true}"\n'
+                                   '[ "$1" = exec ] && exit "${FAKE_DB_EXEC_RC:-0}"\nexit 0\n', encoding="utf-8", newline="\n")
+    (bindir / "sleep").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n")
+    for name in ("docker", "sleep"):
+        (bindir / name).chmod(0o755)
+    script = tmp_path / "start.sh"
+    script.write_text(step("Start SUT")["run"], encoding="utf-8", newline="\n")
+
+    def run(**env):
+        log, output, runner_temp = tmp_path / "docker.log", tmp_path / "output.txt", tmp_path / "rt"
+        log.write_text("", encoding="utf-8")
+        output.write_text("", encoding="utf-8")
+        runner_temp.mkdir(exist_ok=True)
+        full = {**os.environ, **START_ENV, "IMAGE": "qc-agent:dev", "SUT_DOCKERFILE": "Dockerfile", "SUT_CONTEXT": ".", "SUT_PORT": "8000", "SUT_HEALTH_PATH": "/",
+                "ALLOW_UNPINNED": "false", "GITHUB_OUTPUT": output.as_posix(), "RUNNER_TEMP": runner_temp.as_posix(), "DOCKER_LOG": log.as_posix(),
+                "PATH": str(bindir) + os.pathsep + os.environ["PATH"], **env}
+        done = subprocess.run([BASH, script.as_posix()], cwd=tmp_path, env=full, capture_output=True, text=True, encoding="utf-8", timeout=120)
+        lines = [line for line in log.read_text(encoding="utf-8").splitlines() if line]
+        return done, lines, runner_temp
+    return run
+
+
+PINNED_DB = "postgres@sha256:" + "b" * 64
+
+
+def leaks(done, calls):
+    """Mọi nơi chuỗi đánh dấu có thể lọt ra: lệnh docker, stderr, và stdout ngoài các dòng `::add-mask::` (runner của GitHub nuốt các dòng đó)."""
+    visible = [line for line in done.stdout.splitlines() if not line.startswith("::add-mask::")]
+    return MARKER in "\n".join(calls) or MARKER in "\n".join(visible) or MARKER in done.stderr
+
+
+@needs_bash
+def test_without_db_and_secrets_the_sut_command_is_exactly_what_it_was(start):
+    done, calls, _ = start(SUT_ENV="QC_BUGS=none\nA=b")
+    assert done.returncode == 0, done.stderr
+    assert "run -d --name sut --network qc-net -e QC_BUGS=none -e A=b qc-sut" in calls
+    assert not any(c.startswith("run -d --name db") for c in calls) and not any("--env-file" in c for c in calls)
+
+
+@needs_bash
+def test_base_url_skips_both_the_db_and_the_sut(start):
+    done, calls, _ = start(SUT_BASE_URL="http://x:1", SUT_DB_IMAGE=PINNED_DB, SUT_DB_READY_CMD="true", SUT_SECRET_ENV=f"K={MARKER}")
+    assert done.returncode == 0 and calls == ["network create qc-net"] and "sut_db_image bị bỏ qua" in done.stdout
+    assert not leaks(done, calls) and "::add-mask::" not in done.stdout                            # không đọc secret thì không có gì để che
+
+
+@needs_bash
+def test_db_runs_first_then_the_sut_and_secrets_arrive_only_through_env_files(start):
+    done, calls, runner_temp = start(SUT_DB_IMAGE=PINNED_DB, SUT_DB_ENV="POSTGRES_DB=app", SUT_DB_READY_CMD="pg_isready -h 127.0.0.1",
+                                     SUT_DB_SECRET_ENV=f"POSTGRES_PASSWORD={MARKER}-db\n", SUT_SECRET_ENV=f"DATABASE_URL=postgresql://a:{MARKER}-url@db:5432/app\r\nTOKEN={MARKER}-tok")
+    assert done.returncode == 0, done.stdout + done.stderr
+    kinds = [next(k for k in ("run -d --name db", "build", "run -d --name sut") if c.startswith(k)) for c in calls if c.startswith(("run -d", "build"))]
+    assert kinds == ["run -d --name db", "build", "run -d --name sut"]
+    db_run = next(c for c in calls if c.startswith("run -d --name db"))
+    assert db_run.endswith(f"-e POSTGRES_DB=app --env-file {runner_temp.as_posix()}/db-secret.env {PINNED_DB}")
+    assert next(c for c in calls if c.startswith("run -d --name sut")) == f"run -d --name sut --network qc-net --env-file {runner_temp.as_posix()}/sut-secret.env qc-sut"
+    assert "exec db sh -c pg_isready -h 127.0.0.1" in calls
+    assert not leaks(done, calls) and f"::add-mask::{MARKER}-tok" in done.stdout and f"::add-mask::{MARKER}-db" in done.stdout   # được yêu cầu che, không lọt ra chỗ khác
+    assert (runner_temp / "sut-secret.env").read_text(encoding="utf-8").splitlines() == [f"DATABASE_URL=postgresql://a:{MARKER}-url@db:5432/app", f"TOKEN={MARKER}-tok"]
+    assert (runner_temp / "db-secret.env").read_text(encoding="utf-8") == f"POSTGRES_PASSWORD={MARKER}-db\n"
+    if os.name != "nt":
+        assert oct((runner_temp / "sut-secret.env").stat().st_mode & 0o777) == "0o600"
+
+
+@needs_bash
+def test_a_secret_without_a_db_still_reaches_the_sut_by_env_file(start):
+    done, calls, runner_temp = start(SUT_SECRET_ENV=f"SECRET_KEY={MARKER}")
+    assert done.returncode == 0 and f"run -d --name sut --network qc-net --env-file {runner_temp.as_posix()}/sut-secret.env qc-sut" in calls
+    assert not any(c.startswith("run -d --name db") for c in calls) and not (runner_temp / "db-secret.env").exists()
+    assert not leaks(done, calls)
+
+
+@needs_bash
+@pytest.mark.parametrize("env, message", [
+    ({"SUT_DB_IMAGE": "postgres:17", "SUT_DB_READY_CMD": "true"}, "phải ghim theo digest"),
+    ({"SUT_DB_IMAGE": PINNED_DB}, "sut_db_ready_cmd hoặc sut_db_port"),
+    ({"SUT_DB_IMAGE": "--privileged", "SUT_DB_READY_CMD": "true"}, "sut_db_image không hợp lệ"),
+    ({"SUT_DB_IMAGE": PINNED_DB, "SUT_DB_PORT": "5432; id"}, "sut_db_port không hợp lệ"),
+])
+def test_invalid_db_inputs_stop_before_any_container_starts(start, env, message):
+    done, calls, _ = start(**env)
+    assert done.returncode == 1 and message in done.stdout and calls == ["network create qc-net"]
+
+
+@needs_bash
+def test_an_unpinned_db_image_is_allowed_only_with_allow_unpinned_image(start):
+    done, calls, _ = start(SUT_DB_IMAGE="postgres:17", SUT_DB_READY_CMD="true", ALLOW_UNPINNED="true")
+    assert done.returncode == 0 and "::warning::sut_db_image không ghim theo digest" in done.stdout and any(c.endswith(" postgres:17") for c in calls)
+
+
+@needs_bash
+@pytest.mark.parametrize("secret_name, text", [("SUT_SECRET_ENV", f"GOOD=1\nnot a pair {MARKER}"), ("SUT_DB_SECRET_ENV", f"{MARKER}"), ("SUT_SECRET_ENV", f"1BAD={MARKER}")])
+def test_a_malformed_secret_line_fails_without_printing_it(start, secret_name, text):
+    done, calls, _ = start(**{"SUT_DB_IMAGE": PINNED_DB, "SUT_DB_READY_CMD": "true", secret_name: text})
+    assert done.returncode == 1 and f"{secret_name} dòng" in done.stdout
+    assert not leaks(done, calls) and not any(c.startswith("run -d --name sut") for c in calls)
+
+
+@needs_bash
+@pytest.mark.parametrize("env", [{"FAKE_DB_EXEC_RC": "1"}, {"FAKE_DB_RUNNING": "false"}])
+def test_a_db_that_never_gets_ready_or_exits_turns_the_step_red_with_its_logs_only(start, env):
+    done, calls, _ = start(SUT_DB_IMAGE=PINNED_DB, SUT_DB_READY_CMD="pg_isready", SUT_DB_SECRET_ENV=f"POSTGRES_PASSWORD={MARKER}", **env)
+    assert done.returncode == 1 and "::error::db không sẵn sàng sau 120s" in done.stdout
+    assert "logs db" in calls and not any(c.startswith("build") for c in calls)                  # SUT không được dựng khi DB hỏng
+    assert not leaks(done, calls)
+
+
+@needs_bash
+def test_the_port_probe_is_used_when_only_sut_db_port_is_given(start):
+    done, calls, _ = start(SUT_DB_IMAGE=PINNED_DB, SUT_DB_PORT="5432")
+    assert done.returncode == 0 and not any(c.startswith("exec db") for c in calls)
+    joined = " ".join(calls)                                                                      # mã thăm dò nhiều dòng nên một lệnh trải trên nhiều dòng log
+    assert "run --rm --network qc-net --entrypoint python qc-agent:dev -c import socket, sys" in joined and ".close() db 5432" in joined

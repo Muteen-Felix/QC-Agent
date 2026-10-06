@@ -113,6 +113,12 @@ def _posix(path) -> str:
     return text
 
 
+def _native_posix(path) -> str:
+    """$RUNNER_TEMP: nơi workflow ghi file mà chính docker CLI đọc (`--env-file`), nên phải là đường dẫn Windows hợp lệ (`C:/x`, dấu gạch chéo) chứ không phải
+    `/c/x` của Git Bash. Cả bash lẫn `docker -v` đều nhận dạng này. Linux/macOS: giữ nguyên."""
+    return Path(path).as_posix() if os.name == "nt" else str(path)
+
+
 def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: dict, *, skip=("Pull qc-agent image",), echo=print,
                  policy_dir=None, step_env=None, runner_temp=None, job: str = "gate") -> dict:
     data = yaml.safe_load(Path(workflow_path).read_text(encoding="utf-8"))
@@ -150,7 +156,7 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
                 echo(f"[skip] {name} (bước trước lỗi)")
                 continue
             output_file.write_text("", encoding="utf-8")
-            env = {**os.environ, "MSYS_NO_PATHCONV": "1", "GITHUB_OUTPUT": _posix(output_file), "RUNNER_TEMP": _posix(runner_temp), **workflow_env}
+            env = {**os.environ, "MSYS_NO_PATHCONV": "1", "GITHUB_OUTPUT": _posix(output_file), "RUNNER_TEMP": _native_posix(runner_temp), **workflow_env}
             env.update({k: str(v) for k, v in github.get("env", {}).items()})
             env.update({k: ctx.render(v) for k, v in (step.get("env") or {}).items()})
             for key, value in (step_env or {}).get(name, {}).items():   # ghi đè theo tên bước; giá trị None = xoá biến
@@ -162,7 +168,12 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
             proc = subprocess.run([bash, "-e", "-c", step["run"]], cwd=workspace, env=env, text=True, encoding="utf-8",
                                   capture_output=True)
             tail = int(os.environ.get("QC_HARNESS_TAIL", "25"))   # số dòng cuối của MỖI luồng (stdout, stderr) được in
-            for line in proc.stdout.splitlines()[-tail:] + proc.stderr.splitlines()[-tail:]:
+            # Như runner của GitHub: dòng `::add-mask::<giá trị>` là lệnh, không phải log. Nuốt nó (không in) và ghi lại để test biết giá trị nào đã được yêu cầu che;
+            # KHÔNG thay giá trị bằng `***` trong log, nên giá trị mà script lỡ in ra ở chỗ khác vẫn lộ trong log harness và test bắt được.
+            prefix = "::add-mask::"
+            masks = [line[len(prefix):] for line in proc.stdout.splitlines() if line.startswith(prefix)]
+            shown = [line for line in proc.stdout.splitlines() if not line.startswith(prefix)]
+            for line in shown[-tail:] + proc.stderr.splitlines()[-tail:]:
                 echo("       " + line)
             outputs = {}
             for line in output_file.read_text(encoding="utf-8").splitlines():
@@ -171,7 +182,7 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
                     outputs[key] = value
             if step.get("id"):
                 ctx.steps[step["id"]] = {"outputs": outputs, "outcome": "success" if proc.returncode == 0 else "failure"}
-            results[name] = {"returncode": proc.returncode, "outputs": outputs}
+            results[name] = {"returncode": proc.returncode, "outputs": outputs, "masks": masks}
             if proc.returncode != 0 and not step.get("continue-on-error"):
                 failed = True
     return results

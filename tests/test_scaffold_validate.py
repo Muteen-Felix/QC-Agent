@@ -815,3 +815,41 @@ def test_proven_health_scope_validates_without_a_health_verify(tmp_path):
     files = {"Dockerfile": "FROM x\nCOPY apps/a/ ./a\nEXPOSE 8000\n", "apps/a/main.py": _health_svc("/health"), "apps/b/main.py": _health_svc("/api/health")}
     sut, projects = generate_tree(tmp_path, files)
     assert not [f for f in by_level(check(tmp_path, sut, projects), v.ERROR) if "sut_health_path" in f.message]
+
+
+# ---------- SUT cần database (S4-09): WARN, không ERROR ----------
+
+def db_sut(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    (sut / "app").mkdir(exist_ok=True)
+    (sut / "app" / "main.py").write_text("import os\nURL = os.environ['DATABASE_URL']\n", encoding="utf-8")
+    return sut, projects
+
+
+def test_database_url_in_the_code_without_a_db_service_is_a_warning_not_an_error(tmp_path):
+    sut, projects = db_sut(tmp_path)
+    report = check(tmp_path, sut, projects)
+    assert not by_level(report, v.ERROR), messages(report)
+    warn = messages(report, v.WARN)
+    assert "DATABASE_URL (app/main.py)" in warn and "sut_db_image" in warn and "sut_base_url" in warn
+
+
+@pytest.mark.parametrize("declare", [{"sut_db_image": "postgres@sha256:" + "b" * 64, "sut_db_ready_cmd": "pg_isready"}, {"sut_base_url": "http://sut.internal:8000"}])
+def test_declaring_a_db_service_or_a_base_url_silences_the_database_warning(tmp_path, declare):
+    sut, projects = db_sut(tmp_path)
+    edit_workflow(sut, lambda job: job["with"].update(declare))
+    report = check(tmp_path, sut, projects)
+    assert "DATABASE_URL" not in messages(report, v.WARN) and not by_level(report, v.ERROR), messages(report)
+
+
+def test_code_without_database_variables_gets_no_database_warning(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    assert "DATABASE_URL" not in messages(check(tmp_path, sut, projects), v.WARN)
+
+
+def test_strict_turns_the_database_warning_into_a_failure_but_the_default_does_not(tmp_path, capsys):
+    sut, projects = db_sut(tmp_path)
+    args = ["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--workers-dir", str(ROOT / "workers")]
+    assert cli_main(args) == 0
+    assert cli_main([*args, "--strict"]) == 3
+    assert "DATABASE_URL" in capsys.readouterr().out

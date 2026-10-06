@@ -91,6 +91,14 @@ repo: "my-org/my-app"     # phải trùng repo chạy gate, sai thì exit 3
 Phần policy bỏ trống thì kế thừa `_default` (dict gộp theo key, **list thay thế**, `modes.pr.blocking_suites` không được rỗng). Đổi đăng ký thì server dashboard cần redeploy để thấy.
 Không có cách tự đăng ký từ repo của bạn: chủ ý, để phòng QC review thay đổi chính sách.
 
+## SUT cần database
+
+Gate chạy **một container** SUT và chờ nó trả lời HTTP trong 120 s. SUT đòi database lúc khởi động (vd. API đọc `DATABASE_URL` rồi thoát khi không nối được) không qua được nếu chỉ có `sut_env`. `init` và `validate` **cảnh báo** (không lỗi) khi mã SUT tham chiếu `DATABASE_URL` hoặc biến DB tương tự mà `qc.yml` không khai DB. Chọn một cách (chi tiết ở [usage-ci.md](usage-ci.md), mục "SUT cần database"):
+
+- SUT có chế độ chạy không DB: bật bằng `sut_env`.
+- Đã có môi trường chạy sẵn: `sut_base_url`.
+- DB phụ: bỏ comment mẫu `sut_db_image` (ghim digest), `sut_db_env`, `sut_db_ready_cmd` trong `qc.yml`, và đặt hai secret của repo `SUT_SECRET_ENV` (cho SUT, chứa `DATABASE_URL=...@db:<cổng>/...`) và `SUT_DB_SECRET_ENV` (cho container DB, vd. `POSTGRES_PASSWORD=...`). Loại DB do SUT chọn; migration là việc của image SUT.
+
 ## Giới hạn cần biết
 
 - `init` luôn sinh một **khung integration trung tính** cho mọi repo, đuôi `.example` (suite `integration`, `integration-live` và ba file trong `.qc-agent/integration/`): **chưa hoạt động**, qc-agent bỏ qua nó. Repo không cần tích hợp thì không phải làm gì. Repo có thành phần nội bộ giả lập hoặc hệ thống ngoài thì bỏ đuôi `.example` ở cả 5 file, viết kiểm tra thật (qc-agent không biết giao thức của sản phẩm), điền `b_host` thật và `.qc-agent/har/<tên>.har` đã lọc nếu dùng Tầng 2, rồi chạy `qc-agent validate` tới khi sạch. Muốn PR chạy suite thì còn phải đăng ký `integration` trong `blocking_suites` của policy project (PR vào qc-agent). Gate PR chỉ dùng bản phát lại; suite `integration-live` chạm hệ thống thật chỉ chạy manual.
