@@ -44,7 +44,9 @@ class PrunedDiff:
 
 
 def _git(repo: Path, *args: str) -> bytes:
-    run = subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=repo,
+    # safe.directory=*: gate chạy container với `--user <uid runner>` trên checkout bind-mount; Docker Desktop hoặc runner tự host (chủ thư mục lệch)
+    # thì git từ chối ("dubious ownership") và Select lùi về FULL SET. Chỉ áp cho lệnh ĐỌC (diff/show/merge-base) tại SUT root do vận hành chỉ định.
+    run = subprocess.run(["git", "-c", "core.quotepath=off", "-c", "safe.directory=*", *args], cwd=repo,
                          capture_output=True, timeout=30, check=False)
     if run.returncode:
         raise ValueError("git diff khong thanh cong")
