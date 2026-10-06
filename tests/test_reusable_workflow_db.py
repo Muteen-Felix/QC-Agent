@@ -88,7 +88,7 @@ def test_the_secrets_stay_in_the_container_env_but_the_files_and_containers_are_
 def test_a_wrong_database_password_is_rejected_by_the_db_so_the_secret_path_is_really_exercised(tmp_path):
     secrets = {**SECRETS, "SUT_SECRET_ENV": "DATABASE_URL=postgresql://app:wrong-password@db:5432/app"}
     results, log = start(tmp_path, db_inputs(), secrets, skip=AFTER_START)
-    assert results["Start SUT"]["returncode"] != 0 and "sut không sẵn sàng sau 120s" in log and "không kết nối được DB" in log
+    assert results["Start SUT"]["returncode"] != 0 and "sut đã thoát trước khi sẵn sàng" in log and "không kết nối được DB" in log
 
 
 def test_without_the_db_service_the_sut_never_answers_and_start_sut_turns_red_with_a_clear_message(tmp_path):
@@ -96,7 +96,7 @@ def test_without_the_db_service_the_sut_never_answers_and_start_sut_turns_red_wi
     secrets = {"SUT_SECRET_ENV": f"DATABASE_URL=postgresql://app:{MARKER}@db:5432/app"}
     results, log = start(tmp_path, inputs, secrets, skip=("Pull qc-agent image", "Report (Check Run, PR comment, history, webhook)", "Upload run artifacts"))
     assert results["Start SUT"]["returncode"] != 0 and "Run qc-agent gate" not in results
-    assert "::error::sut không sẵn sàng sau 120s" in log and "không kết nối được DB" in log     # lỗi của SUT nằm trong log container được in kèm
+    assert "::error::sut đã thoát trước khi sẵn sàng" in log and "không kết nối được DB" in log     # lỗi của SUT nằm trong log container được in kèm
     assert results["Enforce gate result"]["returncode"] == 1 and MARKER not in log             # job đỏ, không xanh giả
     assert not (tmp_path / "rt" / "sut-secret.env").exists()                                   # cleanup (always) vẫn chạy sau khi Start SUT hỏng
 

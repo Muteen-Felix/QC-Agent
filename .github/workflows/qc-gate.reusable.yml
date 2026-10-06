@@ -259,14 +259,16 @@ jobs:
           DB_PROBE='import socket, sys
           socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=2).close()'
           wait_ready() {  # $1 = tên container, $2 = URL thăm dò
-            local ready=0
+            local ready=0 exited=0
             for _ in $(seq 1 60); do
               if docker run --rm --network qc-net --entrypoint python "$IMAGE" -c "$PROBE" "$2" 2>/dev/null; then ready=1; break; fi
+              if [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" != "true" ]; then exited=1; break; fi   # container đã chết: chờ tiếp vô ích
               sleep 2
             done
             if [ "$ready" != 1 ]; then
               docker logs "$1" 2>&1 | tail -50
-              echo "::error::$1 không sẵn sàng sau 120s"; exit 1
+              if [ "$exited" = 1 ]; then echo "::error::$1 đã thoát trước khi sẵn sàng"; else echo "::error::$1 không sẵn sàng sau 120s"; fi
+              exit 1
             fi
           }
           # Bí mật của SUT/DB (nhiều dòng KEY=VALUE) -> file 600 trong $RUNNER_TEMP, truyền bằng --env-file: không nằm trên dòng lệnh, không in giá trị.

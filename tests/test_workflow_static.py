@@ -608,7 +608,8 @@ def start(tmp_path):
     bindir = tmp_path / "fakebin"
     bindir.mkdir()
     (bindir / "docker").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$DOCKER_LOG"\n'
-                                   '[ "$1" = inspect ] && echo "${FAKE_DB_RUNNING:-true}"\n'
+                                   'if [ "$1" = inspect ]; then if [ "${!#}" = sut ]; then echo "${FAKE_SUT_RUNNING:-true}"; else echo "${FAKE_DB_RUNNING:-true}"; fi; fi\n'
+                                   '[ "$1" = run ] && [[ " $* " == *" --rm "* ]] && exit "${FAKE_PROBE_RC:-0}"\n'
                                    '[ "$1" = exec ] && exit "${FAKE_DB_EXEC_RC:-0}"\nexit 0\n', encoding="utf-8", newline="\n")
     (bindir / "sleep").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n")
     for name in ("docker", "sleep"):
@@ -721,3 +722,23 @@ def test_the_port_probe_is_used_when_only_sut_db_port_is_given(start):
     assert done.returncode == 0 and not any(c.startswith("exec db") for c in calls)
     joined = " ".join(calls)                                                                      # mã thăm dò nhiều dòng nên một lệnh trải trên nhiều dòng log
     assert "run --rm --network qc-net --entrypoint python qc-agent:dev -c import socket, sys" in joined and ".close() db 5432" in joined
+
+
+@needs_bash
+def test_a_sut_container_that_already_died_fails_right_away_with_its_logs_instead_of_waiting_out_the_loop(start):
+    done, calls, _ = start(FAKE_PROBE_RC="1", FAKE_SUT_RUNNING="false")
+    assert done.returncode == 1 and "::error::sut đã thoát trước khi sẵn sàng" in done.stdout and "sau 120s" not in done.stdout
+    assert "logs sut" in calls and sum(c.startswith("run --rm") for c in calls) == 1              # thăm dò đúng một lần rồi dừng
+
+
+@needs_bash
+def test_a_sut_that_is_alive_but_never_answers_still_waits_the_full_loop_then_reports_the_timeout(start):
+    done, calls, _ = start(FAKE_PROBE_RC="1")
+    assert done.returncode == 1 and "::error::sut không sẵn sàng sau 120s" in done.stdout
+    assert sum(c.startswith("run --rm") for c in calls) == 60 and "logs sut" in calls
+
+
+@needs_bash
+def test_a_sut_that_answers_on_the_first_probe_is_not_affected(start):
+    done, calls, _ = start()
+    assert done.returncode == 0 and sum(c.startswith("run --rm") for c in calls) == 1 and not any(c.startswith("inspect") for c in calls)
