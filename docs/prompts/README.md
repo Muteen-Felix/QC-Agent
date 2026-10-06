@@ -48,6 +48,8 @@ flowchart LR
     D5 --> D7[S4-07 runbook + log + đóng gói]
     D9 -. SUT cần DB .-> D6
     D8[S4-08 scanner init monorepo] --> D10[S4-10 validate bắt lỗi cấu hình]
+    D8 --> D11[S4-11 health path monorepo]
+    D10 -. nên nối tiếp .-> D11
   end
   S1 --> S2 --> S3 --> S4
 ```
@@ -56,7 +58,7 @@ Chạy song song được, nếu có hai người hoặc hai worktree:
 - **S1**: S1-03 chạy song song với S1-01/S1-02.
 - **S2**: S2-03 chạy song song với S2-02; S2-06 chạy song song với S2-04/05.
 - **S3**: S3-05 và S3-06 chạy song song sau S3-03.
-- **S4**: S4-05b làm ngay (không phụ thuộc S4-01…03); nhánh onboarding S4-08 → S4-10 độc lập với phần còn lại. S4-05b và S4-05 cùng sửa `tools/run_reusable_locally.py` nên phải nối tiếp.
+- **S4**: S4-05b làm ngay (không phụ thuộc S4-01…03); nhánh onboarding S4-08 → S4-10 → S4-11 độc lập với phần còn lại. S4-05b và S4-05 cùng sửa `tools/run_reusable_locally.py` nên phải nối tiếp. **Khuyến nghị làm tuần tự S4-08 → S4-10 → S4-11 trên một worktree** vì S4-10 và S4-11 cùng sửa `docs/user-guide-sprint-1.md` và `tests/test_scaffold_validate.py`; chỉ song song nếu tách worktree và chủ động xử lý merge (S4-11 chỉ bắt buộc sau S4-08).
 
 ## Danh mục
 
@@ -95,8 +97,9 @@ Chạy song song được, nếu có hai người hoặc hai worktree:
 | [S4-05](sprint-4/S4-05-local-harness.md) harness trọn chuỗi | S4.5 | Docker |
 | [S4-06](sprint-4/S4-06-e2e-sandbox.md) E2E trên repo sandbox | S4.6 (+ kiểm tay DoD S1) | repo sandbox public/gói trả phí, Jira sandbox, API key, xác nhận câu hỏi #3 |
 | [S4-07](sprint-4/S4-07-runbook-logs-packaging.md) runbook, log, đóng gói | S4.7 + file đóng gói | — |
-| [S4-08](sprint-4/S4-08-init-scanner-monorepo.md) scanner `init` cho monorepo | S4.8 | — |
+| [S4-08](sprint-4/S4-08-init-scanner-monorepo.md) scanner `init` cho monorepo (tìm thấy ≠ xác nhận, context từ `COPY`) | S4.8 | — |
 | [S4-10](sprint-4/S4-10-validate-config-errors.md) `validate` bắt lỗi cấu hình | S4.10 | — |
+| [S4-11](sprint-4/S4-11-health-path-monorepo.md) chọn health path đúng service | S4.11 | — |
 | [dod-verify](dod-verify.md) nghiệm thu một sprint | DoD từng sprint | tuỳ sprint |
 
 ## Hiệu chỉnh so với plan (đã áp vào các prompt)
@@ -162,6 +165,7 @@ Tìm ra khi đối chiếu plan với code và với API thật (tài liệu Cla
 20. **Đo token của pruner tách FULL SET** (S4-04), cùng công thức `eval_selector` đã sửa 2026-10-06: diff đi FULL SET không gọi LLM nên không tính vào median giảm token. Baseline recall là số đo thật `eval/selector-real.json` (97,1%), không chỉ ngưỡng 90%.
 21. **S4.9 chọn phương án (b): dịch vụ DB phụ tuỳ chọn trong reusable workflow** (quyết định của Felix, 2026-10-06), khác đề xuất (a)-trước ban đầu. DB là tuỳ chọn: SUT không cần DB giữ đường chạy cũ; không mặc định PostgreSQL; bí mật qua secret, không qua `sut_env`. Vì thêm input cho workflow nên S4-09 làm **trước** S4-01. `docs/implementation-plan.md` không sửa trong đợt cập nhật prompt này.
 22. **Thứ tự Jira → Report trong `qc-gate.reusable.yml` là có chủ ý** (S4-01): Report dựng Check Run nên phải sau Jira để hiện cảnh báo Jira 401/503.
+23. **S4-08 rộng hơn plan S4.8** (rà soát 2026-10-06; `docs/implementation-plan.md` S4.8 giữ nguyên): (a) sửa `init.py` làm mất `qc-agent:todo VERIFY` khi giá trị trùng mặc định của workflow (`sut_dockerfile`, `sut_context`), bằng một helper dùng chung; (b) context suy từ nguồn `COPY`/`ADD` theo từng context ứng viên, mơ hồ hoặc không phân tích được thì VERIFY, không suy từ vị trí Dockerfile; (c) hàm kiểm `COPY` trả cấu trúc (nguồn được phân loại) để S4-10 và S4-11 dùng chung; (d) luật ưu tiên Dockerfile chỉ là gợi ý, một ứng viên có dấu hiệu là web/service khác cũng phải VERIFY. **Health path không nằm ở S4-08**: đã tách thành task S4.11 của plan (cùng lỗi gốc: quét toàn repo, không biết service nào đã chọn).
 
 ## Cần bạn quyết (prompt sẽ dừng lại hỏi đúng chỗ)
 
