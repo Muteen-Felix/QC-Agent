@@ -146,6 +146,7 @@ def _produce(args, root: Path, existing: dict | None = None) -> tuple[ParsedPRD,
     if not _use_agent(args):
         return prd, generate(prd, model=settings.get().gt_model, egress_dir=_egress_dir(args, root), source=_source(prd_path, root),
                                   auth=auth), analysis, facts
+    event(log, "gt.cache", logging.INFO, skipped="agent")   # agent đọc mã nguồn qua nhiều lượt: cache theo PRD sẽ trả kết quả cũ khi code đổi (cache.py)
     from qc_agent.groundtruth import agent as gt_agent   # import lười: chỉ khi bật agent (kéo theo vòng lặp LLM nhiều lượt)
     result = gt_agent.generate_agent(prd, model=settings.get().gt_agent_model, egress_dir=_egress_dir(args, root), source_root=_source_root(args, root),
                                      openapi_spec=spec, facts=facts, existing=existing, source=_source(prd_path, root), auth=auth)
@@ -185,6 +186,7 @@ def _summary(command: str, prd: ParsedPRD, gen: GenerateResult, catalog: dict, o
                   "cache_creation_input_tokens": usage.cache_creation_input_tokens, "cache_read_input_tokens": usage.cache_read_input_tokens},
         "files": [{"path": o.label, "status": o.status} for o in outcomes],
         "generator": "agent" if getattr(gen, "agent", None) else "single",
+        "cache_hit": bool(getattr(gen, "cache_hit", False)),
     }
     if getattr(gen, "agent", None):
         out["agent"] = gen.agent
@@ -222,7 +224,10 @@ def _print_summary(summary: dict) -> None:
     for file in summary["files"]:
         print(f"{file['status']:<12} {file['path']}")
     usage = summary["usage"]
-    print(f"token: vào {usage['input_tokens']}, ra {usage['output_tokens']}")
+    if summary["cache_hit"]:
+        print(f"cache: HIT, không gọi LLM (token {usage['input_tokens']}/{usage['output_tokens']} là của lần sinh gốc)")
+    else:
+        print(f"token: vào {usage['input_tokens']}, ra {usage['output_tokens']}")
     print("Tiếp theo: commit và mở PR; QA đổi draft -> approved (hoặc rejected kèm lý do), rồi `qc-agent gt validate`.")
 
 

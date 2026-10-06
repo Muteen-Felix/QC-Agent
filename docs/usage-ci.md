@@ -70,7 +70,13 @@ Ghim `@<COMMIT-SHA>` (không dùng `@main`) để một thay đổi ở qc-agent
 
 **Tên file và job:** `init` sinh `.github/workflows/qc-gate.yml` (cùng `qc-groundtruth.yml`). Job id vẫn là `qc` nên Check Run `qc-agent / <project>` và branch protection không đổi. Repo cũ dùng `qc.yml` **vẫn chạy**: `validate` và `refine` nhận cả hai tên, `validate` chỉ ghi một NOTE. `init` thấy `qc.yml` thì **không** sinh `qc-gate.yml` (tránh hai job cùng project, hai Check Run) mà in hướng dẫn; việc đổi tên là của bạn: `git mv .github/workflows/qc.yml .github/workflows/qc-gate.yml`, rồi thêm khối `workflow_dispatch` ở trên nếu muốn chạy tay. Chạy `init --force` chỉ ghi thêm `qc-gate.yml`, không xoá `qc.yml`.
 
-Gate lưu cache kết quả Select ở `~/.cache/qc-agent/select` bằng `actions/cache` (ghim SHA). Hiện mới là chỗ đặt, nội dung và khoá cache thật do bước S4-02 quyết định.
+**Cache kết quả Select.** Trên PR, chạy lại cùng một thay đổi thì Select không gọi LLM nữa (`selection.json` có `source: "cache"` và `llm.cache_hit: true`). Cache nằm ở `~/.cache/qc-agent/select` (`QC_SELECT_CACHE_DIR`; `none` = tắt), được `actions/cache/restore` và `actions/cache/save` (ghim SHA) mang qua các lần chạy; lưu ngay sau Select nên gate BLOCKED không làm mất cache.
+- Mỗi entry là một file đặt tên theo hash của diff đã prune + module-map + policy + model + prompt + danh sách worker/suite. Đổi một trong các thứ đó là miss.
+- Chỉ lưu phần LLM chọn thêm. Floor, rules và FULL SET luôn được tính lại; fallback (LLM lỗi, 529, timeout…) không bao giờ được lưu, nên một lần lỗi thoáng qua không bị "đóng băng".
+- Lỗi đọc/ghi cache (file hỏng, đĩa đầy, thiếu quyền) chỉ là miss, không làm đỏ job.
+- **Mô hình rủi ro:** cache của Actions tách theo ref; PR đọc được cache của nhánh gốc nhưng không ghi được vào đó. Kịch bản xấu nhất là cache của chính PR đó bị đầu độc để Select chọn *thiếu* worker ngoài floor trong đúng PR đó, tương đương injection vào prompt; floor vẫn do `core` ép. Entry được kiểm lại theo schema và theo allowlist hiện tại khi đọc.
+
+**Cache sinh Ground-Truth** (`qc-groundtruth.yml`): bộ sinh MỘT lời gọi (mặc định) lưu output đã validate của LLM ở `~/.cache/qc-agent/gt` (`QC_GT_CACHE_DIR`); chạy lại cùng PRD + OpenAPI + model + prompt + `auth.yaml` thì không gọi LLM mà vẫn render ra đúng các file. Input `agent: true` **không** dùng cache vì agent đọc mã nguồn qua nhiều lượt.
 
 ### Web UI (tuỳ chọn, cho suite UI/Midscene)
 SUT có giao diện web dựng riêng khỏi API thì khai thêm; không khai thì workflow chạy như trước.

@@ -408,14 +408,19 @@ jobs:
             ${{ runner.temp }}/refine/suggestions.json
           retention-days: 14
 
-      # Chỗ đặt cho cache kết quả Select (S4-02 quyết định nội dung và khoá thật). Khoá tạm theo project + SHA; restore-keys lấy bản mới nhất của project.
-      - name: Cache Select results
+      # Cache kết quả Select (S4-02, selector/cache.py): mỗi entry là một file đặt tên theo hash của (diff, policy, module-map, model, prompt, allowlist) nên khoá Actions
+      # chỉ là định danh của lần chạy, KHÔNG phải khoá nội dung. Khoá có run_id để MỖI lần chạy đều lưu được (khoá cố định thì lần restore khớp tuyệt đối làm bước save bị bỏ,
+      # entry mới bị mất). Tách restore/save: `actions/cache` gộp chỉ lưu khi job thành công, mà gate BLOCKED làm job đỏ nên chạy lại cùng commit sẽ không có cache.
+      # Best-effort: lỗi cache không bao giờ làm hỏng job. Actions cache tách theo ref (PR đọc được cache của nhánh gốc nhưng không ghi được vào đó), xem docs/usage-ci.md.
+      - name: Restore Select cache
         if: github.event_name == 'pull_request'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.cache/qc-agent/select
-          key: qc-select-${{ inputs.project }}-${{ github.sha }}
+          key: qc-select-${{ inputs.project }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            qc-select-${{ inputs.project }}-${{ github.sha }}-
             qc-select-${{ inputs.project }}-
 
       - name: Select (PR)
@@ -442,6 +447,14 @@ jobs:
             echo "ok=false" >> "$GITHUB_OUTPUT"
           fi
           exit 0
+
+      - name: Save Select cache
+        if: always() && github.event_name == 'pull_request' && steps.select.outputs.ok == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/qc-agent/select
+          key: qc-select-${{ inputs.project }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Run qc-agent gate
         id: gate

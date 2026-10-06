@@ -24,6 +24,14 @@ def _fixture_workers(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_llm_cache(monkeypatch):
+    """Cache LLM (S4-02) mặc định ghi vào ~/.cache của máy dev: test lặp cùng đầu vào giả sẽ chép kết quả của test khác hoặc của lần chạy hôm qua. Tắt mặc định;
+    test cache tự bật bằng thư mục tạm (monkeypatch.setenv lại QC_SELECT_CACHE_DIR / QC_GT_CACHE_DIR)."""
+    monkeypatch.setenv("QC_SELECT_CACHE_DIR", "none")
+    monkeypatch.setenv("QC_GT_CACHE_DIR", "none")
+
+
+@pytest.fixture(autouse=True)
 def _repo_on_pythonpath(monkeypatch):
     """Worker giả (tests.fixtures.workers.*) được spawn bằng `python -m`: cần gốc repo trên PYTHONPATH kể cả khi cwd là SUT root."""
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join(p for p in [str(ROOT), os.environ.get("PYTHONPATH", "")] if p))

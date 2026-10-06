@@ -599,6 +599,7 @@ def check_only(cfg: dict, prd, golden: dict) -> int:
 
 
 def main(argv: list[str]) -> int:
+    os.environ["QC_GT_CACHE_DIR"] = "none"   # đo model: cache sẽ làm các lượt lặp trả cùng một kết quả và sai số liệu/chi phí (S4-02)
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")

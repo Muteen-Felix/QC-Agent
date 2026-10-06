@@ -747,7 +747,7 @@ def test_a_sut_that_answers_on_the_first_probe_is_not_affected(start):
 # ==================== S4-01: bản cuối của hai reusable workflow ====================
 
 ORDER = ["Log in to GHCR", "Pull qc-agent image", "Fetch policy", "Start SUT", "Refine (onboarding suggestions)", "Post refine review", "Upload refine patch",
-         "Cache Select results", "Select (PR)", "Run qc-agent gate", "PR review", "Jira (Low)", "Report (Check Run, PR comment, history, webhook)",
+         "Restore Select cache", "Select (PR)", "Save Select cache", "Run qc-agent gate", "PR review", "Jira (Low)", "Report (Check Run, PR comment, history, webhook)",
          "Upload run artifacts", "Clean up SUT", "Enforce gate result"]
 
 
@@ -761,18 +761,27 @@ def test_gate_steps_run_in_the_final_order_with_jira_before_the_report():
 def test_every_action_in_both_reusable_workflows_is_pinned_to_a_40_char_sha_including_actions_cache():
     gate_uses = [s["uses"] for s in STEPS if "uses" in s]
     gt_uses = [s["uses"] for job in GT_JOBS.values() for s in job["steps"] if "uses" in s]
-    assert any(u.startswith("actions/cache@") for u in gate_uses)
+    assert any(u.startswith("actions/cache/restore@") for u in gate_uses) and any(u.startswith("actions/cache/save@") for u in gate_uses)
     for used in gate_uses + gt_uses:
         assert USES.fullmatch(used), used
 
 
-def test_select_cache_step_is_a_pr_only_placeholder_before_select_and_is_mounted_into_the_container():
-    cache = step("Cache Select results")
-    assert cache["if"] == "github.event_name == 'pull_request'" and cache["with"]["path"] == "~/.cache/qc-agent/select"
-    assert "secrets." not in repr(cache) and "${{ inputs.project }}" in cache["with"]["key"]
-    assert NAMES.index("Cache Select results") + 1 == NAMES.index("Select (PR)")
-    select = step("Select (PR)")["run"]
-    assert '-v "$HOME/.cache/qc-agent/select:/cache"' in select and "QC_SELECT_CACHE_DIR=/cache" in select and 'mkdir -p runs "$HOME/.cache/qc-agent/select"' in select
+# ==================== S4-02: cache Select và cache GT ====================
+
+def test_select_cache_is_restored_before_select_and_saved_right_after_even_when_the_gate_fails_later():
+    restore, save, select = step("Restore Select cache"), step("Save Select cache"), step("Select (PR)")
+    assert NAMES.index("Restore Select cache") + 1 == NAMES.index("Select (PR)") and NAMES.index("Select (PR)") + 1 == NAMES.index("Save Select cache")
+    assert NAMES.index("Save Select cache") < NAMES.index("Run qc-agent gate") < NAMES.index("Enforce gate result")   # gate BLOCKED làm job đỏ nhưng cache đã lưu
+    assert restore["uses"].startswith("actions/cache/restore@") and save["uses"].startswith("actions/cache/save@")
+    assert restore["uses"].split("@")[1] == save["uses"].split("@")[1]                                              # cùng một commit đã ghim
+    for item in (restore, save):
+        assert item["continue-on-error"] is True and item["with"]["path"] == "~/.cache/qc-agent/select"          # best-effort: lỗi cache không làm hỏng job
+        assert "github.event_name == 'pull_request'" in item["if"] and "secrets." not in repr(item) and "${{ inputs.project }}" in item["with"]["key"]
+    assert restore["with"]["key"] == save["with"]["key"] and "${{ github.run_id }}" in save["with"]["key"]            # khoá có run_id: mỗi lần chạy đều lưu được entry mới
+    assert "always()" in save["if"] and "steps.select.outputs.ok == 'true'" in save["if"] and "cache-hit" not in save["if"]
+    assert all(line.strip().startswith("qc-select-${{ inputs.project }}-") for line in restore["with"]["restore-keys"].strip().splitlines())
+    run = select["run"]
+    assert '-v "$HOME/.cache/qc-agent/select:/cache"' in run and "QC_SELECT_CACHE_DIR=/cache" in run and 'mkdir -p runs "$HOME/.cache/qc-agent/select"' in run
 
 
 def test_refine_looks_for_its_markers_in_both_caller_names():
@@ -792,9 +801,23 @@ def test_manual_dispatch_with_workers_goes_the_manual_path_and_without_it_the_fu
     assert DATA[True]["workflow_call"]["inputs"]["workers"]["default"] == ""
 
 
-def test_the_groundtruth_workflow_keeps_a_marked_place_for_the_prd_cache_without_a_cache_action_yet():
-    assert "S4-02" in GT_TEXT and "prd_sha256" in GT_TEXT
-    assert not any(str(s.get("uses", "")).startswith("actions/cache@") for job in GT_JOBS.values() for s in job["steps"])
+def test_gt_cache_is_restored_before_generate_and_saved_after_it_and_never_used_by_the_agent():
+    names = [s.get("name") or s.get("uses") for s in gt_steps("generate")]
+    assert names.index("Resolve PRD") < names.index("Restore GT cache") < names.index("Generate Ground-Truth") < names.index("Save GT cache") < names.index("Commit and push to the bot branch")
+    restore, save, generate = gt_step("generate", "Restore GT cache"), gt_step("generate", "Save GT cache"), gt_step("generate", "Generate Ground-Truth")
+    assert restore["uses"].startswith("actions/cache/restore@") and save["uses"].startswith("actions/cache/save@")
+    for item in (restore, save):
+        assert "!inputs.agent" in item["if"] and item["continue-on-error"] is True and item["with"]["path"] == "~/.cache/qc-agent/gt"
+        assert "steps.resolve.outputs.prd_sha256" in item["with"]["key"] and "${{ github.run_id }}" in item["with"]["key"] and "secrets." not in repr(item)
+    assert "steps.generate.conclusion == 'success'" in save["if"] and generate["id"] == "generate"
+    run = generate["run"]
+    assert 'if [ "$AGENT" != "true" ]; then' in run and "QC_GT_CACHE_DIR=/gtcache" in run and '"${cache_mounts[@]}"' in run     # agent: không mount, không đặt env
+    assert "S4-02 chốt khoá" not in GT_TEXT
+
+
+def test_gt_resolve_step_exports_a_validated_prd_sha256_for_the_cache_key():
+    resolve = gt_step("generate", "Resolve PRD")["run"]
+    assert '["prd_sha256"]' in resolve and "^[0-9a-f]{64}$" in resolve and 'echo "prd_sha256=$sha" >> "$GITHUB_OUTPUT"' in resolve
 
 
 # ---- step Refine: chạy THẬT lệnh dò marker (bash, docker giả) với repo chỉ có một trong hai tên caller ----

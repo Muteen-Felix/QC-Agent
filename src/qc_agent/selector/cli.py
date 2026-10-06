@@ -28,7 +28,7 @@ def main(argv: list[str]) -> int:
     try:
         args = parser.parse_args(argv)
         root = Path(args.sut_root).resolve()
-        cfg = project_lib.load_project(args.project, args.projects_dir or settings.get().resolved_projects_dir)
+        cfg, project_info = project_lib.resolve_project(args.project, args.projects_dir or settings.get().resolved_projects_dir)
         suites = project_lib.load_suites(root / cfg["suites_dir"])
         workers = registry.load_many(args.workers_dir or settings.get().workers_dirs)
         suite_map = project_lib.suites_by_worker(cfg, args.mode, suites, workers)
@@ -43,7 +43,7 @@ def main(argv: list[str]) -> int:
         map_path = root / ".qc-agent" / "ground-truth" / "module-map.yaml"
         module_map = yaml.safe_load(map_path.read_text(encoding="utf-8")) if map_path.is_file() else None
         decision = rules.decide([rules.ChangedFile(item.path, item.status) for item in diff.files], policy, module_map, suite_map)
-        selection = agent.select(diff, decision, policy, suite_map, module_map, egress_dir=out.parent)
+        selection = agent.select(diff, decision, policy, suite_map, module_map, egress_dir=out.parent, policy_sha=project_info["sha256"])
         engine_schema = settings.get().resolved_schemas_dir / "selection.json"
         from jsonschema import Draft202012Validator
         Draft202012Validator(json.loads(engine_schema.read_text(encoding="utf-8"))).validate(selection)

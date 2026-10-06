@@ -23,6 +23,7 @@ import yaml
 
 from qc_agent import settings
 from qc_agent.core import egress
+from qc_agent.groundtruth import cache as gt_cache
 from qc_agent.groundtruth import schema as gt_schema
 from qc_agent.groundtruth.prd import ParsedPRD
 from qc_agent.llm import client as llm
@@ -62,6 +63,7 @@ class GenerateResult:
     warnings: tuple[str, ...]
     orphans: tuple[str, ...]         # AC không có TC và cũng không nằm trong uncovered_acs, theo thứ tự PRD
     dropped: int = 0                 # số TC bị bỏ vì vi phạm ngữ nghĩa
+    cache_hit: bool = False          # True: không gọi LLM (cache.py); `usage` là của lần sinh gốc, người cộng chi phí phải bỏ qua lần này
 
 
 class _Drop(Exception):
@@ -331,25 +333,39 @@ def generate(prd: ParsedPRD, *, model: str, egress_dir: Path, transport: httpx.B
                              egress_dir=egress_dir, data_categories=DATA_CATEGORIES, max_tokens=MAX_TOKENS,
                              timeout_s=timeout, policy=policy, transport=transport)
 
-    attempts = 1
-    try:
-        call = ask(None)
-    except llm.LLMError as first:
-        if first.kind != "bad_output":
-            raise GTError(first.kind, str(first)) from None
-        attempts = 2
-        try:
-            call = ask(str(first)[:400])   # vị trí + từ khoá vi phạm, do client dựng: không chứa nội dung PRD hay response
-        except llm.LLMError as second:
-            raise GTError(second.kind, f"{second} (sau 1 lần sửa)") from None
+    cache_dir = settings.get().resolved_gt_cache_dir
+    cache_key = gt_cache.make_key(prd=prd, model=model, prompt_version=version, auth=auth) if cache_dir is not None else None
+    hit = gt_cache.lookup(cache_dir, cache_key, schema) if cache_key else None
+    if cache_key:
+        event(log, "gt.cache", logging.INFO, outcome="hit" if hit else "miss", key=cache_key[:8])
 
-    catalog, warnings, orphans, dropped, merged = _assemble(prd, call.data, model=call.model if call.fallback_from else model, version=version, source=source or prd.prd_id)
+    fallback = False
+    if hit:
+        data, usage, attempts, used_model = hit["data"], hit["usage"], hit["attempts"], model
+    else:
+        attempts = 1
+        try:
+            call = ask(None)
+        except llm.LLMError as first:
+            if first.kind != "bad_output":
+                raise GTError(first.kind, str(first)) from None
+            attempts = 2
+            try:
+                call = ask(str(first)[:400])   # vị trí + từ khoá vi phạm, do client dựng: không chứa nội dung PRD hay response
+            except llm.LLMError as second:
+                raise GTError(second.kind, f"{second} (sau 1 lần sửa)") from None
+        data, usage, fallback = call.data, call.usage, bool(call.fallback_from)
+        used_model = call.model if fallback else model
+
+    catalog, warnings, orphans, dropped, merged = _assemble(prd, data, model=used_model, version=version, source=source or prd.prd_id)
     problems = gt_schema.validate_catalog(catalog)
     if problems:   # lỗi lập trình (conversion sinh catalog sai schema), không phải lỗi của LLM
         raise GTError("bad_output", "catalog sinh ra vi phạm schema: " + "; ".join(problems[:3]))
-    usage = call.usage
+    if cache_key and not hit and not fallback:   # chỉ output ĐÃ validate (cả schema tool lẫn catalog) của lời gọi thành công, đúng model đã yêu cầu
+        stored = gt_cache.store(cache_dir, cache_key, data, usage, attempts)
+        event(log, "gt.cache", logging.INFO, outcome="store" if stored else "store_failed", key=cache_key[:8])
     event(log, "gt.generate", logging.INFO, stories=len(prd.stories), acs=total, test_cases=len(catalog["test_cases"]), orphans=len(orphans),
-          uncovered=len(catalog["uncovered_acs"]), dropped=dropped, merged=merged, attempts=attempts,
+          uncovered=len(catalog["uncovered_acs"]), dropped=dropped, merged=merged, attempts=attempts, cache_hit=bool(hit),
           input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
           cache_creation_input_tokens=usage.cache_creation_input_tokens, cache_read_input_tokens=usage.cache_read_input_tokens)
-    return GenerateResult(catalog=catalog, usage=usage, warnings=tuple(warnings), orphans=tuple(orphans), dropped=dropped)
+    return GenerateResult(catalog=catalog, usage=usage, warnings=tuple(warnings), orphans=tuple(orphans), dropped=dropped, cache_hit=bool(hit))

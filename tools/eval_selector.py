@@ -241,6 +241,7 @@ def _smoke(collected: dict) -> int:
 
 
 def main(argv=None) -> int:
+    os.environ["QC_SELECT_CACHE_DIR"] = "none"   # đo model: cache sẽ làm các lượt lặp trả cùng một kết quả và sai số liệu/chi phí (S4-02)
     parser = argparse.ArgumentParser()
     parser.add_argument("--llm", choices=("fake", "real"), default="fake")
     parser.add_argument("--runs", type=int, default=1)

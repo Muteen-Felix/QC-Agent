@@ -326,7 +326,7 @@ def gate_verdict(findings, infra_blockers, block_on=("critical", "medium")) -> G
 ### Task con
 
 - [ ] **S4.1:** Hoàn thiện reusable workflow và template caller. `workflow_dispatch` đi đường manual.
-- [ ] **S4.2:** Cache kết quả Select theo hash, chạy lại cùng diff thì không gọi LLM. Cache GT theo hash PRD.
+- [x] **S4.2:** Cache kết quả Select theo hash, chạy lại cùng diff thì không gọi LLM. Cache GT theo hash PRD.
 - [ ] **S4.3:** Prompt caching cho phần prefix tĩnh. Đặt trần token: vượt trần thì chạy FULL SET, không bao giờ làm gate đỏ vì chi phí.
 - [ ] **S4.4:** Tinh chỉnh pruner bằng `eval_cost.py` trên golden set của S2, và chạy lại `eval_selector` để chắc recall không tụt.
 - [ ] **S4.5:** Harness local chạy trọn chuỗi (Docker + fake GitHub + fake Jira + fake LLM).

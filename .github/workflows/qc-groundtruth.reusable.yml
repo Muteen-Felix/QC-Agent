@@ -194,7 +194,6 @@ jobs:
           esac
           docker pull "$IMAGE"
 
-      # Chỗ đặt cho cache sinh Ground-Truth theo prd_sha256 (S4-02 chốt khoá, thư mục và logic). Chưa có actions/cache ở đây vì chưa có gì dùng nó.
       - name: Resolve PRD
         id: resolve
         env:
@@ -214,7 +213,10 @@ jobs:
           info=$(docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work:ro" -w /work "$IMAGE" gt info --prd "$PRD" "${oa[@]}")
           id=$(printf '%s' "$info" | python3 -c 'import json, sys; print(json.load(sys.stdin)["prd_id"])')
           if ! [[ "$id" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]]; then echo "::error::prd-id không hợp lệ (cần ^[a-z0-9][a-z0-9-]{0,63}$)"; exit 1; fi
+          sha=$(printf '%s' "$info" | python3 -c 'import json, sys; print(json.load(sys.stdin)["prd_sha256"])')
+          if ! [[ "$sha" =~ ^[0-9a-f]{64}$ ]]; then echo "::error::prd_sha256 không hợp lệ"; exit 1; fi
           echo "prd_id=$id" >> "$GITHUB_OUTPUT"
+          echo "prd_sha256=$sha" >> "$GITHUB_OUTPUT"
           echo "branch=qc-agent/gt/$id" >> "$GITHUB_OUTPUT"
 
       - name: Prepare bot branch
@@ -256,7 +258,21 @@ jobs:
           git archive "origin/$BASE_BRANCH" | tar -x -C "$src"
           echo "dir=$src" >> "$GITHUB_OUTPUT"
 
+      # Cache bộ sinh MỘT lời gọi (S4-02, groundtruth/cache.py): entry đặt tên theo hash của (PRD, OpenAPI, model, prompt, auth) nên khoá Actions chỉ là định danh của lần chạy
+      # (có run_id để mỗi lần đều lưu được). KHÔNG bật khi `agent: true`: agent đọc mã nguồn qua nhiều lượt, cache theo PRD sẽ trả kết quả cũ khi code đổi. Best-effort.
+      - name: Restore GT cache
+        if: ${{ !inputs.agent }}
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/qc-agent/gt
+          key: qc-gt-${{ inputs.project }}-${{ steps.resolve.outputs.prd_id }}-${{ steps.resolve.outputs.prd_sha256 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            qc-gt-${{ inputs.project }}-${{ steps.resolve.outputs.prd_id }}-${{ steps.resolve.outputs.prd_sha256 }}-
+            qc-gt-${{ inputs.project }}-${{ steps.resolve.outputs.prd_id }}-
+
       - name: Generate Ground-Truth
+        id: generate
         env:
           IMAGE: ${{ inputs.image }}
           PRD: ${{ matrix.prd }}
@@ -309,9 +325,22 @@ jobs:
           cmd=generate; if [ -f .qc-agent/ground-truth/test-cases.yaml ]; then cmd=regen; fi
           oa=(); if [ -n "$OPENAPI" ]; then oa=(--openapi "$OPENAPI"); fi
           model_args=(); if [ -n "$MODEL" ]; then model_args=(-e "QC_GT_MODEL=$MODEL"); fi
-          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$egress:/egress" "${agent_mounts[@]}" -w /work \
+          cache_mounts=()
+          if [ "$AGENT" != "true" ]; then
+            mkdir -p "$HOME/.cache/qc-agent/gt"
+            cache_mounts=(-v "$HOME/.cache/qc-agent/gt:/gtcache" -e QC_GT_CACHE_DIR=/gtcache)
+          fi
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -v "$egress:/egress" "${agent_mounts[@]}" "${cache_mounts[@]}" -w /work \
             "${key_args[@]}" "${llm_args[@]}" "${model_args[@]}" "${agent_env[@]}" \
             "$IMAGE" gt "$cmd" --prd "$PRD" --sut-root /work "${oa[@]}" "${agent_args[@]}" --egress-dir /egress --summary-json /egress/summary.json
+
+      - name: Save GT cache
+        if: ${{ !inputs.agent && steps.generate.conclusion == 'success' }}
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/qc-agent/gt
+          key: qc-gt-${{ inputs.project }}-${{ steps.resolve.outputs.prd_id }}-${{ steps.resolve.outputs.prd_sha256 }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Commit and push to the bot branch
         id: push

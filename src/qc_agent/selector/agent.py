@@ -11,12 +11,15 @@ from jsonschema import Draft202012Validator
 
 from qc_agent import settings
 from qc_agent.core import project as project_lib
+from qc_agent.llm import filecache
 from qc_agent.llm.client import LLMError, call_tool
 from qc_agent.logging_setup import event
+from qc_agent.selector import cache as select_cache
 from qc_agent.selector.payload import merge_floor
 
 log = logging.getLogger("qc_agent.selector.agent")
 PROMPT = Path(__file__).parent / "prompts" / "diff_select.md"
+PROMPT_VERSION = "diff-select/1"   # khớp front-matter diff_select.md; khoá cache còn băm cả nội dung prompt nên quên tăng số cũng không trả kết quả cũ
 
 
 def _clean(value: str) -> str:
@@ -43,7 +46,7 @@ def _full(pruned, policy, suite_map, reason: str) -> dict:
 
 
 def select(pruned, rule_decision, policy: dict, suite_map: dict[str, list[str]], module_map: dict | None,
-           *, transport=None, egress_dir=None) -> dict:
+           *, transport=None, egress_dir=None, policy_sha: str | None = None) -> dict:
     result = _base(pruned, policy, suite_map)
     if rule_decision.full_set:
         result.update(full_set=True, suites=sorted(set(policy.get("blocking_suites", [])) | set(policy.get("advisory_suites", []))))
@@ -69,24 +72,40 @@ def select(pruned, rule_decision, policy: dict, suite_map: dict[str, list[str]],
     diff = json.dumps([asdict(item) for item in pruned.files], ensure_ascii=False, sort_keys=True)
     diff = diff.replace("</untrusted_diff", "&lt;/untrusted_diff")
     user = "<untrusted_diff>\n" + diff + "\n</untrusted_diff>"
+    model = settings.get().selector_model
+    cache_dir = settings.get().resolved_select_cache_dir
+    cache_key = cache_info = None
+    if cache_dir is not None:
+        cache_key = select_cache.make_key(diff_sha=pruned.sha256, module_map=module_map, policy_sha=policy_sha or filecache.digest(policy), model=model,
+                                          prompt_version=PROMPT_VERSION, suite_map=suite_map, prompt_sha=filecache.digest([prompt, capabilities]))
+        cache_info = select_cache.lookup(cache_dir, cache_key, allowlist)
+        event(log, "selector.cache", outcome="hit" if cache_info else "miss", key=cache_key[:8])
     try:
-        call = call_tool(purpose="diff-select", model=settings.get().selector_model, system=system, user=user,
-                         tool_name="select_workers", tool_description="Select workers needed for changed files",
-                         input_schema=schema, egress_dir=Path(egress_dir or "."), data_categories=["source_code_diff"],
-                         max_tokens=1024, timeout_s=15, transport=transport)
-        for item in call.data["selections"]:
+        if cache_info is not None:
+            selections, llm_info = cache_info["selections"], {**cache_info["llm"], "cache_hit": True}
+        else:
+            call = call_tool(purpose="diff-select", model=model, system=system, user=user,
+                             tool_name="select_workers", tool_description="Select workers needed for changed files",
+                             input_schema=schema, egress_dir=Path(egress_dir or "."), data_categories=["source_code_diff"],
+                             max_tokens=1024, timeout_s=15, transport=transport)
+            selections = [{"worker": item["worker"], "reason": _clean(item["reason"])} for item in call.data["selections"]]
+            llm_info = {"model": call.model, "prompt_version": PROMPT_VERSION, "input_tokens": call.usage.input_tokens,
+                        "output_tokens": call.usage.output_tokens, "cache_creation_input_tokens": call.usage.cache_creation_input_tokens,
+                        "cache_read_input_tokens": call.usage.cache_read_input_tokens}
+        for item in selections:
             worker = item["worker"]
             if worker not in suite_map:
                 return _full(pruned, policy, suite_map, "unknown_worker")
             result["workers"].append(worker)
             result["suites"].extend(suite_map[worker])
             result["rationale"][worker] = _clean(item["reason"])
-        result["source"] = "llm"
-        result["llm"] = {"model": call.model, "prompt_version": "diff-select/1", "input_tokens": call.usage.input_tokens,
-                         "output_tokens": call.usage.output_tokens, "cache_creation_input_tokens": call.usage.cache_creation_input_tokens,
-                         "cache_read_input_tokens": call.usage.cache_read_input_tokens}
+        result["source"] = "cache" if cache_info is not None else "llm"
+        result["llm"] = llm_info
         result["workers"] = sorted(set(result["workers"]))
         result["suites"] = sorted(set(result["suites"]))
+        if cache_key is not None and cache_info is None:   # chỉ lời gọi THÀNH CÔNG và hợp lệ mới được ghi (mọi fallback return/except ở trên/dưới)
+            stored = select_cache.store(cache_dir, cache_key, selections, llm_info)
+            event(log, "selector.cache", outcome="store" if stored else "store_failed", key=cache_key[:8])
     except LLMError as error:
         reason = {"missing_key": "missing_api_key", "refused": "bad_output", "bad_request": "bad_output"}.get(error.kind, error.kind)
         result = _full(pruned, policy, suite_map, reason)
