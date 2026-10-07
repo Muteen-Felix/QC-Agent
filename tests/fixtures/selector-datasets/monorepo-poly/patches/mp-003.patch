@@ -1,0 +1,8 @@
+diff --git a/apps/api/legacy_report.py b/apps/api/legacy_report.py
+deleted file mode 100644
+index fecc41a..0000000
+--- a/apps/api/legacy_report.py
++++ /dev/null
+@@ -1,2 +0,0 @@
+-def render(rows):
+-    return "\n".join(str(row) for row in rows)

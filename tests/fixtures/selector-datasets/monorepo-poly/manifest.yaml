@@ -1,0 +1,15 @@
+# Dataset monorepo-poly: monorepo tổng hợp (API Python + UI TypeScript), KHÔNG chép mã từ SUT sản phẩm. Dùng slug chưa đăng ký nên nhận _default.yaml thật.
+name: monorepo-poly
+sut: sut
+patches: patches
+injection_patches: patches/injection
+labels: labels.yaml
+project: {slug: monorepo-poly}
+labels_status: unreviewed
+cost_target:
+  median_reduction: null
+  reason: "chưa đo: cổng trần khả thi (eval_cost --ceiling --dataset monorepo-poly) chạy sau khi dataset được commit; mục tiêu sẽ được ghi theo số đo"
+splits:
+  # holdout chia TRƯỚC khi đo, mỗi nhóm ca (add/modify/delete/rename/security/generated/unicode) vẫn còn đại diện trong tune; chỉ chạy một lần sau khi đóng băng núm
+  tune: ["mp-001", "mp-002", "mp-003", "mp-004", "mp-008", "mp-010", "mp-011", "mp-013", "mp-014", "mp-015", "mp-017", "mp-018", "mp-019", "mp-020", "mp-021", "mp-022", "mp-023", "mp-024", "injection-001", "injection-002"]
+  holdout: ["mp-005", "mp-006", "mp-007", "mp-009", "mp-012", "mp-016"]

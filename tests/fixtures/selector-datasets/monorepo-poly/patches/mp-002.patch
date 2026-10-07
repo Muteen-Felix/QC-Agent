@@ -1,0 +1,10 @@
+diff --git a/apps/api/routes/items.py b/apps/api/routes/items.py
+index 8b48b75..6ece32b 100644
+--- a/apps/api/routes/items.py
++++ b/apps/api/routes/items.py
+@@ -5,4 +5,4 @@ router = APIRouter(prefix="/items")
+ 
+ @router.get("/{item_id}")
+ def get_item(item_id: int):
+-    return {"id": item_id, "name": f"item-{item_id}"}
++    return {"id": item_id, "name": f"item-{item_id}", "stock": 0}

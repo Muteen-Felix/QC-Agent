@@ -1,0 +1,9 @@
+diff --git a/apps/api/tests/test_items.py b/apps/api/tests/test_items.py
+index 91ec636..2ea4db6 100644
+--- a/apps/api/tests/test_items.py
++++ b/apps/api/tests/test_items.py
+@@ -3,3 +3,4 @@ from routes.items import get_item
+ 
+ def test_get_item():
+     assert get_item(1)["id"] == 1
++    assert get_item(2)["name"] == "item-2"

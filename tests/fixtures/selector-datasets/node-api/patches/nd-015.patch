@@ -1,0 +1,12 @@
+diff --git a/package.json b/package.json
+index 19b85da..b0a62a9 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "node-api",
+   "version": "1.0.0",
+-  "dependencies": {"express": "4.19.2"},
++  "dependencies": {"express": "4.19.3"},
+   "scripts": {"build": "tsc"}
+ }

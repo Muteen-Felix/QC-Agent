@@ -1,0 +1,15 @@
+# Dataset node-api: API Node/TypeScript tổng hợp, KHÔNG chép mã từ SUT sản phẩm. Dùng slug chưa đăng ký nên nhận _default.yaml thật.
+name: node-api
+sut: sut
+patches: patches
+injection_patches: patches/injection
+labels: labels.yaml
+project: {slug: node-api}
+labels_status: unreviewed
+cost_target:
+  median_reduction: null
+  reason: "chưa đo: cổng trần khả thi (eval_cost --ceiling --dataset node-api) chạy sau khi dataset được commit; mục tiêu sẽ được ghi theo số đo"
+splits:
+  # holdout chia TRƯỚC khi đo; mỗi nhóm ca (add/modify/delete/rename/security/generated/large) vẫn còn đại diện trong tune; chỉ chạy một lần sau khi đóng băng núm
+  tune: ["nd-001", "nd-003", "nd-004", "nd-006", "nd-008", "nd-010", "nd-011", "nd-012", "nd-013", "nd-014", "nd-015", "nd-016", "nd-017", "nd-018", "injection-001", "injection-002"]
+  holdout: ["nd-002", "nd-005", "nd-007", "nd-009"]

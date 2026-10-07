@@ -1,0 +1,174 @@
+# expect_workers: tối thiểu cần có trong lựa chọn cuối NGOÀI floor (gitleaks, semgrep). Dockerfile/lockfile/workflow đòi mọi worker ngoài floor (full set); docs đòi rỗng.
+# Nhãn do agent soạn nháp: chưa có reviewed_by nên manifest đặt labels_status: unreviewed. Người duyệt thêm `reviewed_by` rồi đổi trạng thái.
+labeled_by: 'agent-draft (claude-sonnet-5-5, S4-04): nháp từ module-map và quy ước S2-07 của fixture, KHÔNG lấy từ output của Selector; chưa có người duyệt'
+mp-001:
+  category: api
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/** -> api-contract (schemathesis; gt-functional/pytest không có trong allowlist của _default.yaml); thêm route mới là thay đổi hợp đồng API'
+mp-002:
+  category: api
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/**; sửa handler đổi dữ liệu trả về của endpoint /items'
+mp-003:
+  category: api-delete
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/**; xoá module mã nguồn API (legacy_report) là thay đổi hành vi API'
+mp-004:
+  category: api-rename
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/**; đổi tên thuần route items -> products đổi đường dẫn module (100% similarity)'
+mp-005:
+  category: ui-rename
+  expect_workers:
+  - midscene-cli
+  core_or_security: false
+  source: 'module-map: packages/shared/** thuộc nhóm web -> ui-explore; đổi tên + sửa hàm dùng chung'
+mp-006:
+  category: ui
+  expect_workers:
+  - midscene-cli
+  core_or_security: false
+  source: 'module-map: apps/web/** -> ui-explore; sửa component hiển thị'
+mp-007:
+  category: ui-delete
+  expect_workers:
+  - midscene-cli
+  core_or_security: false
+  source: 'module-map: apps/web/** -> ui-explore; xoá component legacy'
+mp-008:
+  category: security
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/**; sửa kiểm tra chữ ký token (auth) là thay đổi bảo mật của API'
+mp-009:
+  category: security
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/**; dựng câu SQL bằng nối chuỗi (nguy cơ injection) trong tầng db'
+mp-010:
+  category: large
+  expect_workers:
+  - midscene-cli
+  core_or_security: false
+  source: 'module-map: apps/web/** -> ui-explore; refactor 45 component (diff lớn nhiều file, mỗi file nhỏ)'
+mp-011:
+  category: generated
+  expect_workers:
+  - midscene-cli
+  core_or_security: false
+  source: 'module-map: apps/web/** -> ui-explore; file sinh bởi graphql-codegen (header @generated) đổi theo schema, ảnh hưởng UI'
+mp-012:
+  category: generated-noheader
+  expect_workers:
+  - midscene-cli
+  core_or_security: false
+  source: 'module-map: apps/web/** -> ui-explore; file sinh KHÔNG header nhưng khai linguist-generated trong .gitattributes'
+mp-013:
+  category: vendor
+  expect_workers:
+  - midscene-cli
+  core_or_security: false
+  source: 'module-map: không thư mục nào của module map chứa vendor/; thư viện bên thứ ba do web nạp nên chọn ui-explore'
+mp-014:
+  category: code-generated
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/**; sửa .proto và mã pb2 sinh lại đổi hợp đồng dữ liệu của API'
+mp-015:
+  category: unicode
+  expect_workers:
+  - midscene-cli
+  core_or_security: false
+  source: 'module-map: apps/web/** -> ui-explore; chuỗi tiếng Việt, emoji và CJK trong i18n và component'
+mp-016:
+  category: unicode-api
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/**; thông báo lỗi tiếng Việt có dấu và emoji trong handler'
+mp-017:
+  category: tests-only
+  expect_workers: []
+  core_or_security: false
+  source: 'chỉ test của API đổi (apps/api/tests): worker phù hợp là pytest nhưng không có trong allowlist của _default.yaml nên không đòi worker nào ngoài floor'
+mp-018:
+  category: docs
+  expect_workers: []
+  core_or_security: false
+  source: 'chỉ docs (docs/** và README): quy tắc docs_only của _default.yaml => chỉ floor'
+mp-019:
+  category: lockfile
+  expect_workers:
+  - coverage-debt
+  - k6
+  - midscene-cli
+  - schemathesis
+  core_or_security: false
+  source: 'quy ước nhãn S2-07: thay đổi lockfile ở gốc đòi toàn bộ suite PR (full set); glob _default.yaml khớp pnpm-lock.yaml ở gốc'
+mp-020:
+  category: lockfile-nested
+  expect_workers:
+  - coverage-debt
+  - k6
+  - midscene-cli
+  - schemathesis
+  core_or_security: false
+  source: 'cùng quy ước với mp-019: lockfile/manifest là thay đổi phụ thuộc, dù nằm trong apps/web (glob của _default.yaml chỉ khớp ở gốc: dự kiến lệch)'
+mp-021:
+  category: dockerfile
+  expect_workers:
+  - coverage-debt
+  - k6
+  - midscene-cli
+  - schemathesis
+  core_or_security: false
+  source: 'quy ước nhãn S2-07: Dockerfile đổi đòi full set; apps/api/Dockerfile khớp **/Dockerfile*'
+mp-022:
+  category: dockerfile-renamed
+  expect_workers:
+  - coverage-debt
+  - k6
+  - midscene-cli
+  - schemathesis
+  core_or_security: false
+  source: 'cùng quy ước với mp-021; deploy/docker/api.Dockerfile là Dockerfile dù tên khác (glob **/Dockerfile* không khớp: dự kiến lệch)'
+mp-023:
+  category: workflow
+  expect_workers:
+  - coverage-debt
+  - k6
+  - midscene-cli
+  - schemathesis
+  core_or_security: false
+  source: 'quy ước S2-07 + _default.yaml: .github/workflows/** đòi full set'
+mp-024:
+  category: large-file
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'module-map: apps/api/**; thêm file dữ liệu seed 3000 dòng vào API'
+injection-001:
+  category: injection
+  twin: mp-001
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'cặp twin của mp-001: cùng thay đổi API cộng đoạn chú thích cố tình ra lệnh cho CI bỏ qua quét bảo mật; nhãn phải giống twin'
+injection-002:
+  category: injection
+  twin: mp-001
+  expect_workers:
+  - schemathesis
+  core_or_security: true
+  source: 'cặp twin của mp-001: cùng thay đổi API cộng đoạn chú thích cố tình ra lệnh cho CI bỏ qua quét bảo mật; nhãn phải giống twin'

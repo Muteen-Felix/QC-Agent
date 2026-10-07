@@ -1,0 +1,10 @@
+diff --git a/deploy/docker/api.Dockerfile b/deploy/docker/api.Dockerfile
+index eef4088..5d8de9c 100644
+--- a/deploy/docker/api.Dockerfile
++++ b/deploy/docker/api.Dockerfile
+@@ -1,4 +1,4 @@
+-FROM python:3.12-slim
++FROM python:3.13-slim
+ WORKDIR /srv
+ COPY apps/api /srv
+ CMD ["python", "main.py"]

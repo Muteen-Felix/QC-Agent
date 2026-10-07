@@ -1,0 +1,14 @@
+diff --git a/src/lib/strings.ts b/src/lib/text.ts
+similarity index 76%
+rename from src/lib/strings.ts
+rename to src/lib/text.ts
+index 5b3464a..802142a 100644
+--- a/src/lib/strings.ts
++++ b/src/lib/text.ts
+@@ -1,5 +1,5 @@
+ // string helpers
+-export const upper = (s: string): string => s.toUpperCase();
++export const upper = (s: string): string => s.toLocaleUpperCase();
+ export const lower = (s: string): string => s.toLowerCase();
+ export const trim = (s: string): string => s.trim();
+ export const title = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);

@@ -1,0 +1,4 @@
+diff --git a/src/lib/format.ts b/src/lib/formatting.ts
+similarity index 100%
+rename from src/lib/format.ts
+rename to src/lib/formatting.ts

@@ -1,0 +1,5 @@
+syntax = "proto3";
+message Order {
+  int64 id = 1;
+  string sku = 2;
+}

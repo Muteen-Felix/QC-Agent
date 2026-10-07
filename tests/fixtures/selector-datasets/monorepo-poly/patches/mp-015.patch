@@ -1,0 +1,22 @@
+diff --git a/apps/web/src/components/Widget03.tsx b/apps/web/src/components/Widget03.tsx
+index a63872f..75b2da4 100644
+--- a/apps/web/src/components/Widget03.tsx
++++ b/apps/web/src/components/Widget03.tsx
+@@ -1,5 +1,5 @@
+ import React from "react";
+ 
+ export function Widget03({ label }: { label: string }) {
+-  return <span className="w03">{label}</span>;
++  return <span className="w03">{label} — Đã lưu ✅</span>;
+ }
+diff --git a/apps/web/src/i18n/vi.json b/apps/web/src/i18n/vi.json
+index ab4f413..85ee497 100644
+--- a/apps/web/src/i18n/vi.json
++++ b/apps/web/src/i18n/vi.json
+@@ -1,4 +1,5 @@
+ {
+   "title": "Ghi chú",
+-  "add": "Thêm"
++  "add": "Thêm ghi chú 🚀",
++  "jp": "新しいノート"
+ }

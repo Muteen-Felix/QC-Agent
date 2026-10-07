@@ -1,0 +1,44 @@
+# qc-agent:generated gt — suite chạy các test case Ground-Truth ĐÃ DUYỆT (approved) trong .qc-agent/ground-truth/test-cases.yaml.
+# Chặn merge hay không do POLICY của qc-agent quyết định, không do file này. `pytest.tests >= 1`: chưa có TC nào approved thì suite FAIL (gate rỗng không được xanh).
+suite: gt-functional
+description: Test chức năng API sinh từ Ground-Truth (pytest, chỉ TC approved)
+tasks:
+- task_id: t-030
+  capability: api.functional
+  lane: gate
+  intent: 'Ground-Truth: mọi test case đã duyệt của PRD phải pass và có ít nhất một test chạy'
+  target:
+    kind: http_service
+    base_url: ${env.APP_BASE_URL}
+  inputs:
+    paths:
+    - .qc-agent/ground-truth/tests_gt
+  oracle:
+    kind: threshold
+    assertions:
+    - metric: pytest.failures
+      op: ==
+      value: 0
+    - metric: pytest.errors
+      op: ==
+      value: 0
+    - metric: pytest.tests
+      op: '>='
+      value: 1
+  expected_result_kind: verdict
+  budget:
+    wallclock_s: 300
+    tokens: 0
+    usd: 0
+  determinism:
+    seed: 0
+    replayable: true
+  evidence_required:
+  - raw_output
+  - stdout
+  retry:
+    max: 1
+    'on':
+    - error
+  prefer:
+  - pytest

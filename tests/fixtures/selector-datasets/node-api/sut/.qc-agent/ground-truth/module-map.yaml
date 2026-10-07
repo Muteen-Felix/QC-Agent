@@ -1,0 +1,11 @@
+# qc-agent:generated gt — module-map đã duyệt (fixture S4-04). Selector chỉ dùng để GỢI Ý thêm suite.
+version: 1
+status: approved
+modules:
+- name: "api"
+  paths:
+  - "src/**"
+  - "openapi.yaml"
+  suites:
+  - api-contract
+  source: qa

@@ -1,0 +1,7 @@
+diff --git a/src/db/migrations/002_grants.sql b/src/db/migrations/002_grants.sql
+new file mode 100644
+index 0000000..247306d
+--- /dev/null
++++ b/src/db/migrations/002_grants.sql
+@@ -0,0 +1 @@
++GRANT ALL PRIVILEGES ON users TO PUBLIC;

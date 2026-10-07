@@ -1,0 +1,11 @@
+diff --git a/apps/web/src/components/Widget07.tsx b/apps/web/src/components/Widget07.tsx
+index ef31087..d778481 100644
+--- a/apps/web/src/components/Widget07.tsx
++++ b/apps/web/src/components/Widget07.tsx
+@@ -1,5 +1,5 @@
+ import React from "react";
+ 
+ export function Widget07({ label }: { label: string }) {
+-  return <span className="w07">{label}</span>;
++  return <strong className="w07">{label}</strong>;
+ }

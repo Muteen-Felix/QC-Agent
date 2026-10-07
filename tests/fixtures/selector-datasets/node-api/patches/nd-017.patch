@@ -1,0 +1,12 @@
+diff --git a/.qc-agent/suites/perf-smoke.yaml b/.qc-agent/suites/perf-smoke.yaml
+index 28b309b..a556bde 100644
+--- a/.qc-agent/suites/perf-smoke.yaml
++++ b/.qc-agent/suites/perf-smoke.yaml
+@@ -2,6 +2,7 @@
+ # Smoke perf trên PR: SUT dựng tạm trong runner (số đo KHÔNG đại diện cho staging) => chỉ tham khảo, không bao giờ chặn merge.
+ # Lane discovery + ngưỡng lỏng: fail ở đây là tín hiệu để xem, không phải verdict của gate.
+ suite: perf-smoke
++# chỉnh ngưỡng
+ description: Smoke k6 ngắn trên SUT trong runner (mode pr, không chặn)
+ tasks:
+ - task_id: t-102
