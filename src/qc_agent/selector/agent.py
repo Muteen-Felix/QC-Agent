@@ -50,9 +50,17 @@ def build_request(suite_map: dict[str, list[str]], module_map: dict | None) -> D
     return DiffRequest(system, schema, allowlist, prompt, capabilities)
 
 
+_ALWAYS_SENT = ("path", "status", "kind")   # danh sách file luôn đầy đủ: ba trường này có mặt ở MỌI entry
+
+
+def _entry(item) -> dict:
+    """Entry của một file: trường vắng mặt nghĩa là mặc định (không đổi tên, không cắt, không bỏ hunk, không có hunk)."""
+    return {key: value for key, value in asdict(item).items() if key in _ALWAYS_SENT or not (value is None or value is False or (isinstance(value, int) and value == 0))}
+
+
 def payload_json(files) -> str:
     """Biểu diễn JSON của danh sách `PrunedFile` trong `user`. Một chỗ duy nhất: `tools/eval_cost.py` dùng cùng hàm này để dựng cận dưới B_min."""
-    return json.dumps([asdict(item) for item in files], ensure_ascii=False, sort_keys=True, separators=(",", ":"))   # gọn: dấu cách sau `,` và `:` chỉ tốn token
+    return json.dumps([_entry(item) for item in files], ensure_ascii=False, sort_keys=True, separators=(",", ":"))   # gọn: dấu cách sau `,` và `:` chỉ tốn token
 
 
 def pruned_payload(pruned) -> str:

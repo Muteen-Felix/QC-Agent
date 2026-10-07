@@ -249,5 +249,17 @@ def test_payload_json_is_compact_and_loses_nothing():
     files = (PrunedFile("a.py", "R", "old.py", "code", "@@ -1 +1 @@\n-x, y\n+x: z 🚀", False, 0), PrunedFile("lock.json", "M", None, "lockfile", None, False, 0))
     text = agent.payload_json(files)
     assert ", " not in text.replace("x, y", "").replace("x: z", "") and ": " not in text.replace("x, y", "").replace("x: z", "")   # chỉ còn dấu cách nằm TRONG chuỗi dữ liệu
-    assert json.loads(text) == [asdict(item) for item in files] and text == agent.payload_json(files)
-    assert len(text) < len(json.dumps([asdict(item) for item in files], ensure_ascii=False, sort_keys=True))
+    assert text == agent.payload_json(files) and len(text) < len(json.dumps([asdict(item) for item in files], ensure_ascii=False, sort_keys=True))
+
+
+def test_payload_entries_omit_only_default_values_and_never_a_file():
+    files = (PrunedFile("keep.py", "M", None, "code", "@@ -1 +1 @@", False, 0), PrunedFile("moved.py", "R", "old.py", "code", None, False, 0),
+             PrunedFile("big.py", "A", None, "code", "@@ -0,0 +1 @@", True, 3), PrunedFile("p-lock.yaml", "M", None, "lockfile", None, False, 0), PrunedFile("gone.py", "D", None, "deleted", None, False, 0))
+    entries = json.loads(agent.payload_json(files))
+    assert [e["path"] for e in entries] == [f.path for f in files]                                 # danh sách file luôn đầy đủ, đúng thứ tự
+    assert entries[0] == {"hunks": "@@ -1 +1 @@", "kind": "code", "path": "keep.py", "status": "M"}  # vắng old_path/truncated/dropped_hunks = mặc định
+    assert entries[1] == {"kind": "code", "old_path": "old.py", "path": "moved.py", "status": "R"}  # đổi tên giữ old_path
+    assert entries[2]["truncated"] is True and entries[2]["dropped_hunks"] == 3                       # cắt/bỏ hunk luôn hiện
+    assert entries[3] == {"kind": "lockfile", "path": "p-lock.yaml", "status": "M"} and entries[4]["status"] == "D"
+    for item, entry in zip(files, entries):                                                          # khôi phục mặc định thì ra đúng PrunedFile ban đầu
+        assert PrunedFile(**{"old_path": None, "hunks": None, "truncated": False, "dropped_hunks": 0, **entry}) == item
