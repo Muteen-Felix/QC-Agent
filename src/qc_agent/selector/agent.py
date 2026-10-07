@@ -52,7 +52,7 @@ def build_request(suite_map: dict[str, list[str]], module_map: dict | None) -> D
 
 def payload_json(files) -> str:
     """Biểu diễn JSON của danh sách `PrunedFile` trong `user`. Một chỗ duy nhất: `tools/eval_cost.py` dùng cùng hàm này để dựng cận dưới B_min."""
-    return json.dumps([asdict(item) for item in files], ensure_ascii=False, sort_keys=True)
+    return json.dumps([asdict(item) for item in files], ensure_ascii=False, sort_keys=True, separators=(",", ":"))   # gọn: dấu cách sau `,` và `:` chỉ tốn token
 
 
 def pruned_payload(pruned) -> str:

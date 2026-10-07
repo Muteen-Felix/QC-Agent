@@ -1,3 +1,6 @@
+import json
+from dataclasses import asdict
+
 import pytest
 
 from qc_agent.llm.client import LLMError, ToolCall, Usage
@@ -240,3 +243,11 @@ def test_user_message_cannot_be_closed_early_by_the_diff_and_the_estimate_matche
     assert framed.count("</untrusted_diff") == 1 and framed.endswith("</untrusted_diff>") and "&lt;/untrusted_diff>" in framed
     request = agent.build_request(SUITES, None)
     assert agent.estimate_request(request, framed) == agent.estimate_input_tokens(request.system, framed, request.schema)
+
+
+def test_payload_json_is_compact_and_loses_nothing():
+    files = (PrunedFile("a.py", "R", "old.py", "code", "@@ -1 +1 @@\n-x, y\n+x: z 🚀", False, 0), PrunedFile("lock.json", "M", None, "lockfile", None, False, 0))
+    text = agent.payload_json(files)
+    assert ", " not in text.replace("x, y", "").replace("x: z", "") and ": " not in text.replace("x, y", "").replace("x: z", "")   # chỉ còn dấu cách nằm TRONG chuỗi dữ liệu
+    assert json.loads(text) == [asdict(item) for item in files] and text == agent.payload_json(files)
+    assert len(text) < len(json.dumps([asdict(item) for item in files], ensure_ascii=False, sort_keys=True))
