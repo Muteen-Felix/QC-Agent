@@ -117,7 +117,9 @@ def prune(repo: Path, base: str, head: str, *, per_file_tokens: int = 1500, tota
         kind = _kind(repo, path, status, merge_base, head)
         hunks, dropped = None, 0
         if kind == "code":
-            diff = _git(repo, "diff", "--no-color", "--no-ext-diff", "-w", "-U1", merge_base, head, "--", path).decode("utf-8", "replace")
+            # đổi tên + sửa: đưa CẢ đường dẫn cũ vào pathspec thì git mới ghép cặp (-M) và hunk chỉ có phần sửa; chỉ có đường dẫn mới thì cả file hiện ra như file mới
+            specs = [old_path, path] if old_path else [path]
+            diff = _git(repo, "diff", "--no-color", "--no-ext-diff", "-w", "-U1", "-M", merge_base, head, "--", *specs).decode("utf-8", "replace")
             hunks, dropped = _trim_comments(diff, Path(path).suffix.lower())
         hunks, truncated = _cap(hunks, per_file_tokens)
         files.append(PrunedFile(path, status, old_path, kind, hunks, truncated, dropped))

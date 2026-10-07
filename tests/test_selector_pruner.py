@@ -138,3 +138,11 @@ def test_hunks_carry_no_git_header_but_every_changed_line_and_the_file_identity_
         _assert_hunks_are_headerless_and_complete(tmp_path, base, head, by_path[path])
     assert (by_path["b2.py"].status, by_path["b2.py"].old_path) == ("R", "b.py") and (by_path["c2.py"].status, by_path["c2.py"].old_path) == ("R", "c.py")   # danh tính file nằm ở entry, không ở header
     assert (by_path["n.py"].status, by_path["n.py"].old_path) == ("A", None) and "mới 🚀" in by_path["n.py"].hunks
+
+
+def test_renamed_files_carry_only_the_real_change_not_the_whole_file_as_new(tmp_path):
+    base, head = _repo_with_changes(tmp_path)
+    by_path = {item.path: item for item in prune(tmp_path, base, head).files}
+    _assert_hunks_are_headerless_and_complete(tmp_path, base, head, by_path["b2.py"])
+    assert "line_20 = 21" in by_path["b2.py"].hunks and "+line_0 = 0" not in by_path["b2.py"].hunks and len(by_path["b2.py"].hunks) < 200   # 60 dòng gốc không lặp lại
+    assert (by_path["c2.py"].status, by_path["c2.py"].old_path, by_path["c2.py"].hunks) == ("R", "c.py", None)                             # đổi tên thuần: không có nội dung nào để gửi
