@@ -20,6 +20,9 @@ Image đưa vào `--input image=...` được kiểm bằng tools/image_check.py
 `ANTHROPIC_BASE_URL`, nên fake LLM không nhận được lời gọi. Harness đổi đúng một chuỗi trong lệnh `docker run` của bước đó để thêm `-e ANTHROPIC_BASE_URL`; chuỗi cũ phải
 khớp ĐÚNG MỘT LẦN, không thì harness dừng (workflow đổi thì harness không âm thầm chạy sai). Mọi thứ khác chạy nguyên văn.
 
+Tên cố định: workflow tự tạo container `sut`/`ui`/`db` và mạng `qc-net`, rồi dọn bằng `docker rm -f sut ui db` ở bước "Clean up SUT" (không sửa được). Vì vậy trước khi chạy
+một job có các tên này, `run_workflow` hỏi Docker (chỉ đọc); tên nào đang bị việc khác giữ thì dừng với DockerNamesBusy (CLI: exit 1) và KHÔNG xoá gì. Không kiểm được (Docker lỗi) cũng dừng.
+
 Cần bash (Git Bash trên Windows) và docker. Exit code = kết quả bước cuối (Enforce gate result).
 """
 from __future__ import annotations
@@ -109,6 +112,49 @@ class Context:
         return _EXPR.sub(lambda m: self.evaluate(m.group(1)), str(text))
 
 
+RESERVED_CONTAINERS = ("sut", "ui", "db")   # tên cố định mà workflow tự tạo và tự `docker rm -f` ở bước "Clean up SUT"
+RESERVED_NETWORK = "qc-net"
+
+
+class DockerNamesCheckError(RuntimeError):
+    """Harness không chứng minh được các tên container/mạng của workflow đang rảnh: dừng, KHÔNG đoán và KHÔNG xoá gì."""
+
+
+class DockerNamesBusy(DockerNamesCheckError):
+    """Có việc khác đang dùng `sut`/`ui`/`db`/`qc-net`. Workflow sẽ `docker rm -f` các tên này, nên harness không được chạy."""
+
+
+def _docker_lines(*args: str) -> list[str]:
+    try:
+        done = subprocess.run(["docker", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise DockerNamesCheckError(f"không chạy được `docker {' '.join(args)}`: {error}") from error
+    if done.returncode != 0:
+        raise DockerNamesCheckError(f"`docker {' '.join(args)}` lỗi (exit {done.returncode}): {done.stderr.strip()[-200:]}")
+    return [line.strip() for line in done.stdout.splitlines() if line.strip()]
+
+
+def busy_docker_names() -> list[str]:
+    """Các tên workflow cần mà Docker đang giữ, dạng `container sut` / `network qc-net` (chỉ ĐỌC: `docker ps -a`, `docker network ls`)."""
+    containers = set(_docker_lines("ps", "-a", "--format", "{{.Names}}"))
+    networks = set(_docker_lines("network", "ls", "--format", "{{.Name}}"))
+    return [f"container {name}" for name in RESERVED_CONTAINERS if name in containers] + ([f"network {RESERVED_NETWORK}"] if RESERVED_NETWORK in networks else [])
+
+
+def ensure_docker_names_free() -> None:
+    """Gọi TRƯỚC khi chạy workflow và TRƯỚC mọi bước dọn Docker. Có tên bị giữ => DockerNamesBusy; harness không xoá gì (người dùng tự quyết định)."""
+    busy = busy_docker_names()
+    if busy:
+        raise DockerNamesBusy(f"Docker đang có {', '.join(busy)}: harness dừng, KHÔNG xoá gì. Workflow tự tạo các tên này và dọn bằng `docker rm -f sut ui db` + "
+                              f"`docker network rm {RESERVED_NETWORK}`, nên chạy lúc này sẽ xoá tài nguyên của việc khác. Xem `docker ps -a` / `docker network inspect {RESERVED_NETWORK}`; "
+                              "nếu đó là phần dư của lần chạy trước thì tự dọn rồi chạy lại.")
+
+
+def uses_reserved_docker_names(steps: list) -> bool:
+    """Job có bước dựng/dọn mạng `qc-net` (cùng container `sut`/`ui`/`db`)? Workflow khác (vd. job `validate` của GT) không đụng tên nào nên không cần hỏi Docker."""
+    return any(RESERVED_NETWORK in str(step.get("run", "")) for step in steps)
+
+
 LOCAL_POLICY_REF = "0123456789abcdef0123456789abcdef01234567"   # commit giả cho `--policy-dir`
 FETCH_STEP = "Fetch policy"
 SELECT_STEP = "Select (PR)"
@@ -166,6 +212,8 @@ def run_workflow(workflow_path, workspace, inputs: dict, secrets: dict, github: 
     workflow_env = {k: str(v) for k, v in (data.get("env") or {}).items()}
     steps = data["jobs"][job]["steps"]
     rewritten = apply_rewrites(steps, step_rewrites or {})   # kiểm TRƯỚC khi chạy bước nào
+    if uses_reserved_docker_names(steps):
+        ensure_docker_names_free()   # workflow tự `docker rm -f sut ui db`: không chạy khi tên đang bị việc khác giữ
     bash, failed, results = find_bash(), False, {}
     with tempfile.TemporaryDirectory() as tmp:
         output_file = Path(tmp) / "github_output"
@@ -294,8 +342,12 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         github = build_github_context(tmp, api_url=args.github_api, sha=args.sha, base_sha=args.base_sha, pr=args.pr, token=args.token, repository=args.repository,
                                       event_name=args.event_name, dispatch_inputs={k: inputs[k] for k in ("workers", "suites") if k in inputs})
-        results = run_workflow(args.workflow, args.workspace, inputs, secrets, github, policy_dir=args.policy_dir, runner_temp=args.runner_temp, job=args.job,
-                               step_env=step_env, step_rewrites=step_rewrites)
+        try:
+            results = run_workflow(args.workflow, args.workspace, inputs, secrets, github, policy_dir=args.policy_dir, runner_temp=args.runner_temp, job=args.job,
+                                   step_env=step_env, step_rewrites=step_rewrites)
+        except DockerNamesCheckError as error:
+            print(f"docker: {error}", file=sys.stderr)
+            return 1
     if args.job != "gate":   # job không có bước "Enforce gate result": kết quả là bước cuối cùng đã chạy
         return next(reversed(results.values()), {}).get("returncode", 1)
     return results.get("Enforce gate result", {}).get("returncode", 1)

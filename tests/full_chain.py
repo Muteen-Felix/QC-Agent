@@ -109,7 +109,15 @@ def _patch_of(stack: kit.Stack, filename: str) -> str:
     return next(f["patch"] for f in stack.gh.pr_files if f["filename"] == filename)
 
 
-STEPS_PR = ["Start SUT", "Select (PR)", "Run qc-agent gate", "PR review", "Jira (Low)", "Report (Check Run, PR comment, history, webhook)", "Clean up SUT", "Enforce gate result"]
+REPORT_STEP = "Report (Check Run, PR comment, history, webhook)"
+
+
+def step_code(res: kit.Result, name: str):
+    """Mã thoát của một bước; bước không chạy => None (khác 0, nên bị tính là lỗi thay vì KeyError làm kịch bản dừng giữa chừng)."""
+    return res.steps.get(name, {}).get("returncode")
+
+
+STEPS_PR = ["Start SUT", "Select (PR)", "Run qc-agent gate", "PR review", "Jira (Low)", REPORT_STEP, "Clean up SUT", "Enforce gate result"]
 
 
 def _pipeline(rec: Recorder, res: kit.Result, *, gate_exit: str, steps=STEPS_PR) -> None:
@@ -118,7 +126,13 @@ def _pipeline(rec: Recorder, res: kit.Result, *, gate_exit: str, steps=STEPS_PR)
     if "Select (PR)" in steps:
         rec.check("Select (PR)", "ok=true, không 'Select failed'", res.outputs("Select (PR)") == {"ok": "true"} and "Select failed" not in res.log, res.log[-400:])
     rec.check("Run qc-agent gate", f"exit_code={gate_exit}", res.outputs("Run qc-agent gate") == {"exit_code": gate_exit}, str(res.outputs("Run qc-agent gate")))
-    rec.check("Enforce gate result", "job " + ("xanh" if gate_exit == "0" else "đỏ"), res.code("Enforce gate result") == (0 if gate_exit == "0" else 1), str(res.code("Enforce gate result")))
+    # Mã thoát của TỪNG bước bắt buộc. Report phải tách riêng: Enforce chỉ nhìn exit_code của gate nên Report hỏng mà gate xanh thì Enforce vẫn 0, và `run_workflow`
+    # không đổi mã trả về của CLI; không có dòng này thì Report lỗi đi qua kịch bản xanh.
+    others = {name: step_code(res, name) for name in steps if name not in (REPORT_STEP, "Enforce gate result", "Run qc-agent gate")}
+    rec.check("mã thoát các bước (trừ Report, gate, Enforce)", "mọi bước exit 0", all(code == 0 for code in others.values()), str(others))
+    rec.check("mã thoát Report", "exit 0 (Check Run, comment PR, lịch sử, webhook)", step_code(res, REPORT_STEP) == 0, f"exit {step_code(res, REPORT_STEP)}: {res.log[-400:]}")
+    rec.check("Run qc-agent gate (mã thoát bước)", "exit 0 (mã của gate nằm ở output exit_code)", step_code(res, "Run qc-agent gate") == 0, f"exit {step_code(res, 'Run qc-agent gate')}")
+    rec.check("Enforce gate result", "job " + ("xanh" if gate_exit == "0" else "đỏ"), step_code(res, "Enforce gate result") == (0 if gate_exit == "0" else 1), str(step_code(res, "Enforce gate result")))
     rec.check("deps không chạy (noteboard không có suite deps)", "expect_deps=False", "deps.vuln" not in kit.capabilities(res), str(kit.capabilities(res)))
 
 
@@ -312,7 +326,7 @@ def scenario_d(image: str) -> Recorder:
             rec.check("chạy lại D: Check Run", "thêm 1 Check Run cho lần chạy mới, vẫn success", len(nb.stack.gh.check_runs) == 2 and all(c["conclusion"] == "success" for c in nb.stack.gh.check_runs))
             rec.check("chạy lại D: ticket", "0 ticket mới", len(nb.stack.jira.issues) == 0 and nb.stack.jira.requests == [], "đúng nhưng không có ý nghĩa khi Jira bị bỏ qua (xem dòng CHƯA KIỂM CHỨNG)")
             rec.check("không cần QC_DATABASE_URL", "biến không đặt; Report bỏ qua ingest lịch sử mà luồng PR vẫn chạy tới Enforce",
-                      "QC_DATABASE_URL" not in os.environ and '"ingest": "skipped' in res.log and res.code("Report (Check Run, PR comment, history, webhook)") == 0)
+                      "QC_DATABASE_URL" not in os.environ and '"ingest": "skipped' in res.log and res.code(REPORT_STEP) == 0)
     return guarded(Recorder("D", "PR của dev chỉ có lỗi Low, rồi chạy lại cùng SHA"), body)
 
 
@@ -322,7 +336,7 @@ def scenario_e(image: str) -> Recorder:
     def body(rec: Recorder) -> None:
         with _NoteboardPR(image, _bump_version) as nb:
             res = nb.run(sut_env="QC_BUGS=none", event_name="workflow_dispatch", dispatch_inputs={"workers": "semgrep"}, extra_inputs={"workers": "semgrep"})
-            steps = ["Start SUT", "Run qc-agent gate", "Report (Check Run, PR comment, history, webhook)", "Clean up SUT", "Enforce gate result"]
+            steps = ["Start SUT", "Run qc-agent gate", REPORT_STEP, "Clean up SUT", "Enforce gate result"]
             _pipeline(rec, res, gate_exit="0", steps=steps)
             rec.check("bước chỉ-PR bị bỏ qua", "không có Select (PR), PR review, Jira (Low)", not {"Select (PR)", "PR review", "Jira (Low)"} & set(res.steps))
             rec.check("suite chạy", "chỉ sast (worker semgrep)", kit.capabilities(res) == {"code.sast"} and res.selection["source"] == "manual" and res.selection["suites"] == ["sast"],
@@ -352,7 +366,11 @@ def main() -> int:
         print(f"image: {error}", file=sys.stderr)
         return 1
     safe_print(verdict.label)
-    recorders = run_all(verdict.image)
+    try:
+        recorders = run_all(verdict.image)
+    except kit.harness.DockerNamesCheckError as error:    # tên sut/ui/db/qc-net bị việc khác giữ (hoặc Docker không trả lời): dừng, không xoá gì
+        print(f"docker: {error}", file=sys.stderr)
+        return 1
     for rec in recorders:
         safe_print(rec.table() + "\n")
     failed = sum(len(r.failures()) for r in recorders)

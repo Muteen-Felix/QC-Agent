@@ -39,11 +39,11 @@ python tools/image_check.py --image qc-agent:harness-<sha7> --db      # đọc l
 
 ### 2. Chạy test (nhanh → chậm)
 
-Từ thư mục gốc repo. Test Docker không chạy song song (container `sut`/`ui`/`db` và mạng `qc-net` có tên cố định).
+Từ thư mục gốc repo. Test Docker không chạy song song (container `sut`/`ui`/`db` và mạng `qc-net` có tên cố định). Workflow tự dọn các tên này bằng `docker rm -f sut ui db`, nên harness **hỏi Docker trước khi chạy** (chỉ đọc); tên nào đang bị việc khác giữ thì harness dừng với `DockerNamesBusy` (CLI exit 1) và **không xoá gì**. Tự dọn phần dư của lần chạy trước (`docker ps -a`, `docker network inspect qc-net`) rồi chạy lại.
 
 ```bash
 # (a) không Docker
-pytest tests/test_image_check.py tests/test_harness_rewrites.py tests/test_node_api_harness_fixture.py tests/test_workflow_static.py -q
+pytest tests/test_image_check.py tests/test_harness_rewrites.py tests/test_harness_docker_guard.py tests/test_full_chain_exit_codes.py tests/test_node_api_harness_fixture.py tests/test_workflow_static.py -q
 # (b) Docker nhẹ
 pytest tests/test_image_check_docker.py tests/test_node_api_harness_serve.py -q -rs
 # (c) noteboard A–E            (d) node-api-harness N1–N4
@@ -62,7 +62,7 @@ python tools/run_reusable_locally.py --scenario full-chain
 | noteboard (đã đăng ký, Python) | `noteboard` | A sinh GT · B duyệt GT · C Critical · D chỉ Low + chạy lại · E `workflow_dispatch` | `tests/full_chain.py` |
 | `node-api-harness` (chưa đăng ký, Node, policy mặc định) | `node-api-harness` | N1 sửa route · N2 `eval` + LLM trả rỗng · N3 operation mới bị `exclude_path` · N4 `package-lock.json` gốc | `tests/test_node_api_harness_local.py` |
 
-Mỗi kịch bản assert **từng bước** (Start SUT, Select, Gate, PR review, Jira, Report, Enforce) và các fake.
+Mỗi kịch bản assert **từng bước** (Start SUT, Select, Gate, PR review, Jira, Report, Enforce) và các fake. A–E có dòng riêng cho **mã thoát Report** (Enforce chỉ nhìn `exit_code` của gate nên không bắt được Report hỏng): Report exit khác 0 thì kịch bản FAIL (`tests/test_full_chain_exit_codes.py`, không cần Docker).
 
 ### 4. Điểm lệch có tên của harness so với workflow thật
 

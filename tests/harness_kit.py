@@ -174,6 +174,7 @@ def require_fresh_trivy_db(image: str, *, deps_expected: bool) -> int:
 
 
 def cleanup_containers() -> None:
+    """Xoá `sut`/`ui`/`db`/`qc-net`. CHỈ được gọi sau khi `harness.ensure_docker_names_free()` đã qua (tên là của ta); gọi trước đó sẽ xoá tài nguyên của việc khác."""
     subprocess.run(["docker", "rm", "-f", "sut", "ui", "db"], capture_output=True)
     subprocess.run(["docker", "network", "rm", "qc-net"], capture_output=True)
 
@@ -210,7 +211,7 @@ def probe_sut(repo: Path, image: str, paths: list[str], *, port: int = 3000, hea
     """Dựng SUT từ `repo` (docker build + run trên mạng qc-net, như bước Start SUT) rồi GET từng path bằng python của image qc-agent. Trả {path: (status, body)}.
     Dùng để khẳng định handler của PR thật sự trả 2xx/404, độc lập với gate (workflow dọn container `sut` khi chạy xong)."""
     tag = f"qc-harness-probe-{uuid.uuid4().hex[:8]}"
-    cleanup_containers()
+    harness.ensure_docker_names_free()      # tên bị giữ => dừng; KHÔNG dọn hộ (cleanup_containers sẽ xoá tài nguyên của việc khác)
     try:
         assert _docker("network", "create", "qc-net").returncode == 0
         built = _docker("build", "-q", "-f", "Dockerfile", "-t", tag, ".", cwd=repo)
@@ -293,7 +294,9 @@ def pr_files_from_git(repo: Path, base: str, head: str) -> list[dict]:
 def run_pr(stack: Stack, repo: Path, *, project: str, policy_dir: Path, image: str, base: str | None, head: str, run_id: str, home: Path,
            inputs: dict | None = None, secrets: dict | None = None, event_name: str = "pull_request", dispatch_inputs: dict | None = None,
            skip: tuple = ("Pull qc-agent image",), jira: bool = True, anthropic: bool = True) -> Result:
-    """Chạy workflow qc-gate.reusable.yml NGUYÊN VĂN (trừ điểm lệch có tên: `step_rewrites` của Select) trên `repo`, rồi gom kết quả. Dọn container trong `finally`."""
+    """Chạy workflow qc-gate.reusable.yml NGUYÊN VĂN (trừ điểm lệch có tên: `step_rewrites` của Select) trên `repo`, rồi gom kết quả. Dọn container trong `finally`.
+    Việc đầu tiên: tên `sut`/`ui`/`db`/`qc-net` phải rảnh (DockerNamesBusy nếu không), trước cả khi đụng vào `repo` và trước `finally` xoá chúng."""
+    harness.ensure_docker_names_free()
     all_inputs = {"project": project, "image": image, "allow_unpinned_image": "true", "refine": "off", **(inputs or {})}
     all_secrets = {"ANTHROPIC_API_KEY": FAKE_KEY, **({"JIRA_BASE_URL": stack.jira_url, "JIRA_EMAIL": "qc@example.invalid", "JIRA_API_TOKEN": "harness-fake"} if jira else {}),
                    **(secrets or {})}
