@@ -146,3 +146,25 @@ def test_renamed_files_carry_only_the_real_change_not_the_whole_file_as_new(tmp_
     _assert_hunks_are_headerless_and_complete(tmp_path, base, head, by_path["b2.py"])
     assert "line_20 = 21" in by_path["b2.py"].hunks and "+line_0 = 0" not in by_path["b2.py"].hunks and len(by_path["b2.py"].hunks) < 200   # 60 dòng gốc không lặp lại
     assert (by_path["c2.py"].status, by_path["c2.py"].old_path, by_path["c2.py"].hunks) == ("R", "c.py", None)                             # đổi tên thuần: không có nội dung nào để gửi
+
+
+def test_binary_detection_is_one_batched_call_and_parallel_processing_keeps_a_stable_order(tmp_path, monkeypatch):
+    from qc_agent.selector import pruner
+    git(tmp_path, "init", "-q")
+    (tmp_path / "keep.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "old.bin").write_bytes(b"\x00\x01\x02" * 50)
+    base = _commit(tmp_path, "base")
+    git(tmp_path, "mv", "old.bin", "new.bin")
+    (tmp_path / "keep.py").write_text("x = 2\n", encoding="utf-8")
+    for n in range(12):
+        (tmp_path / f"m{n:02d}.py").write_text(f"v = {n}\n", encoding="utf-8")
+    head = _commit(tmp_path, "head")
+    numstat_calls = []
+    real = pruner._git
+    monkeypatch.setattr(pruner, "_git", lambda repo, *args: numstat_calls.append(args) or real(repo, *args))
+    result = prune(tmp_path, base, head)
+    assert sum(1 for args in numstat_calls if "--numstat" in args) == 1                     # một lần cho cả diff, không phải mỗi file một lần
+    by_path = {item.path: item for item in result.files}
+    assert by_path["new.bin"].kind == "binary" and by_path["new.bin"].hunks is None and by_path["keep.py"].kind == "code"
+    assert [item.path for item in result.files] == sorted(by_path) and len(result.files) == 14
+    assert prune(tmp_path, base, head).sha256 == result.sha256                              # song song vẫn tất định
