@@ -32,7 +32,7 @@ from qc_agent.llm import client, filecache  # noqa: E402
 from qc_agent.selector import agent, pruner, rules  # noqa: E402
 from tools import selector_datasets  # noqa: E402
 
-CEILING_FLOOR = 0.40   # trần chặt < 40% thì dataset không thể đạt mục tiêu 40% (DoD S4)
+CEILING_FLOOR = 0.40   # trần chặt < 40% thì theo ước lượng dataset chưa thể đạt 40% (DoD S4); count_tokens có thể đổi kết luận
 
 
 def percentile(values: list[float], q: float) -> float:
@@ -251,10 +251,10 @@ def render(result: dict, *, ceiling: bool = False) -> str:
         lines.append(f"ca bị cắt (truncated/dropped_hunks > 0): B0 {result['cut']['b0']}, B1 {result['cut']['b1']}")
     target = result["target"]
     if target is None:
-        lines.append(f"mục tiêu: N/A đã chốt ({result['cost_target']['reason']})")
+        lines.append(f"mục tiêu: chưa có mục tiêu số (cost_target: null) — {result['cost_target']['reason']}")
     else:
         lines.append(f"mục tiêu {target:.0%}: " + ("ĐẠT (theo số ước lượng, chưa đủ để tick DoD)" if result["target_met"] else "CHƯA ĐẠT")
-                     + ("" if result["ceiling_ok"] else f"; trần chặt {_pct(result['ceiling']['tight']['median'])} < mục tiêu: không khả thi"))
+                     + ("" if result["ceiling_ok"] else f"; trần chặt {_pct(result['ceiling']['tight']['median'])} < mục tiêu: chưa thể đạt theo ước lượng"))
     return "\n".join(lines)
 
 

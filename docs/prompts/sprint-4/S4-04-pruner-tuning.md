@@ -15,11 +15,22 @@
 
 ## Quyết định đã chốt sau cổng bước 0 (2026-10-07, phương án A)
 
-- Cổng đã chạy (`eval_cost --ceiling`, `estimate`, commit `101378a`): trần chặt `1 − B_min/A` của noteboard là **2,5%** ở median (P90 2,6%) trên 20 ca LLM; trần lỏng 7,3%; đã đạt **−5,0%** (pruner hiện tại làm request to hơn diff thô ở cả 20 ca). Phần diff chỉ chiếm 7,3% request (tiền tố ≈ 907 token ước lượng), nên **mục tiêu 40% không khả thi trên golden set noteboard**; chỉ-phần-diff cũng chỉ 32,4% nên đổi định nghĩa DoD không cứu được.
-- Quyết định: **mục tiêu giảm token được chốt THEO TỪNG DATASET**. Noteboard: không có mục tiêu 40% (`cost_target: null`, kèm số đo trên làm lý do); vẫn báo số đo, vẫn bắt buộc không tụt recall. Dataset mới: dựng với diff đủ lớn (đúng các ca "diff lớn", "code + generated lớn" ở mục 2.1) rồi chạy cổng trần chặt cho từng dataset; dataset nào trần < 40% thì ghi `cost_target: null` + số đo + lý do và **tiếp tục** (không dừng nữa), dataset nào ≥ 40% thì mục tiêu là 40% ở median.
+- Cổng đã chạy (`eval_cost --ceiling`, `estimate`, commit `101378a`): trần chặt `1 − B_min/A` của noteboard là **2,5%** ở median (P90 2,6%) trên 20 ca LLM; trần lỏng 7,3%; đã đạt **−5,0%** (pruner hiện tại làm request to hơn diff thô ở cả 20 ca). Phần diff chỉ chiếm 7,3% request (tiền tố ≈ 907 token ước lượng), nên **chưa đạt 40% trên golden set noteboard theo ước lượng `ceil(byte/3)`** (trần ước lượng thấp; `count_tokens` chưa đo); chỉ-phần-diff cũng chỉ 32,4% nên đổi định nghĩa DoD không cứu được.
+- Quyết định: **mục tiêu giảm token được chốt THEO TỪNG DATASET**. Noteboard: chưa có mục tiêu số (`cost_target: null`, kèm số đo trên làm lý do; mục tiêu 40% của kế hoạch không đổi); vẫn báo số đo, vẫn bắt buộc không tụt recall. Dataset mới: dựng với diff đủ lớn (đúng các ca "diff lớn", "code + generated lớn" ở mục 2.1) rồi chạy cổng trần chặt cho từng dataset; dataset nào trần ước lượng < 40% thì ghi `cost_target: null` + số đo + lý do và **tiếp tục** (không dừng nữa), dataset nào ≥ 40% thì mục tiêu là 40% ở median.
 - Phương án B (đổi DoD sang "phần diff") bị loại. Phương án C (giảm tiền tố, đổi cách dựng `system`/`diff_select.md`) vẫn **ngoài phạm vi**, cần tôi duyệt riêng.
 - DoD S4.4 "giảm ≥ 40% ở median" **không tick** dựa trên noteboard; điều kiện đóng của nó sẽ do tôi quyết ở lượt nghiệm thu, dựa trên số từng dataset.
 - Việc tinh chỉnh `pruner.py` vẫn bị rào chắn như cũ (không bỏ hunk code thật để giảm token). Có một núm hợp lệ đã thấy từ số đo: khung JSON của mỗi file nặng hơn `-U3` thô ở diff nhỏ (B0 > A); thu gọn khung đó chỉ là chỉnh cách biểu diễn, không bỏ file hay hunk.
+
+## Kết quả offline và quyết định kết phiên (2026-10-07)
+
+**Code và phép đo offline hoàn tất; nghiệm thu S4.4 chưa hoàn tất.** `docs/implementation-plan.md` giữ nguyên mục tiêu 40% và S4.4 vẫn `[ ]`.
+
+- **Kết luận về token (chỉ ước lượng):** chưa đạt 40% ở median theo ước lượng `ceil(byte/3)` với định dạng payload hiện tại, ở cả ba dataset (số trong `docs/usage-ci.md`, mục chi phí). `count_tokens` và recall thật còn PENDING, nên đây chưa phải kết luận về token thật và không phải "không thể đạt".
+- **nd-008 (quyết định hẹp):** chấp nhận bỏ 45 hunk chỉ đổi dòng chú thích `// helper NN` thành `// helper NN (moved)` của đúng fixture này, vì `path`/`old_path`/`status` và `dropped_hunks` vẫn hiện trong payload. **Không** suy ra mọi thay đổi chú thích đều an toàn để bỏ: quy tắc COMMENT là có sẵn và chưa được đánh giá bằng recall thật.
+- **`-U0` chưa nhận** trước khi có recall thật (ước lượng +0,8 đến +1,8 điểm %, đổi lại mất dòng ngữ cảnh).
+- **Nhãn:** `monorepo-poly` và `node-api` giữ `labels_status: unreviewed`; không ai được thêm `reviewed_by` thay người duyệt. Mọi số recall/`rules_full_set` của hai dataset này là CHƯA KIỂM CHỨNG.
+- **Baseline đo thật:** commit `d26eff6`, gồm cả pruner **và** định dạng payload trước tinh chỉnh (xem `S4-04-acceptance-run.md`), không chỉ SHA của `pruner.py`.
+- Phát hiện về `_default.yaml` (lockfile/manifest lồng, Dockerfile tên khác, `gt-functional` vắng) là việc riêng, không sửa trong S4-04.
 
 ## Đọc trước
 
@@ -168,7 +179,7 @@ Ca cực lớn (hàng nghìn file, nhiều MB) **không** commit thành patch: d
   - floor security (`gitleaks`, `semgrep`) luôn chạy; `core/` vẫn gộp floor lần hai;
   - LLM lỗi vẫn FULL SET; `token_cap` vẫn FULL SET với 0 lời gọi;
   - giữ `core.quotepath=off`, `safe.directory=*` chỉ cho lệnh đọc, và digest tất định.
-- Nếu tiền tố cố định khiến 40% không khả thi ở một dataset hay nhóm diff: báo số đo, `1 − P/A` và lý do, rồi dừng theo mục HỎI TRƯỚC. **Không cắt code để ép đạt chỉ tiêu.**
+- Nếu tiền tố cố định khiến 40% chưa đạt được theo ước lượng ở một dataset hay nhóm diff: báo số đo, `1 − P/A` và lý do, rồi dừng theo mục HỎI TRƯỚC. **Không cắt code để ép đạt chỉ tiêu.**
 
 ### 5. Kiểm chất lượng (offline ở giai đoạn này)
 
@@ -198,7 +209,7 @@ Ca cực lớn (hàng nghìn file, nhiều MB) **không** commit thành patch: d
 
 ## HỎI TRƯỚC (dừng, báo số đo, chờ tôi chọn)
 
-- **Trần chặt `1 − B_min/A` (mục 0) < 40% ở median** trên noteboard hoặc trên một dataset mới (cổng ở đầu phiên và ở bước 2): dừng trước khi dựng dataset/tinh chỉnh. Đưa `A`, `P`, `B_min` ở median, ba trần, và các phương án với đề xuất: (a) chốt mục tiêu theo từng dataset (ghi rõ dataset nào không khả thi và vì sao); (b) đổi định nghĩa DoD sang "phần diff trong request", ghi rõ trong DoD và báo cáo là đã đổi; (c) giảm tiền tố (module-map, catalog, capabilities): đổi `diff_select.md` hoặc cách dựng system nên cũng là đổi `prompt_version` và mất cache S4-02, ngoài phạm vi, chỉ làm khi tôi duyệt.
+- **Trần chặt `1 − B_min/A` (mục 0) < 40% ở median** trên noteboard hoặc trên một dataset mới (cổng ở đầu phiên và ở bước 2): dừng trước khi dựng dataset/tinh chỉnh. Đưa `A`, `P`, `B_min` ở median, ba trần, và các phương án với đề xuất: (a) chốt mục tiêu theo từng dataset (ghi rõ dataset nào chưa đạt theo ước lượng và vì sao); (b) đổi định nghĩa DoD sang "phần diff trong request", ghi rõ trong DoD và báo cáo là đã đổi; (c) giảm tiền tố (module-map, catalog, capabilities): đổi `diff_select.md` hoặc cách dựng system nên cũng là đổi `prompt_version` và mất cache S4-02, ngoài phạm vi, chỉ làm khi tôi duyệt.
 - Median giảm `estimate` của một dataset < 40% dù trần chặt ≥ 40%, sau khi đã thử các núm hợp lệ: đưa số, trần, các phương án như trên và đề xuất.
 - Nhãn nói FULL SET mà `_default.yaml` không chọn (lockfile lồng, `*.Dockerfile`): **không** tự sửa `_default.yaml` trong S4-04, vì nó đổi hành vi mọi project. Báo danh sách ca và đề xuất.
 - Cần đổi `diff_select.md`: phải tăng `prompt_version`, làm mất cache S4-02 và làm baseline noteboard không còn so sánh trực tiếp được.
@@ -220,7 +231,7 @@ Ca cực lớn (hàng nghìn file, nhiều MB) **không** commit thành patch: d
 | Rào chắn: file list đầy đủ, rename/delete, generated/vendor, Unicode, diff rất lớn, floor, LLM lỗi → FULL SET, `token_cap` → FULL SET | unit test + bất biến trên ba dataset | — | nhiều kiểu repo (fixture tổng hợp) |
 | Rules chọn đúng FULL SET / chỉ-floor theo nhãn | `rules_full_set` từng dataset (tất định) | — | noteboard; dataset mới chỉ khi `labels_status: reviewed`, nếu không là CHƯA KIỂM CHỨNG |
 | Giả định ngầm của `_default.yaml` (lockfile lồng, `*.Dockerfile`) | ca tương ứng trong `monorepo-poly` | — | phát hiện; sửa là việc riêng do tôi quyết |
-| Trần khả thi `1 − B_min/A` (cổng đầu phiên và cổng từng dataset mới) | `eval_cost --ceiling`, `estimate`; dưới 40% thì ghi `cost_target: null` + lý do (đã chốt A); noteboard đã đo: 2,5% | `count_tokens` xác nhận P và B_min | từng dataset đã đo; noteboard trước, dataset mới sau |
+| Trần khả thi `1 − B_min/A` (cổng đầu phiên và cổng từng dataset mới) | `eval_cost --ceiling`, `estimate`; dưới 40% thì ghi `cost_target: null` + lý do (đã chốt A); noteboard đã đo: 2,5% với định dạng payload trước S4-04, 5,2% sau tinh chỉnh | `count_tokens` xác nhận P và B_min | từng dataset đã đo; noteboard trước, dataset mới sau |
 | Mức giảm token (median/P90, ca tăng token) | `eval_cost --llm-tokens estimate` từng dataset, ghi "ước lượng" | `--llm-tokens count` (gửi dữ liệu ra ngoài) | từng dataset đã đo; không suy rộng sang repo thật |
 | DoD "giảm ≥ 40% ở median" | chỉ có số ước lượng: **không tick** | `count_tokens` hoặc `usage.input_tokens` thật | theo từng dataset |
 | Đường ống chất lượng (recall/precision/final recall, fallback, Δ điểm %) | `--llm fake`, `quality_evidence: fake-pipeline-only` | — | không nói gì về model |

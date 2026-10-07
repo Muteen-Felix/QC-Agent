@@ -367,15 +367,15 @@ wallclock 1m02s · LLM: 5 340 in (4 096 từ cache) / 210 out · worker: 1 200 t
 
 Số đo (**ước lượng** `ceil(byte UTF-8 / 3)` của TOÀN BỘ request, không phải `count_tokens`; ca FULL SET/chỉ-floor không vào median; median trên ca đi đường LLM; "trần" = `1 − B_min/A` với B_min là danh sách file đầy đủ không hunk):
 
-| dataset | split (số ca LLM) | giảm trước S4-04 (median) | giảm sau (median / P90) | trần ở median | mục tiêu 40% |
+| dataset | split (số ca LLM) | giảm trước S4-04 (median) | giảm sau (median / P90) | trần ước lượng ở median | 40% ở median (ước lượng) |
 |---|---|---|---|---|---|
-| `noteboard` (nhãn đã duyệt) | tune (20) | −5,0% | +2,7% / +4,3% | 5,2% | N/A |
-| `monorepo-poly` (nhãn CHƯA KIỂM CHỨNG) | tune (14) | −3,7% | +5,6% / +19,8% | 10,1% | N/A |
-| `monorepo-poly` | holdout (6) | −4,7% | +3,8% / +7,1% | 10,6% | N/A |
-| `node-api` (nhãn CHƯA KIỂM CHỨNG) | tune (9) | −4,9% | +4,8% / +92,9% | 14,8% | N/A |
-| `node-api` | holdout (4) | −2,7% | +5,0% / +7,8% | 9,1% | N/A |
+| `noteboard` (nhãn đã duyệt) | tune (20) | −5,0% | +2,7% / +4,3% | 5,2% | chưa đạt |
+| `monorepo-poly` (nhãn CHƯA KIỂM CHỨNG) | tune (14) | −3,7% | +5,6% / +19,8% | 10,1% | chưa đạt |
+| `monorepo-poly` | holdout (6) | −4,7% | +3,8% / +7,1% | 10,6% | chưa đạt |
+| `node-api` (nhãn CHƯA KIỂM CHỨNG) | tune (9) | −4,9% | +4,8% / +92,9% | 14,8% | chưa đạt |
+| `node-api` | holdout (4) | −2,7% | +5,0% / +7,8% | 9,1% | chưa đạt |
 
-Không dataset nào đạt mục tiêu "giảm ≥ 40% ở median" và **không dataset nào có thể**: đa số diff chỉ chạm 1–2 file nhỏ nên phần diff chỉ chiếm khoảng 7–18% request, còn tiền tố cố định (system, module-map, catalog worker, schema tool) khoảng 850–900 token ước lượng. Diff lớn thì có dư địa (diff 45 file đổi tên giảm 57,5% ở `node-api`, trong đó có 45 hunk chỉ sửa chú thích bị bỏ theo quy tắc cũ và hiện qua `dropped_hunks`; file 3 000 dòng bị cắt theo trần mỗi file giảm hơn 90%) nhưng không đại diện cho median. Trước S4-04 payload đã prune còn **to hơn** diff thô ở hầu hết ca LLM nhỏ (20/20 ca ở `noteboard`). Số **token thật** (`count_tokens`) và **recall thật** chưa đo (PENDING): các con số trên không nói gì về chất lượng chọn worker của model.
+**Chưa đạt 40% ở median theo ước lượng `ceil(byte/3)` với định dạng payload hiện tại**; `count_tokens` và recall thật còn PENDING, nên đây chưa phải kết luận về số token thật và mục tiêu 40% của kế hoạch không bị đổi. Trần ước lượng ở median thấp (5–15%) vì đa số diff chỉ chạm 1–2 file nhỏ, phần diff chỉ chiếm khoảng 7–18% request, còn tiền tố cố định (system, module-map, catalog worker, schema tool) khoảng 850–900 token ước lượng. Diff lớn thì có dư địa (diff 45 file đổi tên giảm 57,5% ở `node-api`, trong đó có 45 hunk chỉ đổi chú thích `helper … (moved)` của fixture này bị bỏ theo quy tắc COMMENT có sẵn và hiện qua `dropped_hunks`, nên không suy ra mọi thay đổi chú thích đều an toàn để bỏ; file 3 000 dòng bị cắt theo trần mỗi file giảm hơn 90%) nhưng không đại diện cho median. Trước S4-04 payload đã prune còn **to hơn** diff thô ở hầu hết ca LLM nhỏ (20/20 ca ở `noteboard`). Số **token thật** (`count_tokens`) và **recall thật** chưa đo (PENDING): các con số trên không nói gì về chất lượng chọn worker của model.
 
 ## 6. Rủi ro còn lại (biết trước)
 - Worker eval của **chính repo SUT** (ví dụ `pytest tests/eval`) chạy mã của PR với các key LLM trong môi trường. Với PR cùng repo, tác giả là người có quyền ghi; hãy dùng key riêng cho CI với **giới hạn ngân sách**.

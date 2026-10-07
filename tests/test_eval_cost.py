@@ -52,10 +52,10 @@ def test_target_none_reports_numbers_but_never_decides_and_exit_code_follows_the
     per = summarize([case("a", 1000, 900, 940, 1010, 960)], target=None)
     assert per["target"] is None and per["target_met"] is None and per["ceiling_ok"] is False
     ok = {**per, "dataset": "x"}
-    assert eval_cost.exit_code([ok], ceiling=True) == 0 and eval_cost.exit_code([ok], ceiling=False) == 0     # N/A đã chốt: không quyết exit
+    assert eval_cost.exit_code([ok], ceiling=True) == 0 and eval_cost.exit_code([ok], ceiling=False) == 0     # cost_target null: không quyết exit
     miss = {**summarize([case("a", 1000, 100, 700, 800, 790)], target=.4), "dataset": "y"}
     assert miss["target_met"] is False and eval_cost.exit_code([miss], ceiling=False) == 1
-    assert eval_cost.exit_code([{**miss, "ceiling": {"tight": {"median": .3}}}], ceiling=True) == 1            # mục tiêu cao hơn trần chặt: không khả thi
+    assert eval_cost.exit_code([{**miss, "ceiling": {"tight": {"median": .3}}}], ceiling=True) == 1            # mục tiêu cao hơn trần chặt: chưa thể đạt theo ước lượng
     hit = {**summarize([case("a", 1000, 100, 500, 800, 550)], target=.4), "dataset": "z"}
     assert hit["target_met"] is True and eval_cost.exit_code([hit], ceiling=False) == 0
 
@@ -161,7 +161,7 @@ def test_cli_ceiling_with_a_null_target_exits_zero_and_says_so_and_unknown_datas
     text = capsys.readouterr().out
     data = json.loads(out.read_text(encoding="utf-8"))["datasets"]["noteboard"]
     assert code == 0 and data["token_evidence"] == "estimate" and data["ceiling_ok"] is False and "_payload_b1" not in json.dumps(data)
-    assert "ƯỚC LƯỢNG" in text and "N/A đã chốt" in text
+    assert "ƯỚC LƯỢNG" in text and "chưa có mục tiêu số" in text
     assert eval_cost.main(["--dataset", "không-có-dataset-này"]) == 3
 
 

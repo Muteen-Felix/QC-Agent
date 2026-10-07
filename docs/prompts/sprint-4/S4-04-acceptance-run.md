@@ -51,6 +51,6 @@ python tools/eval_selector.py --llm real --runs 3 --yes --dataset noteboard     
 
 ## C. Việc cần tôi quyết sau khi có số
 
-1. Đóng hay không DoD S4.4 "giảm ≥ 40% ở median" (không dataset nào khả thi; xem `docs/usage-ci.md`). Đề xuất đóng theo từng dataset với điều kiện "không tụt recall" và "payload ≤ diff thô", ghi rõ N/A cho mục tiêu 40%.
-2. `-U0` (+0,8 đến +1,8 điểm % ước lượng) có nhận hay không, dựa trên recall thật.
+1. Đóng hay không DoD S4.4 "giảm ≥ 40% ở median". Theo ước lượng `ceil(byte/3)` với định dạng payload hiện tại, các dataset **chưa đạt 40%** (trần ước lượng 5–15% ở median; xem `docs/usage-ci.md`); `count_tokens` có thể đổi con số này. Mục tiêu 40% trong `docs/implementation-plan.md` giữ nguyên và S4.4 chưa tick. Nếu số thật vẫn dưới 40%, quyết định đóng theo từng dataset với điều kiện "không tụt recall" và "payload ≤ diff thô" là của tôi, không phải mặc định.
+2. `-U0` (+0,8 đến +1,8 điểm % ước lượng) **chưa nhận** trước khi có recall thật; nhận hay không dựa trên recall thật.
 3. `_default.yaml`: lockfile/manifest lồng (`apps/web/pnpm-lock.yaml`) và Dockerfile tên khác (`deploy/docker/api.Dockerfile`) không được rules chọn FULL SET; `gt-functional` không có trong policy mặc định nên `pytest` không bao giờ được chọn. Đây là việc riêng, đổi hành vi mọi project.

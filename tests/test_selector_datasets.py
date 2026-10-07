@@ -54,7 +54,7 @@ def test_holdout_cases_are_tagged_and_selectable(tmp_path):
     ({"name": "other"}, "trùng tên thư mục"),
     ({"labels_status": "maybe"}, "labels_status"),
     ({"reviewed_note": None}, "reviewed_by"),                                   # reviewed mà không có người duyệt cũng không có ghi chú nguồn
-    ({"cost_target": {"median_reduction": None}}, "reason"),                    # N/A phải kèm số đo làm lý do
+    ({"cost_target": {"median_reduction": None}}, "reason"),                    # cost_target null phải kèm số đo làm lý do
     ({"cost_target": {"median_reduction": 1.5}}, "median_reduction"),
     ({"splits": {"holdout": ["khong-co-ca-nay"]}}, "holdout"),
     ({"patches": "/khong/co/thu/muc"}, "patches"),
