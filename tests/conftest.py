@@ -7,6 +7,8 @@ import pytest
 
 os.environ.setdefault("DEEPEVAL_DISABLE_DOTENV", "1")   # import deepeval không được nạp .env của máy dev
 ROOT = Path(__file__).resolve().parent.parent
+# Dataset đo pruner (S4-04) chứa mã SUT giả, kể cả file `test_*.py` của chính SUT đó: chúng là DỮ LIỆU, không phải test của qc-agent (import `routes` thất bại làm `pytest -q` dừng ở bước thu thập).
+collect_ignore_glob = ["fixtures/selector-datasets/*"]
 SUT = ROOT / "tests" / "fixtures" / "sut" / "noteboard"
 sys.path.insert(0, str(SUT))  # `import toyapp` (SUT tham chiếu) trong test
 

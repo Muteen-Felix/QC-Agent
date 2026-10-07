@@ -242,5 +242,5 @@ def test_the_installed_wheel_reads_every_resource_through_importlib_resources(wh
     done = subprocess.run([str(python), "-I", "-c", READ_INSTALLED, json.dumps(wanted)], cwd=tmp_path, capture_output=True, text=True, encoding="utf-8", timeout=120)
     assert done.returncode == 0, done.stderr
     result = json.loads(done.stdout)
-    assert "site-packages" in result["file"] and str(ROOT) not in result["file"], result["file"]    # bản đã cài, không phải cây nguồn
+    assert "site-packages" in result["file"] and not Path(result["file"]).resolve().is_relative_to(ROOT / "src"), result["file"]    # bản đã cài, không phải cây nguồn
     assert all(size > 0 for size in result["sizes"].values()), {k: v for k, v in result["sizes"].items() if not v}
