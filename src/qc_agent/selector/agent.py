@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import yaml
@@ -19,7 +19,50 @@ from qc_agent.selector.payload import merge_floor
 
 log = logging.getLogger("qc_agent.selector.agent")
 PROMPT = Path(__file__).parent / "prompts" / "diff_select.md"
+TOOL_NAME = "select_workers"
+TOOL_DESCRIPTION = "Select workers needed for changed files"
 PROMPT_VERSION = "diff-select/1"   # khớp front-matter diff_select.md; khoá cache còn băm cả nội dung prompt nên quên tăng số cũng không trả kết quả cũ
+
+
+@dataclass(frozen=True)
+class DiffRequest:
+    """Phần không phụ thuộc diff của request Diff Agent: `system` (prompt + MODULE MAP + WORKERS + CAPABILITIES) và `schema` của tool `select_workers`.
+    `prompt` và `capabilities` giữ lại để băm khoá cache. Dùng chung cho `select` và `tools/eval_cost.py` để số đo không lệch khung với request thật."""
+    system: str
+    schema: dict
+    allowlist: list[str]
+    prompt: str
+    capabilities: dict
+
+
+def build_request(suite_map: dict[str, list[str]], module_map: dict | None) -> DiffRequest:
+    allowlist = sorted(suite_map)
+    schema = {"type": "object", "additionalProperties": False, "required": ["selections"],
+              "properties": {"selections": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                  "required": ["worker", "reason"], "properties": {"worker": {"enum": allowlist}, "reason": {"type": "string"}}}}}}
+    prompt = PROMPT.read_text(encoding="utf-8")
+    capabilities_path = settings.get().resolved_schemas_dir / "capabilities.json"
+    capabilities = json.loads(capabilities_path.read_text(encoding="utf-8"))
+    catalog = {name: {"suites": suite_map[name]} for name in allowlist}
+    system = prompt + "\nMODULE MAP\n" + yaml.safe_dump(module_map or {}, sort_keys=True, allow_unicode=True)
+    system += "\nWORKERS\n" + json.dumps(catalog, ensure_ascii=False, sort_keys=True)
+    system += "\nCAPABILITIES\n" + json.dumps(capabilities, ensure_ascii=False, sort_keys=True)
+    return DiffRequest(system, schema, allowlist, prompt, capabilities)
+
+
+def pruned_payload(pruned) -> str:
+    """Danh sách file đã prune dạng JSON: phần thay đổi theo diff trong `user`."""
+    return json.dumps([asdict(item) for item in pruned.files], ensure_ascii=False, sort_keys=True)
+
+
+def user_message(payload: str) -> str:
+    """Khung `user`: payload (không tin cậy) đặt trong vùng phân cách; chuỗi đóng khung bị vô hiệu để diff không thoát được khỏi vùng."""
+    return "<untrusted_diff>\n" + payload.replace("</untrusted_diff", "&lt;/untrusted_diff") + "\n</untrusted_diff>"
+
+
+def estimate_request(request: DiffRequest, user: str) -> int:
+    """Ước lượng đầu vào của một lời gọi (cùng công thức với trần `token_cap`: system + user + schema; `estimate_input_tokens` là ước lượng gần đúng)."""
+    return estimate_input_tokens(request.system, user, request.schema)
 
 
 def _clean(value: str) -> str:
@@ -77,20 +120,10 @@ def select(pruned, rule_decision, policy: dict, suite_map: dict[str, list[str]],
             result["rationale"][worker] = _clean(", ".join(reasons))
     if rule_decision.floor_only:
         return _validated(merge_floor(result, policy, suite_map))
-    allowlist = sorted(suite_map)
-    schema = {"type": "object", "additionalProperties": False, "required": ["selections"],
-              "properties": {"selections": {"type": "array", "items": {"type": "object", "additionalProperties": False,
-                  "required": ["worker", "reason"], "properties": {"worker": {"enum": allowlist}, "reason": {"type": "string"}}}}}}
-    prompt = PROMPT.read_text(encoding="utf-8")
-    capabilities_path = settings.get().resolved_schemas_dir / "capabilities.json"
-    capabilities = json.loads(capabilities_path.read_text(encoding="utf-8"))
-    catalog = {name: {"suites": suite_map[name]} for name in allowlist}
-    system = prompt + "\nMODULE MAP\n" + yaml.safe_dump(module_map or {}, sort_keys=True, allow_unicode=True)
-    system += "\nWORKERS\n" + json.dumps(catalog, ensure_ascii=False, sort_keys=True)
-    system += "\nCAPABILITIES\n" + json.dumps(capabilities, ensure_ascii=False, sort_keys=True)
-    diff = json.dumps([asdict(item) for item in pruned.files], ensure_ascii=False, sort_keys=True)
-    diff = diff.replace("</untrusted_diff", "&lt;/untrusted_diff")
-    user = "<untrusted_diff>\n" + diff + "\n</untrusted_diff>"
+    request = build_request(suite_map, module_map)
+    allowlist, schema, prompt, capabilities = request.allowlist, request.schema, request.prompt, request.capabilities
+    system = request.system
+    user = user_message(pruned_payload(pruned))
     model = settings.get().selector_model
     cache_dir = settings.get().resolved_select_cache_dir
     cache_key = cache_info = None
@@ -100,7 +133,7 @@ def select(pruned, rule_decision, policy: dict, suite_map: dict[str, list[str]],
         cache_info = select_cache.lookup(cache_dir, cache_key, allowlist)
         event(log, "selector.cache", outcome="hit" if cache_info else "miss", key=cache_key[:8])
     if cache_info is None:   # hit thì không tốn gì nên không bị chặn bởi trần; ước lượng gần đúng, không phải trần cứng (xem client.estimate_input_tokens)
-        estimate = estimate_input_tokens(system, user, schema)
+        estimate = estimate_request(request, user)
         if estimate > settings.get().llm_max_input_tokens:
             event(log, "selector.token_cap", estimate=estimate, cap=settings.get().llm_max_input_tokens, files=len(pruned.files))
             return _full(pruned, policy, suite_map, "token_cap")   # 0 lời gọi, không ghi cache; gate không đỏ vì chi phí
@@ -109,7 +142,7 @@ def select(pruned, rule_decision, policy: dict, suite_map: dict[str, list[str]],
             selections, llm_info = cache_info["selections"], {**cache_info["llm"], "cache_hit": True}
         else:
             call = call_tool(purpose="diff-select", model=model, system=system, user=user,
-                             tool_name="select_workers", tool_description="Select workers needed for changed files",
+                             tool_name=TOOL_NAME, tool_description=TOOL_DESCRIPTION,
                              input_schema=schema, egress_dir=Path(egress_dir or "."), data_categories=["source_code_diff"],
                              max_tokens=1024, timeout_s=15, transport=transport)
             selections = [{"worker": item["worker"], "reason": _clean(item["reason"])} for item in call.data["selections"]]
