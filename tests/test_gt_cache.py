@@ -4,8 +4,6 @@ LLM là `FakeAnthropic` (HTTP server giả, `ANTHROPIC_BASE_URL`) có đếm l�
 """
 import io
 import json
-import re
-import zipfile
 
 import pytest
 
@@ -37,13 +35,6 @@ def parsed(path=PRD_FILE):
     return parse_prd(path, openapi_source=str(OPENAPI))
 
 
-def xlsx_members(data: bytes) -> dict[str, bytes]:
-    """Nội dung từng phần của xlsx, TRỪ `modified` trong docProps/core.xml. BÁO LẠI (S4-02): `render_xlsx` KHÔNG giống từng byte giữa hai lần chạy cách nhau vài giây,
-    vì openpyxl 3.1.5 ghi đè `modified` bằng giờ hiện tại lúc lưu (bỏ qua ngày cố định ở xlsx.py:226) và timestamp trong zip cũng là giờ hiện tại. Lỗi có sẵn, không do cache."""
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        return {name: re.sub(rb"<dcterms:modified[^>]*>[^<]*</dcterms:modified>", b"", archive.read(name)) for name in archive.namelist()}
-
-
 # ---------------- qua CLI ----------------
 
 def test_second_generate_has_zero_calls_and_byte_identical_files(tmp_path, capsys, fake, cache_dir):
@@ -56,10 +47,7 @@ def test_second_generate_has_zero_calls_and_byte_identical_files(tmp_path, capsy
     assert fake.count == 1                                     # lần 2: không có request nào
     assert "cache: HIT" in out and json.loads(summary.read_text(encoding="utf-8"))["cache_hit"] is True
     a, b = tree(first), tree(sut)
-    xlsx_path = f"{GT}/test-cases.xlsx"
-    assert xlsx_path in a and xlsx_path in b                   # xlsx mặc định được ghi
-    assert {k: v for k, v in a.items() if k != xlsx_path} == {k: v for k, v in b.items() if k != xlsx_path}   # mọi file khác: giống từng byte
-    assert xlsx_members(a[xlsx_path]) == xlsx_members(b[xlsx_path])
+    assert f"{GT}/test-cases.xlsx" in a and a == b             # giống từng byte, kể cả xlsx (mặc định được ghi)
     assert not (tmp_path / "egress-two" / "egress.jsonl").exists()   # không có gì rời máy
 
 

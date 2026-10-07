@@ -215,6 +215,24 @@ def _instructions(ws) -> None:
     ws.column_dimensions["A"].width = 160
 
 
+_ZIP_TIME = (2000, 1, 1, 0, 0, 0)
+_MODIFIED = re.compile(rb"(<dcterms:modified[^>]*>)[^<]*(</dcterms:modified>)")
+
+
+def _deterministic(raw: bytes) -> bytes:
+    """openpyxl ghi đè `modified` và timestamp từng phần zip bằng giờ hiện tại lúc save: cố định lại để cùng catalog ra cùng byte (commit của bot không đổi vô cớ)."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(raw)) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "docProps/core.xml":
+                data = _MODIFIED.sub(rb"\g<1>2000-01-01T00:00:00Z\g<2>", data)
+            info = zipfile.ZipInfo(item.filename, _ZIP_TIME)
+            info.compress_type, info.create_system, info.external_attr = zipfile.ZIP_DEFLATED, 3, 0o600 << 16   # create_system cố định: Windows và Linux ra cùng byte
+            dst.writestr(info, data)
+    return out.getvalue()
+
+
 def render_xlsx(catalog: dict, facts: dict | None = None) -> bytes:
     """catalog -> bytes xlsx. `facts` (coverage.snapshot) cho sheet Coverage; thiếu thì chỉ có phần AC. Ném `XlsxError` nếu một ô quá lớn cho Excel."""
     problems = gt_schema.validate_catalog(catalog)
@@ -309,7 +327,7 @@ def render_xlsx(catalog: dict, facts: dict | None = None) -> bytes:
     meta.sheet_state = "veryHidden"
     buffer = io.BytesIO()
     wb.save(buffer)
-    return buffer.getvalue()
+    return _deterministic(buffer.getvalue())
 
 
 def _coverage_sheet(ws, catalog: dict, facts: dict | None, story_of: dict) -> None:
