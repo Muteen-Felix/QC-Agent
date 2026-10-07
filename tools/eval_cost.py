@@ -21,7 +21,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
-from dataclasses import asdict, replace
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -56,7 +56,7 @@ def _raw_diff(checkout: Path, merge_base: str, head: str) -> str:
 
 def _minimal_payload(diff) -> str:
     """Danh sách file đầy đủ, không hunk. `truncated`/`dropped_hunks` về giá trị ngắn nhất để là cận dưới thật sự."""
-    return json.dumps([asdict(replace(item, hunks=None, truncated=False, dropped_hunks=0)) for item in diff.files], ensure_ascii=False, sort_keys=True)
+    return agent.payload_json([replace(item, hunks=None, truncated=False, dropped_hunks=0) for item in diff.files])
 
 
 def pruner_info() -> dict:
