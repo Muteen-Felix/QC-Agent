@@ -74,7 +74,8 @@ def _kind(repo: Path, path: str, status: str, merge_base: str, head: str) -> str
 
 def _trim_comments(diff: str, suffix: str) -> tuple[str | None, int]:
     chunks = re.split(r"(?=^@@ )", diff, flags=re.MULTILINE)
-    header = chunks.pop(0) if chunks and not chunks[0].startswith("@@ ") else ""
+    if chunks and not chunks[0].startswith("@@ "):
+        chunks.pop(0)   # header git (diff --git/index/---/+++): path, old_path và status đã nằm trong entry nên giữ lại chỉ là lặp
     kept = []
     dropped = 0
     markers = COMMENT.get(suffix, ())
@@ -86,7 +87,7 @@ def _trim_comments(diff: str, suffix: str) -> tuple[str | None, int]:
             dropped += 1
         elif edits:
             kept.append(chunk)
-    return (header + "".join(kept)).strip() if kept else None, dropped
+    return "".join(kept).strip() if kept else None, dropped
 
 
 def _cap(value: str | None, tokens: int) -> tuple[str | None, bool]:

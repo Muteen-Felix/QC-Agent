@@ -96,3 +96,45 @@ def test_git_reads_ignore_directory_ownership(tmp_path, monkeypatch):
     monkeypatch.setattr(pruner.subprocess, "run", fake_run)
     pruner._git(tmp_path, "rev-parse", "HEAD")
     assert seen[0][:5] == ["git", "-c", "core.quotepath=off", "-c", "safe.directory=*"]
+
+
+def _commit(repo, message):
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=QC", "-c", "user.email=qc@example.invalid", "commit", "-qm", message)
+    return git(repo, "rev-parse", "HEAD")
+
+
+def _repo_with_changes(tmp_path):
+    git(tmp_path, "init", "-q")
+    body = "\n".join(f"line_{n} = {n}" for n in range(60)) + "\n"
+    def text(name):
+        return f"# {name}\n" + body   # mỗi file một dòng đầu riêng: nội dung giống hệt nhau thì git ghép nhầm cặp đổi tên
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / name).write_text(text(name), encoding="utf-8")
+    base = _commit(tmp_path, "base")
+    (tmp_path / "a.py").write_text(text("a.py").replace("line_5 = 5", "line_5 = 50").replace("line_40 = 40", "line_40 = 400"), encoding="utf-8")
+    (tmp_path / "n.py").write_text("def new():\n    return 'mới 🚀'\n", encoding="utf-8")
+    git(tmp_path, "mv", "b.py", "b2.py")
+    (tmp_path / "b2.py").write_text(text("b.py").replace("line_20 = 20", "line_20 = 21"), encoding="utf-8")
+    git(tmp_path, "mv", "c.py", "c2.py")
+    return base, _commit(tmp_path, "head")
+
+
+def _assert_hunks_are_headerless_and_complete(tmp_path, base, head, item):
+    hunks = item.hunks
+    assert hunks.startswith("@@ ") and not any(line.startswith(("diff --git", "index ", "--- ", "+++ ", "rename ", "similarity", "new file")) for line in hunks.splitlines())
+    raw = subprocess.run(["git", "diff", "--no-color", "-w", "-U1", "-M", base, head, "--", *([item.old_path] if item.old_path else []), item.path], cwd=tmp_path, check=True,
+                         capture_output=True).stdout.decode("utf-8").splitlines()   # UTF-8 tường minh: text=True giải mã bằng cp1252 trên Windows
+    changed = [line for line in raw if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))]
+    assert changed and all(line in hunks.splitlines() for line in changed), item.path   # không mất dòng thay đổi nào
+    assert not item.truncated and item.dropped_hunks == 0
+
+
+def test_hunks_carry_no_git_header_but_every_changed_line_and_the_file_identity_survive(tmp_path):
+    base, head = _repo_with_changes(tmp_path)
+    by_path = {item.path: item for item in prune(tmp_path, base, head).files}
+    assert sorted(by_path) == ["a.py", "b2.py", "c2.py", "n.py"]
+    for path in ("a.py", "n.py"):
+        _assert_hunks_are_headerless_and_complete(tmp_path, base, head, by_path[path])
+    assert (by_path["b2.py"].status, by_path["b2.py"].old_path) == ("R", "b.py") and (by_path["c2.py"].status, by_path["c2.py"].old_path) == ("R", "c.py")   # danh tính file nằm ở entry, không ở header
+    assert (by_path["n.py"].status, by_path["n.py"].old_path) == ("A", None) and "mới 🚀" in by_path["n.py"].hunks
