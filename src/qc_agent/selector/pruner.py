@@ -1,4 +1,13 @@
-"""Rut gon diff tu merge-base. Uoc luong token bang so ky tu / 4."""
+"""Rút gọn diff từ merge-base cho Diff Agent. Danh sách file LUÔN đầy đủ; hunk của file code giữ mọi dòng +/- (S4-04).
+
+Tham số đã chốt (S4-04): `per_file_tokens=1500` và `total_tokens=12000`. Đơn vị của hai trần là **ký tự / 4** (xấp xỉ nội bộ, KHÔNG phải số token thật; ước lượng
+của S4-03 là `client.estimate_input_tokens` = ceil(byte UTF-8 / 3) và số thật chỉ có từ `count_tokens`/`usage`). Không hạ hai trần để giảm token: phần bị cắt hiện qua
+`truncated`/`dropped_hunks`, và một ca trước đây không bị cắt mà nay bị cắt phải được duyệt.
+
+Núm đã nhận (đều không bỏ dòng thay đổi nào): bỏ header git khỏi hunk (path/old_path/status đã ở entry); file đổi tên pathspec cũ+mới với -M (chỉ phần sửa, không nhúng cả file);
+numstat nhị phân gọi một lần và xử lý file song song. Cùng với `agent.payload_json` (JSON gọn, bỏ trường mặc định). Đã thử, chưa nhận: `-U0` (thêm +0,8 đến +1,8 điểm % nhưng
+mất dòng ngữ cảnh khi chưa có recall thật). Ứng viên chưa làm: `linguist-generated` trong .gitattributes (ca đại diện nằm ở holdout). Số đo: docs/usage-ci.md (mục chi phí).
+"""
 from __future__ import annotations
 
 import hashlib
