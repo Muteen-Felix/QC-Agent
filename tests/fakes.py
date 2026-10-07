@@ -148,7 +148,7 @@ class FakeWebhook:
 class FakeJira:
     """Máy chủ Jira REST v3 giả cho test E2E; chỉ ghi request trong bộ nhớ."""
 
-    def __init__(self):
+    def __init__(self, host: str = "127.0.0.1"):
         self.issues: list[dict] = []
         self.requests: list[dict] = []
         self.forced_status: int | None = None
@@ -185,12 +185,13 @@ class FakeJira:
                 self.end_headers()
                 self.wfile.write(raw)
 
-        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.host = host
+        self.server = HTTPServer((host, 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
     @property
     def url(self):
-        return f"http://127.0.0.1:{self.server.server_port}"
+        return f"http://{'127.0.0.1' if self.host in ('0.0.0.0', '') else self.host}:{self.server.server_port}"
 
     def __enter__(self):
         self.thread.start()
@@ -214,8 +215,9 @@ class FakeAnthropic:
     """
     ERRORS = {429: "rate_limit_error", 529: "overloaded_error", 500: "api_error", 400: "invalid_request_error", 401: "authentication_error"}
 
-    def __init__(self, *script, key: str | None = None, hang_s: float = 5.0):
+    def __init__(self, *script, key: str | None = None, hang_s: float = 5.0, host: str = "127.0.0.1"):
         self.script = list(script) or [{}]
+        self.host = host
         self.key = key
         self.hang_s = hang_s
         self.requests: list[dict] = []
@@ -262,13 +264,13 @@ class FakeAnthropic:
                 payload = json.loads(Path(step).read_text(encoding="utf-8")) if isinstance(step, Path) else step
                 return self._send(200, payload)
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = ThreadingHTTPServer((host, 0), Handler)
         self.server.daemon_threads = True
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
     @property
     def url(self) -> str:
-        return f"http://127.0.0.1:{self.server.server_port}"
+        return f"http://{'127.0.0.1' if self.host in ('0.0.0.0', '') else self.host}:{self.server.server_port}"
 
     @property
     def count(self) -> int:

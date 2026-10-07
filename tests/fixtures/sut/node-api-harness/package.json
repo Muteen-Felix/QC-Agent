@@ -1,0 +1,12 @@
+{
+  "name": "node-api-harness",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.ts"
+  },
+  "dependencies": {
+    "left-pad": "1.3.0"
+  }
+}

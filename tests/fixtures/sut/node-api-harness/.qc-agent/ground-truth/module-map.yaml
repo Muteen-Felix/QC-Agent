@@ -1,0 +1,10 @@
+# qc-agent:generated gt — module-map đã duyệt (QA điền paths). Selector (S2) chỉ dùng để GỢI Ý thêm suite.
+version: 1
+status: approved
+modules:
+- name: "api"
+  paths:
+  - "src/**"
+  suites:
+  - api-contract
+  source: qa
