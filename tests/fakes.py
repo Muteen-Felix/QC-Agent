@@ -152,6 +152,7 @@ class FakeJira:
         self.issues: list[dict] = []
         self.requests: list[dict] = []
         self.forced_status: int | None = None
+        self.forced_message = "fake error"       # nội dung lỗi trả kèm `forced_status` (test chống rò rỉ đặt marker ở đây)
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -164,9 +165,9 @@ class FakeJira:
                     body = json.loads(self.rfile.read(length))
                 except ValueError:
                     body = {}
-                outer.requests.append({"path": self.path, "body": body})
+                outer.requests.append({"path": self.path, "body": body, "auth": self.headers.get("Authorization")})
                 if outer.forced_status:
-                    return self._send(outer.forced_status, {"errorMessages": ["fake error"]})
+                    return self._send(outer.forced_status, {"errorMessages": [outer.forced_message]})
                 if self.path == "/rest/api/3/search/jql":
                     labels = set(re.findall(r'qcagent-[a-f0-9]{16,64}', str(body.get("jql") or "")))
                     found = [issue for issue in outer.issues if labels.intersection(issue["fields"].get("labels") or [])]
@@ -283,3 +284,74 @@ class FakeAnthropic:
     def __exit__(self, *exc):
         self.server.shutdown()
         self.server.server_close()
+
+
+class FakeGemini:
+    """Máy chủ Gemini `generateContent` giả (`POST /v1beta/models/<model>:generateContent`) cho test chạy CLI thật: `GEMINI_BASE_URL=<url>`.
+
+    `script` phát lần lượt như FakeAnthropic (hết thì lặp phần tử cuối): dict -> 200 với body đó; int -> mã lỗi, body lỗi đúng dạng Google với `message` (marker rò rỉ đặt ở đây).
+    Mỗi request được ghi vào `requests` ({"model", "headers", "body"}); thiếu `x-goog-api-key` (hoặc sai `key` nếu có đặt) trả 403 và ghi `rejected=True`.
+    """
+    STATUS = {429: "RESOURCE_EXHAUSTED", 500: "INTERNAL", 503: "UNAVAILABLE", 400: "INVALID_ARGUMENT", 403: "PERMISSION_DENIED"}
+
+    def __init__(self, *script, key: str | None = None, message: str = "fake error", host: str = "127.0.0.1"):
+        self.script, self.key, self.message, self.host = list(script) or [{}], key, message, host
+        self.requests: list[dict] = []
+        self._lock = threading.Lock()
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _send(self, status, payload):
+                data = json.dumps(payload).encode("utf-8")
+                try:
+                    self.send_response(status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                except OSError:
+                    pass
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                try:
+                    body = json.loads(self.rfile.read(length)) if length else None
+                except ValueError:
+                    body = None
+                headers = {name.lower(): value for name, value in self.headers.items()}
+                match = re.fullmatch(r"/v1beta/models/([^/:]+):generateContent", self.path)
+                with outer._lock:
+                    bad_auth = not headers.get("x-goog-api-key") or (outer.key is not None and headers["x-goog-api-key"] != outer.key)
+                    outer.requests.append({"model": match.group(1) if match else None, "headers": headers, "body": body, "rejected": bad_auth})
+                    step = outer.script[min(len(outer.requests) - 1, len(outer.script) - 1)]
+                if not match:
+                    return self._send(404, {"error": {"code": 404, "message": "no route", "status": "NOT_FOUND"}})
+                if bad_auth:
+                    return self._send(403, {"error": {"code": 403, "message": "invalid key", "status": "PERMISSION_DENIED"}})
+                if isinstance(step, int):
+                    return self._send(step, {"error": {"code": step, "message": outer.message, "status": outer.STATUS.get(step, "INTERNAL")}})
+                return self._send(200, step)
+
+        self.server = ThreadingHTTPServer((host, 0), Handler)
+        self.server.daemon_threads = True
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    @property
+    def url(self) -> str:
+        return f"http://{'127.0.0.1' if self.host in ('0.0.0.0', '') else self.host}:{self.server.server_port}"
+
+    @property
+    def count(self) -> int:
+        return len(self.requests)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.server.shutdown()
+        self.server.server_close()
+

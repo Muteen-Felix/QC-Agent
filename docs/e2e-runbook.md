@@ -2,6 +2,8 @@
 
 Phần "Chạy harness local" mô tả cách chạy chuỗi PR → Select → Gate → Review → Jira → Report **trên máy**, không cần GitHub, Jira hay Anthropic thật (S4-05). Phần chạy trên GitHub thật là việc của S4-06 và chưa có ở đây.
 
+Vận hành gate thật (xoay khoá, chi phí, event log, đổi nhà cung cấp): [operations.md](operations.md).
+
 ## Chạy harness local
 
 Harness là `tools/run_reusable_locally.py`: chạy các bước `run:` của `.github/workflows/qc-gate.reusable.yml` trên Docker cục bộ, với GitHub/Anthropic/Jira là server giả (`tests/fakes.py`). Nó kiểm **luồng workflow** (bước shell, truyền biến, mạng docker, Check Run/comment/review), **không** kiểm chất lượng Selector (LLM là giả).

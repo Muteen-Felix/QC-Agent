@@ -338,6 +338,8 @@ dashboard vẫn đọc được các giá trị lịch sử `FAIL`, `YELLOW`, `P
 
 ### Chi phí LLM, prompt cache và trần token (Sprint 4)
 
+Vận hành hằng ngày (xoay khoá, FULL SET tăng đột biến, Jira hỏng, làm sạch cache, đổi nhà cung cấp, event log): [operations.md](operations.md).
+
 **Đọc dòng chi phí.** Đầu `report.md`, mục tóm tắt của Check Run và comment PR cùng in **một** dòng (cùng chuỗi, một con số tiền):
 
 ```

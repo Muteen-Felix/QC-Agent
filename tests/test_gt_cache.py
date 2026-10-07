@@ -78,7 +78,7 @@ def test_agent_never_reads_or_writes_the_cache(tmp_path, capsys, monkeypatch, ca
         code, _, err_two = gt(capsys, *args, "--force")
         assert code == 0 and server.count > after_first and entries(cache_dir) == []   # lần 2 vẫn gọi LLM
     skipped = [json.loads(line) for line in (err_one + err_two).splitlines() if '"gt.cache"' in line]
-    assert [e["skipped"] for e in skipped] == ["agent", "agent"] and not any("outcome" in e for e in skipped)
+    assert [(e["outcome"], e["reason"]) for e in skipped] == [("skipped", "agent")] * 2 and not any("skipped" in e for e in skipped)   # S4-07: cùng khoá `outcome` với hit/miss/store
 
 
 def test_cache_can_be_disabled(tmp_path, capsys, monkeypatch, fake, cache_dir):

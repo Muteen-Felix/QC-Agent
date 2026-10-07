@@ -101,6 +101,20 @@ Gate chạy **một container** SUT và chờ nó trả lời HTTP trong 120 s. 
 - Đã có môi trường chạy sẵn: `sut_base_url`.
 - DB phụ: bỏ comment mẫu `sut_db_image` (ghim digest), `sut_db_env`, `sut_db_ready_cmd` trong `qc-gate.yml`, và đặt hai secret của repo `SUT_SECRET_ENV` (cho SUT, chứa `DATABASE_URL=...@db:<cổng>/...`) và `SUT_DB_SECRET_ENV` (cho container DB, vd. `POSTGRES_PASSWORD=...`). Loại DB do SUT chọn; migration là việc của image SUT.
 
+## Secret cần có và chi phí
+
+`init` không đòi secret nào để gate chạy được; mỗi secret bật thêm một khả năng (đặt ở secret của repo SUT; caller dùng `secrets: inherit`):
+
+| Secret | Bật gì | Thiếu thì |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Diff Agent chọn phạm vi PR; sinh Ground-Truth bằng Claude | Gate chạy **FULL SET** (chậm hơn, không đỏ); GT không sinh được |
+| `GEMINI_API_KEY` | Sinh Ground-Truth bằng Gemini (input `model: gemini-...` của workflow GT) | Như trên cho GT |
+| `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` | Ticket cho finding Low (chỉ khi policy project có `jira.project_key`) | Bước Jira bỏ qua, verdict không đổi |
+| `SUT_SECRET_ENV`, `SUT_DB_SECRET_ENV` | Bí mật của SUT và của DB phụ | SUT/DB không khởi động nếu cần chúng |
+| `MIDSCENE_MODEL_*`, `OPENAI_API_KEY` | Task UI và AI (Midscene, DeepEval) | Task đó không chạy được; xem [worker.md](worker.md) |
+
+**Chi phí:** chỉ Diff Agent và Ground-Truth gọi LLM; gate (`core/`) không bao giờ gọi. Mỗi lần chạy có **một** dòng chi phí ở đầu `report.md`, ở Check Run và ở comment PR, và file `runs/<run_id>/llm_usage.json` (xem [operations.md](operations.md), mục "Đọc chi phí LLM"). Con số là ước tính theo bảng giá cache, không phải hoá đơn. Sinh GT bằng agent đọc cả mã nguồn: chỉ bật khi được phép gửi mã nguồn ra ngoài.
+
 ## Giới hạn cần biết
 
 - `init` luôn sinh một **khung integration trung tính** cho mọi repo, đuôi `.example` (suite `integration`, `integration-live` và ba file trong `.qc-agent/integration/`): **chưa hoạt động**, qc-agent bỏ qua nó. Repo không cần tích hợp thì không phải làm gì. Repo có thành phần nội bộ giả lập hoặc hệ thống ngoài thì bỏ đuôi `.example` ở cả 5 file, viết kiểm tra thật (qc-agent không biết giao thức của sản phẩm), điền `b_host` thật và `.qc-agent/har/<tên>.har` đã lọc nếu dùng Tầng 2, rồi chạy `qc-agent validate` tới khi sạch. Muốn PR chạy suite thì còn phải đăng ký `integration` trong `blocking_suites` của policy project (PR vào qc-agent). Gate PR chỉ dùng bản phát lại; suite `integration-live` chạm hệ thống thật chỉ chạy manual.

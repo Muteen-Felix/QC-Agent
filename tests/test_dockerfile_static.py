@@ -1,4 +1,5 @@
 """Ràng buộc tĩnh của Dockerfile image qc-agent (không cần Docker)."""
+import re
 from pathlib import Path
 
 TEXT = (Path(__file__).resolve().parent.parent / "Dockerfile").read_text(encoding="utf-8")
@@ -16,3 +17,15 @@ def test_the_image_records_its_git_sha_late_so_it_does_not_bust_the_cache_of_hea
 
 def test_the_image_still_runs_as_a_non_root_user():
     assert TEXT.rindex("USER qc") > TEXT.index("useradd")
+
+
+def test_the_image_checks_its_own_package_and_runtime_libraries_after_the_heavy_layers_and_outside_the_lane_regions():
+    """S4-07: qc-agent không có `--version`, nên tự kiểm bằng metadata + import pytest/openpyxl. Sau lớp npm/Chromium (không làm mất cache), trước useradd, ngoài vùng của Làn A/B."""
+    marker = "import importlib.metadata as m, openpyxl, pytest"
+    assert TEXT.count(marker) == 1 and "python -m pytest --version" in TEXT
+    at = TEXT.index(marker)
+    assert TEXT.index("playwright install") < at < TEXT.index("useradd")
+    assert TEXT.index("COPY --from=build /opt/venv /opt/venv") < at
+    for start, end in zip((m.start() for m in re.finditer(r"# ==== qc-agent:region", TEXT)), (m.start() for m in re.finditer(r"# ==== qc-agent:end", TEXT))):
+        assert not start < at < end, "dòng tự kiểm không được nằm trong vùng của một Làn"
+

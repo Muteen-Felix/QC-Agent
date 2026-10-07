@@ -168,7 +168,7 @@ def _produce_inner(args, root: Path, existing: dict | None = None) -> tuple[Pars
     if not _use_agent(args):
         return prd, generate(prd, model=settings.get().gt_model, egress_dir=_egress_dir(args, root), source=_source(prd_path, root),
                                   auth=auth), analysis, facts
-    event(log, "gt.cache", logging.INFO, skipped="agent")   # agent đọc mã nguồn qua nhiều lượt: cache theo PRD sẽ trả kết quả cũ khi code đổi (cache.py)
+    event(log, "gt.cache", logging.INFO, outcome="skipped", reason="agent")   # agent đọc mã nguồn qua nhiều lượt: cache theo PRD sẽ trả kết quả cũ khi code đổi (cache.py)
     from qc_agent.groundtruth import agent as gt_agent   # import lười: chỉ khi bật agent (kéo theo vòng lặp LLM nhiều lượt)
     result = gt_agent.generate_agent(prd, model=settings.get().gt_agent_model, egress_dir=_egress_dir(args, root), source_root=_source_root(args, root),
                                      openapi_spec=spec, facts=facts, existing=existing, source=_source(prd_path, root), auth=auth)

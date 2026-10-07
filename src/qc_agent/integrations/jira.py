@@ -14,7 +14,7 @@ import httpx
 
 from qc_agent.core import egress, project
 from qc_agent import settings
-from qc_agent.logging_setup import event
+from qc_agent.logging_setup import configure, event
 
 log = logging.getLogger("qc_agent.jira")
 _PROJECT = re.compile(r"[A-Z][A-Z0-9_]{1,29}")
@@ -137,6 +137,7 @@ def sync_low_findings(findings: list[dict], *, cfg: dict, ctx: dict, env: dict,
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure()   # điểm vào riêng (`python -m`): không cấu hình thì event review.*/jira.sync bị logger nuốt, CI không thấy
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--project", required=True)

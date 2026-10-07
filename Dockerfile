@@ -115,6 +115,10 @@ RUN npm ci && npx playwright install --with-deps chromium \
 RUN ln -s "$(find /opt/ms-playwright -path '*chrome-linux*/chrome' -type f | head -1)" /opt/ms-playwright/chrome && test -x /opt/ms-playwright/chrome
 ENV PUPPETEER_EXECUTABLE_PATH=/opt/ms-playwright/chrome
 
+# tự kiểm: gói qc-agent đã cài đọc được metadata, và hai thư viện runtime nằm ở dependencies chính (pytest cho worker `pytest`, openpyxl cho test-cases.xlsx) import được.
+# Đặt SAU các lớp nặng (npm/Chromium) để không làm mất cache của chúng. qc-agent không có cờ `--version`: phiên bản lấy từ metadata của gói.
+RUN python -c "import importlib.metadata as m, openpyxl, pytest; print('qc-agent', m.version('qc-agent'))" && python -m pytest --version
+
 # không chạy bằng root: mã của SUT/PR là input không tin cậy
 RUN useradd --uid 10001 --create-home qc && mkdir /work && chown qc:qc /work
 # commit của qc-agent mà image này build từ đó: `qc-agent init` dùng để ghim sẵn `uses:` trong qc.yml; `validate` in ra khi phải dùng snapshot policy
