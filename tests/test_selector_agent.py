@@ -191,3 +191,31 @@ def test_unknown_worker_fallback_still_reports_the_tokens_the_call_cost(monkeypa
     monkeypatch.setattr(agent, "call_tool", lambda **kw: ToolCall({"selections": [{"worker": "outside", "reason": "x"}]}, Usage(50, 5), "claude-haiku-4-5-20251001", "tool_use", 0))
     result = agent.select(DIFF, DECISION, POLICY, SUITES, None, egress_dir=tmp_path)
     assert result["fallback_reason"] == "unknown_worker" and result["llm"]["input_tokens"] == 50 and result["llm"]["output_tokens"] == 5
+
+
+def test_success_after_a_retry_keeps_the_unknown_calls_of_the_earlier_attempts_and_still_caches(monkeypatch, tmp_path):
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("QC_SELECT_CACHE_DIR", str(cache))
+    monkeypatch.setattr(agent, "call_tool", lambda **kwargs: ToolCall({"selections": [{"worker": "pytest", "reason": "x"}]}, Usage(10, 4), "claude-haiku-4-5-20251001",
+                                                                       "tool_use", 0.1, unknown_calls=2))
+    result = agent.select(DIFF, DECISION, POLICY, SUITES, None, egress_dir=tmp_path)
+    assert result["source"] == "llm" and result["llm"]["unknown_calls"] == 2 and result["llm"]["input_tokens"] == 10 and "usage_known" not in result["llm"]
+    monkeypatch.setattr(agent, "call_tool", lambda **kwargs: (_ for _ in ()).throw(AssertionError("phải trúng cache, entry có unknown_calls vẫn hợp lệ")))
+    assert agent.select(DIFF, DECISION, POLICY, SUITES, None, egress_dir=tmp_path)["source"] == "cache"
+
+
+def test_a_clean_success_has_no_unknown_calls_field(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "call_tool", lambda **kwargs: ToolCall({"selections": []}, Usage(1, 1), "fake", "tool_use", 0))
+    assert "unknown_calls" not in agent.select(DIFF, DECISION, POLICY, SUITES, None, egress_dir=tmp_path)["llm"]
+
+
+def test_a_rejected_response_after_a_network_retry_keeps_both_the_tokens_and_the_unknown_calls(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "call_tool", _raises(LLMError("bad_output", "x", usage=Usage(200, 40, 0, 1000), unknown_calls=1)))
+    llm = agent.select(DIFF, DECISION, POLICY, SUITES, None, egress_dir=tmp_path)["llm"]
+    assert llm["input_tokens"] == 200 and llm["unknown_calls"] == 1 and "usage_known" not in llm
+
+
+def test_unknown_calls_of_a_failed_call_keep_their_real_count(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "call_tool", _raises(LLMError("unavailable", "x", sent=True, unknown_calls=3)))
+    llm = agent.select(DIFF, DECISION, POLICY, SUITES, None, egress_dir=tmp_path)["llm"]
+    assert llm["usage_known"] is False and llm["unknown_calls"] == 3

@@ -395,7 +395,7 @@ def generate(prd: ParsedPRD, *, model: str, egress_dir: Path, transport: httpx.B
                 if error.usage is not None or error.unknown_calls > 0:   # chưa gửi, hoặc API trả lỗi HTTP ([Assumption, chưa kiểm chứng] không tính phí): không có dòng
                     calls.append(CallRecord("gt-generate", model, version, error.kind, error.usage, error.duration_s, error.unknown_calls))
                 raise
-            calls.append(CallRecord("gt-generate", call.model, version, "ok", call.usage, call.duration_s))
+            calls.append(CallRecord("gt-generate", call.model, version, "ok", call.usage, call.duration_s, call.unknown_calls))
             return call
 
         attempts = 1

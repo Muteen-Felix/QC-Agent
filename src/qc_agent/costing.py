@@ -45,7 +45,8 @@ def selection_rows(selection: dict | None) -> list[dict]:
     known = llm.get("usage_known", True) is not False
     return [row(purpose="diff-select", model=llm.get("model"), prompt_version=llm.get("prompt_version"),
                 usage={field: llm.get(field, 0) for field in USAGE_FIELDS} if known else None, est_usd=llm.get("est_usd") if known else None,
-                cache_hit=bool(llm.get("cache_hit")), duration_s=None, status=llm.get("status", "ok"), unknown_calls=0 if known else 1)]
+                cache_hit=bool(llm.get("cache_hit")), duration_s=None, status=llm.get("status", "ok"),
+                unknown_calls=int(llm.get("unknown_calls", 0) or 0) or (0 if known else 1))]
 
 
 def summarize(rows: list[dict]) -> dict:

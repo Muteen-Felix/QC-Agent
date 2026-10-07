@@ -35,7 +35,7 @@ import os
 import random
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
@@ -123,6 +123,7 @@ class ToolCall:
     stop_reason: str
     duration_s: float
     fallback_from: str | None = None   # Gemini: model được yêu cầu ban đầu, khi `model` là model dự phòng đã trả lời
+    unknown_calls: int = 0             # Gemini: request ĐÃ GỬI TRƯỚC lần thành công này mà không có response (retry sau lỗi mạng, model dự phòng): chi phí chưa xác định, KHÔNG nằm trong `usage`
 
 
 def wire_schema(schema: dict) -> dict:
@@ -483,7 +484,7 @@ def _call_gemini(*, purpose: str, model: str, system: str, user: str, tool_name:
                 last = unavailable
                 event(log, "llm.fallback", logging.WARNING, purpose=purpose, model=name, kind=unavailable.kind)
                 continue
-            return call if name == model else ToolCall(call.data, call.usage, call.model, call.stop_reason, call.duration_s, fallback_from=model)
+            return replace(call, unknown_calls=unknown, fallback_from=None if name == model else model)   # `unknown` gom qua mọi lần thử và mọi model
         assert last is not None
         raise LLMError(last.kind, _detail(last) + (f" (đã thử {len(models)} model)" if len(models) > 1 else ""))
     except LLMError as error:

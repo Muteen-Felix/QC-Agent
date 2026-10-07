@@ -3,6 +3,7 @@
 LLM là `FakeAnthropic` hoặc `call_tool` giả; không có mạng thật.
 """
 import copy
+import dataclasses
 import importlib.util
 import json
 import sys
@@ -261,3 +262,15 @@ def test_a_catalog_rejected_after_a_successful_call_still_reports_the_call_that_
     assert code == 3 and fake.count == 1
     (row,) = rows_of(egress_file(tmp_path, "one"))
     assert (row["input_tokens"], row["output_tokens"]) == (4210, 9350)
+
+
+def test_gt_success_after_unknown_attempts_keeps_the_tokens_and_the_unknown_calls(tmp_path, capsys, monkeypatch, fake):
+    original = gt_generate.llm.call_tool
+    monkeypatch.setattr(gt_generate.llm, "call_tool", lambda **kw: dataclasses.replace(original(**kw), unknown_calls=2))
+    sut = make_sut(tmp_path, "one")
+    summary = tmp_path / "summary.json"
+    code, out, err = gt(capsys, *generate_args(sut, "--summary-json", summary, egress=tmp_path / "egress-one"))
+    assert code == 0, out + err
+    (row,) = rows_of(egress_file(tmp_path, "one"))
+    assert row["unknown_calls"] == 2 and (row["input_tokens"], row["output_tokens"]) == (4210, 9350) and "usage_known" not in row
+    assert json.loads(summary.read_text(encoding="utf-8"))["unknown_calls"] == 2

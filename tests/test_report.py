@@ -235,3 +235,11 @@ def test_llm_usage_json_is_a_json_array_without_content_and_absent_when_there_is
 def test_the_llm_usage_block_is_in_report_json_with_the_same_line_as_the_markdown():
     md, data = render(with_selection(usage_llm()))
     assert data["llm_usage"]["line"] in md and set(data["llm_usage"]) == {"calls", "summary", "line"}
+
+
+def test_a_known_call_with_earlier_unknown_attempts_keeps_its_tokens_and_flags_the_lower_bound():
+    md, data = render(with_selection(usage_llm(unknown_calls=2)))
+    (row,) = data["llm_usage"]["calls"]
+    assert row["unknown_calls"] == 2 and row["input_tokens"] == 100 and row["est_usd"] == 0.01 and "usage_known" not in row
+    assert data["llm_usage"]["summary"]["unknown_calls"] == 2
+    assert "~$0.02 (+2 lời gọi timeout/lỗi mạng chưa rõ chi phí)" in md

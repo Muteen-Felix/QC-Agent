@@ -53,6 +53,8 @@ def _failed_llm(error: LLMError, model: str) -> dict | None:
       - chưa gửi gì, hoặc API trả lỗi HTTP ([Assumption, chưa kiểm chứng] không tính phí): `None`.
     Thời lượng không được ghi (`selection` được băm vào `plan_id`): xem `llm.call` trong log."""
     base = {"model": model, "prompt_version": PROMPT_VERSION, "status": error.kind}
+    if error.unknown_calls > 0:
+        base["unknown_calls"] = error.unknown_calls   # kể cả khi lần cuối có usage: các lần gửi trước đó (retry sau lỗi mạng) vẫn chưa rõ chi phí
     if error.usage is not None:
         usage = error.usage
         return {**base, "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens, "cache_creation_input_tokens": usage.cache_creation_input_tokens,
@@ -114,6 +116,8 @@ def select(pruned, rule_decision, policy: dict, suite_map: dict[str, list[str]],
             llm_info = {"model": call.model, "prompt_version": PROMPT_VERSION, "input_tokens": call.usage.input_tokens,
                         "output_tokens": call.usage.output_tokens, "cache_creation_input_tokens": call.usage.cache_creation_input_tokens,
                         "cache_read_input_tokens": call.usage.cache_read_input_tokens, "est_usd": prices.estimate_cost(call.model, call.usage)}
+            if call.unknown_calls:
+                llm_info["unknown_calls"] = call.unknown_calls   # thành công sau retry/model dự phòng: các lần gửi trước chưa rõ chi phí
         for item in selections:
             worker = item["worker"]
             if worker not in suite_map:

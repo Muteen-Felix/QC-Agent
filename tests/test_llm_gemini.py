@@ -557,3 +557,23 @@ def test_denied_egress_sends_nothing_so_sent_is_false(tmp_path, clock):
     with pytest.raises(LLMError) as caught:
         call(tmp_path, policy=Deny(), max_retries=0, transport=boom())
     assert caught.value.kind == "egress_denied" and caught.value.sent is False and caught.value.unknown_calls == 0
+
+
+# ---- chi phí chưa xác định KHÔNG được mất khi lần thử sau thành công ----
+
+def test_a_network_error_followed_by_success_keeps_the_earlier_call_as_unknown(tmp_path, clock):
+    result = call(tmp_path, max_retries=2, transport=script(httpx.RemoteProtocolError("bad framing"), reply()))
+    assert result.data == GOOD and result.unknown_calls == 1
+    assert result.usage == Usage(500, 120, 0, 3000)   # usage chỉ là của lần thành công; lần trước nằm ở unknown_calls, không bị gộp thành 0
+
+
+def test_unknown_calls_accumulate_across_retries_and_fallback_models(tmp_path, clock, monkeypatch):
+    monkeypatch.setenv("QC_LLM_FALLBACK_MODELS", FALLBACK)
+    result = call(tmp_path, max_retries=1, transport=script(httpx.RemoteProtocolError("a"), httpx.RemoteProtocolError("b"), reply(model_version=FALLBACK)))
+    assert result.model == FALLBACK and result.fallback_from == PRIMARY and result.unknown_calls == 2
+
+
+def test_a_clean_call_and_a_never_sent_failure_leave_no_unknown_calls(tmp_path, clock):
+    assert call(tmp_path, transport=script(reply())).unknown_calls == 0
+    assert call(tmp_path, max_retries=2, transport=script(httpx.ConnectError("refused"), reply())).unknown_calls == 0   # chưa gửi được gì nên không có chi phí
+    assert call(tmp_path, max_retries=2, transport=script(error(503, "UNAVAILABLE"), reply())).unknown_calls == 0       # [Assumption] lỗi HTTP không bị tính phí

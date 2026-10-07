@@ -27,7 +27,7 @@ _LLM = {"type": "object", "additionalProperties": False,
         "properties": {"model": {"type": "string"}, "prompt_version": {"type": "string"},
                        "input_tokens": {"type": "integer", "minimum": 0}, "output_tokens": {"type": "integer", "minimum": 0},
                        "cache_creation_input_tokens": {"type": "integer", "minimum": 0}, "cache_read_input_tokens": {"type": "integer", "minimum": 0},
-                       "est_usd": {"type": ["number", "null"], "minimum": 0}}}
+                       "est_usd": {"type": ["number", "null"], "minimum": 0}, "unknown_calls": {"type": "integer", "minimum": 1}}}
 
 
 def make_key(*, diff_sha: str, module_map: dict | None, policy_sha: str, model: str, prompt_version: str,
