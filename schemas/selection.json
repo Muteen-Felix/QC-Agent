@@ -18,7 +18,8 @@
     "fallback_reason": {"enum": [null, "timeout", "unavailable", "bad_output", "unknown_worker", "missing_api_key", "egress_denied", "token_cap"]},
     "llm": {"type": ["object", "null"], "additionalProperties": false,
       "required": ["model", "prompt_version", "input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"],
-      "properties": {"model": {"type": "string"}, "prompt_version": {"type": "string"}, "cache_hit": {"type": "boolean"},
+      "properties": {"model": {"type": "string"}, "prompt_version": {"type": "string"}, "cache_hit": {"type": "boolean"}, "est_usd": {"type": ["number", "null"], "minimum": 0}, "usage_known": {"type": "boolean"},
+        "status": {"enum": ["ok", "bad_output", "refused", "bad_request", "timeout", "unavailable"]},
         "input_tokens": {"type": "integer", "minimum": 0}, "output_tokens": {"type": "integer", "minimum": 0},
         "cache_creation_input_tokens": {"type": "integer", "minimum": 0}, "cache_read_input_tokens": {"type": "integer", "minimum": 0}}
     }

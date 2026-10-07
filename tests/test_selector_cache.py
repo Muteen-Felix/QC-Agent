@@ -279,3 +279,26 @@ def test_cache_log_has_key_prefix_and_no_content(monkeypatch, tmp_path, cache_di
     cache_events = [(e["outcome"], e["key"]) for e in lines if e.get("event") == "selector.cache"]
     assert cache_events == [("miss", path.stem[:8]), ("store", path.stem[:8]), ("hit", path.stem[:8])]
     assert MARKER not in stream.getvalue() and path.stem not in stream.getvalue()
+
+
+# ---------------- S4-03: est_usd trong entry, và cache_read_input_tokens từ lần gọi 2 hiện trong report ----------------
+
+def test_the_cache_entry_keeps_est_usd_of_the_creation_and_a_hit_reports_it_with_the_flag(monkeypatch, tmp_path, cache_dir):
+    fake_server(monkeypatch)
+    first = select(tmp_path)
+    second = select(tmp_path)
+    assert isinstance(first["llm"]["est_usd"], float) and second["llm"] == {**first["llm"], "cache_hit": True}
+
+
+def test_cache_read_tokens_from_the_second_call_show_up_in_the_report_line(monkeypatch, tmp_path):
+    from qc_agent.core.report import render
+    from tests.test_report import with_selection
+    monkeypatch.setenv("QC_SELECT_CACHE_DIR", "none")                      # hai lời gọi thật (không hit cache của S4-02): prompt cache của API là chuyện khác
+    one, two = tool_response("pytest"), tool_response("pytest")
+    two["usage"] = {"input_tokens": 100, "output_tokens": 15, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 4096}
+    server = fake_server(monkeypatch, one, two)
+    select(tmp_path)
+    selected = select(tmp_path)
+    assert server.count == 2 and selected["llm"]["cache_read_input_tokens"] == 4096
+    md, data = render(with_selection(selected["llm"]))
+    assert "LLM: 4 196 in (4 096 từ cache) / 15 out" in md and data["llm_usage"]["summary"]["cache_read_tokens"] == 4096

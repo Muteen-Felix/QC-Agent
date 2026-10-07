@@ -323,7 +323,7 @@ trong report cho biết source, fallback, số suite và lý do chọn.
 Chạy tay: `qc-agent run --project noteboard --mode pr --trigger manual --workers semgrep,gitleaks`.
 Trên `workflow_dispatch`, input `workers` cũng đi theo đường manual: không gọi LLM, không thêm floor.
 Checkout `fetch-depth: 0` tăng thời gian clone nhưng cần để tìm merge-base của PR; bước dò nợ
-vẫn dùng `HEAD^1` như trước. Chi phí trung bình của Select: sẽ đo ở Sprint 4.
+vẫn dùng `HEAD^1` như trước. Cách đọc chi phí của Select: xem "Chi phí LLM, prompt cache và trần token" bên dưới (chi phí trung bình sẽ đo khi nghiệm thu cuối).
 
 - **Comment dính** trên PR (một comment, cập nhật tại chỗ mỗi lần push): bảng task chặn merge, skipped/error, finding tham khảo.
 - **Check Run** `qc-agent / <project>`.
@@ -335,6 +335,33 @@ Jira chạy trước Report để lỗi 401/5xx được ghi thành cảnh báo 
 Jira và PR review không đổi verdict. Check Run liệt kê số finding Critical/Medium/Low
 và những finding đầu tiên. Giá trị mới là `BLOCKED`, `PASSED_WITH_WARNINGS`, `PASSED`;
 dashboard vẫn đọc được các giá trị lịch sử `FAIL`, `YELLOW`, `PASS`.
+
+### Chi phí LLM, prompt cache và trần token (Sprint 4)
+
+**Đọc dòng chi phí.** Đầu `report.md`, mục tóm tắt của Check Run và comment PR cùng in **một** dòng (cùng chuỗi, một con số tiền):
+
+```
+wallclock 1m02s · LLM: 5 340 in (4 096 từ cache) / 210 out · worker: 1 200 token (tasks: ai-eval) · ~$0.012
+```
+
+- `in` = token đầu vào của Diff Agent gồm phần không cache, phần ghi cache và phần đọc cache; `từ cache` là phần đọc từ prompt cache của API; `out` = token đầu ra.
+- `worker: N token (tasks: …)` là phần của các worker có gọi LLM; contract chỉ cho tổng token nên không tách in/out.
+- `~$` là **ước lượng** theo bảng giá duy nhất `src/qc_agent/llm/prices.py` (giá cached 2026-09-25, không phải hoá đơn) = chi phí worker + chi phí Diff Agent.
+- Hậu tố `(chưa gồm giá của <model>)`: model không có trong bảng giá (mọi `gemini-*`) nên không ước được và không bị đoán.
+- Hậu tố `(+N lời gọi timeout/lỗi mạng chưa rõ chi phí)`: request đã gửi mà không có response nên server **có thể đã tính phí**; số `~$` là **cận dưới**. Nếu phần đã biết bằng 0 thì dòng in `~$? (chưa rõ)`, không bao giờ in `$0.00` khi còn lời gọi chưa xác định.
+- `N lần dùng cache (không tính phí)`: kết quả Select lấy từ cache S4-02 (`llm.cache_hit`), không gọi LLM nên không cộng vào tổng.
+- **[Assumption, chưa kiểm chứng]** response lỗi HTTP (4xx, 429, 5xx có body lỗi của API) không bị tính phí nên không sinh dòng nào; cần đối chiếu tài liệu billing của nhà cung cấp.
+
+**`llm_usage.json`** (`runs/<run_id>/llm_usage.json` của gate; `<egress-dir>/llm_usage.json` của `gt generate|regen`) là mảng JSON, mỗi lời gọi **đã gửi** một dòng, gồm cả lời gọi bị từ chối do output sai schema; không có nội dung (prompt, response, rationale). File vắng mặt nghĩa là không ghi nhận lời gọi nào. Các trường: `purpose, model, prompt_version, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, est_usd, cache_hit, duration_s`; trường tuỳ chọn `status` (khác `ok` khi lời gọi bị từ chối hoặc timeout), `usage_known: false`, `unknown_calls`, `turns` (dòng tổng của GT agent, một dòng cho cả lần chạy).
+`null` luôn nghĩa là **không có dữ liệu**, không phải 0:
+
+- `duration_s` là thời gian client chờ **một request HTTP** (không gồm thời gian ngủ backoff của Gemini). `null` ở dòng của **Diff Agent** (thời lượng không được lưu vào `selection.json` để khỏi đổi `plan_id`; xem `llm.call` trong log bước Select) và ở mọi dòng `cache_hit: true` (lần này không có request).
+- token và `est_usd` là `null` khi `usage_known: false` (đã gửi, không có response) hoặc model không có trong bảng giá.
+- Dòng `cache_hit: true` giữ số của lần tạo để minh bạch nhưng không được cộng vào tổng.
+
+**Trần `QC_LLM_MAX_INPUT_TOKENS`** (mặc định 100000). Trước khi gọi, qc-agent ước lượng `ceil(số byte UTF-8 / 3)` token đầu vào (không gọi API, không gửi thêm dữ liệu, cùng công thức cho Claude và Gemini). **Đây là ước lượng gần đúng, không phải trần tuyệt đối**: có thể thấp hơn thực tế với ký tự hiếm; số thật nằm trong `llm_usage.json` sau lời gọi. Vượt trần: Select chạy FULL SET với `fallback_reason: token_cap` (không gọi LLM, gate không đỏ vì chi phí); `gt generate` thoát 3 và gợi ý tách PRD thành nhiều file. Kết quả cache hit không bị chặn. GT agent **không** áp trần này vì đã có ngân sách riêng (`QC_GT_AGENT_MAX_COST_USD`, `_MAX_TURNS`, `_MAX_WALL_S`).
+
+**Ngưỡng prompt cache theo model.** Tiền tố tĩnh (`tools` + `system`) được đánh dấu `cache_control`; ngắn hơn ngưỡng thì API **im lặng không cache** (không lỗi, `cache_creation_input_tokens: 0`): `claude-sonnet-5` 1024 token, `claude-haiku-4-5` 4096 token. Trên repo `noteboard`, tiền tố của Diff Agent ước lượng chỉ khoảng 700 đến 1 100 token (ước lượng, chưa đo bằng `count_tokens`), nên với Haiku 4.5 `cache_read_input_tokens` rất có thể luôn là 0 trên repo nhỏ; qc-agent không độn prompt để vượt ngưỡng. Tiền tố của GT generator (khoảng 2 100 đến 3 400 token ước lượng) vượt ngưỡng của Sonnet 5. Gemini không dùng `cache_control`.
 
 ## 6. Rủi ro còn lại (biết trước)
 - Worker eval của **chính repo SUT** (ví dụ `pytest tests/eval`) chạy mã của PR với các key LLM trong môi trường. Với PR cùng repo, tác giả là người có quyền ghi; hãy dùng key riêng cho CI với **giới hạn ngân sách**.

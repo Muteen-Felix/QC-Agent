@@ -521,7 +521,7 @@ def test_the_system_prompt_is_static_and_carries_the_version_and_the_rules(tmp_p
     version, system = gen.load_prompt()
     assert version == "gt-generate/1" and "prompt_version" not in system
     body = sent(tmp_path, prd)
-    assert body["system"] == [{"type": "text", "text": system}]
+    assert body["system"] == [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]   # S4-03: khối tĩnh được đánh dấu cache
     for needle in ("untrusted", "emit_test_cases", "uncovered_acs", "self-sufficient", "language of the PRD", "closed set", "<prd>", "<endpoints>"):
         assert needle in system
     assert "Noteboard" not in system and sent(tmp_path, injected_prd(tmp_path))["system"] == body["system"]

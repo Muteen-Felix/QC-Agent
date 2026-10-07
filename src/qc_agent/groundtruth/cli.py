@@ -13,13 +13,13 @@ import logging
 import sys
 from pathlib import Path
 
-from qc_agent import settings
+from qc_agent import costing, settings
 from qc_agent.groundtruth import auth as gt_auth
 from qc_agent.groundtruth import check as gt_check
 from qc_agent.groundtruth import coverage as gt_coverage
 from qc_agent.groundtruth import render as gt_render
 from qc_agent.groundtruth import schema as gt_schema
-from qc_agent.groundtruth.generate import GenerateResult, GTError, generate
+from qc_agent.groundtruth.generate import GenerateResult, GTError, generate, usage_rows
 from qc_agent.groundtruth.merge import MergeResult, merge
 from qc_agent.groundtruth.prd import GTInputError, ParsedPRD, parse_prd
 from qc_agent.llm.client import LLMError
@@ -138,7 +138,29 @@ def _auth_prompt(root: Path) -> str | None:
         raise GTCliError(str(error)) from None
 
 
+def _write_usage(args, root: Path, calls) -> list[dict]:
+    """Ghi `<egress-dir>/llm_usage.json` (mảng JSON, mỗi lời gọi đã gửi một dòng, không có nội dung; ngữ nghĩa `null` ở `qc_agent/costing.py`) cạnh egress.jsonl.
+    Best-effort: lỗi ghi chỉ là cảnh báo, không đổi exit code. Không có lời gọi nào thì không tạo file. Trả các dòng để summary dùng."""
+    rows = usage_rows(calls)
+    if rows:
+        try:
+            target = _egress_dir(args, root) / "llm_usage.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+        except (OSError, GTCliError) as error:
+            print(f"CẢNH BÁO: không ghi được llm_usage.json ({type(error).__name__})", file=sys.stderr)
+    return rows
+
+
 def _produce(args, root: Path, existing: dict | None = None) -> tuple[ParsedPRD, GenerateResult, object, dict | None]:
+    try:
+        return _produce_inner(args, root, existing)
+    except GTError as error:   # lời gọi đã tốn tiền (kể cả lần bị từ chối schema, hoặc timeout chưa rõ chi phí) vẫn phải nằm trong llm_usage.json trước khi exit 3
+        _write_usage(args, root, error.calls)
+        raise
+
+
+def _produce_inner(args, root: Path, existing: dict | None = None) -> tuple[ParsedPRD, GenerateResult, object, dict | None]:
     prd_path = Path(args.prd)
     auth = _auth_prompt(root)
     prd = parse_prd(prd_path, openapi_source=args.openapi)
@@ -170,7 +192,7 @@ def _counts(catalog: dict) -> dict:
 
 
 def _summary(command: str, prd: ParsedPRD, gen: GenerateResult, catalog: dict, orphans, warnings, outcomes, merged: MergeResult | None,
-             facts: dict | None = None) -> dict:
+             facts: dict | None = None, usage_summary: dict | None = None) -> dict:
     usage = gen.usage
     # Lúc sinh còn toàn TC draft nên chấm cả draft + waiver draft: đây là "bộ này đã đủ chưa nếu QA duyệt hết", không phải kết quả của gate.
     coverage = gt_coverage.score(catalog, facts, tc_statuses=("draft", "approved"), waiver_statuses=("draft", "approved")).as_dict()
@@ -187,6 +209,9 @@ def _summary(command: str, prd: ParsedPRD, gen: GenerateResult, catalog: dict, o
         "files": [{"path": o.label, "status": o.status} for o in outcomes],
         "generator": "agent" if getattr(gen, "agent", None) else "single",
         "cache_hit": bool(getattr(gen, "cache_hit", False)),
+        # tổng chi phí ƯỚC TÍNH của các lời gọi đã biết giá (bỏ cache hit); null khi chẳng có lời gọi nào biết giá. `unknown_calls` > 0: số tiền là CẬN DƯỚI (xem costing.py)
+        "est_usd": None if usage_summary is None or (usage_summary["priced_calls"] == 0 and usage_summary["cache_hits"] == 0) else usage_summary["est_usd"],
+        "unknown_calls": 0 if usage_summary is None else usage_summary["unknown_calls"],
     }
     if getattr(gen, "agent", None):
         out["agent"] = gen.agent
@@ -294,11 +319,12 @@ def _generate(args, root: Path) -> int:
     if catalog_path.exists() and not args.force:
         raise GTCliError(f"{gt_render.CATALOG_PATH} đã có: dùng `qc-agent gt regen` để giữ các TC QA đã duyệt (hoặc --force để ghi đè và MẤT chúng)")
     prd, result, analysis, facts = _produce(args, root)
+    usage_summary = costing.summarize(_write_usage(args, root, result.calls))
     files = _with_snapshot(gt_render.render(result.catalog, sut_root=root, openapi=analysis, force=args.force), facts)
     outcomes = gt_render.write(files, root, force=args.force)
     outcomes += _write_xlsx(args, root, result.catalog, facts)
     orphans = result.orphans
-    summary = _summary("generate", prd, result, result.catalog, orphans, [*prd.warnings, *result.warnings], outcomes, None, facts)
+    summary = _summary("generate", prd, result, result.catalog, orphans, [*prd.warnings, *result.warnings], outcomes, None, facts, usage_summary)
     _write_summary(args.summary_json, summary)
     _print_summary(summary)
     event(log, "gt.cli", logging.INFO, command="generate", test_cases=len(result.catalog["test_cases"]), orphans=len(orphans))
@@ -312,6 +338,7 @@ def _regen(args, root: Path) -> int:
         raise gt_check.GTCheckError(f"{gt_render.CATALOG_PATH} sai schema: " + "; ".join(problems[:5]))
     old, absorbed = _absorb_xlsx(old, root)
     prd, result, analysis, facts = _produce(args, root, existing=old)
+    usage_summary = costing.summarize(_write_usage(args, root, result.calls))
     if absorbed:
         result = dataclasses.replace(result, warnings=(absorbed, *result.warnings))
     merged = merge(old, result.catalog)
@@ -323,7 +350,7 @@ def _regen(args, root: Path) -> int:
         path.unlink()
     outcomes += [scaffold_init.Outcome(path.relative_to(root).as_posix(), "removed") for path in stale]
     outcomes += _write_xlsx(args, root, merged.catalog, _facts(root, facts))
-    summary = _summary("regen", prd, result, merged.catalog, merged.orphans, [*prd.warnings, *result.warnings], outcomes, merged, facts)
+    summary = _summary("regen", prd, result, merged.catalog, merged.orphans, [*prd.warnings, *result.warnings], outcomes, merged, facts, usage_summary)
     _write_summary(args.summary_json, summary)
     _print_summary(summary)
     event(log, "gt.cli", logging.INFO, command="regen", kept=merged.kept, added=len(merged.added), removed=len(merged.removed_drafts), lost=len(merged.lost_acs))

@@ -72,6 +72,17 @@ DESCRIPTIONS = {
 }
 
 
+def _usage_calls(run, failure, version: str) -> tuple:
+    """Dòng usage của agent (S4-03): MỘT dòng TỔNG cho cả lần chạy kèm `turns`, vì `AgentRun` chỉ có usage tổng (không tách từng lượt). `run.usage` đã cộng cả lượt bị từ chối;
+    `unknown_calls` = 1 khi request cuối timeout/đứt kết nối (chi phí chưa xác định, KHÔNG nằm trong usage tổng). Không có chi phí nào thì không có dòng."""
+    if run is None:
+        return ()
+    spent = run.usage.input_tokens + run.usage.output_tokens + run.usage.cache_creation_input_tokens + run.usage.cache_read_input_tokens
+    if spent == 0 and run.unknown_calls == 0:
+        return ()
+    return (gen.CallRecord(PURPOSE, run.model, version, failure.kind if failure is not None else "ok", run.usage, round(run.duration_s, 3), run.unknown_calls, turns=run.turns),)
+
+
 @dataclass(frozen=True)
 class AgentResult(gen.GenerateResult):
     agent: dict = field(default_factory=dict)             # thống kê chạy (chỉ số/chuỗi định danh), đi vào summary.json
@@ -322,7 +333,7 @@ def generate_agent(prd: ParsedPRD, *, model: str, egress_dir: Path, source_root:
                            timeout_s=cfg.gt_agent_timeout_s, fallbacks=cfg.gt_agent_fallbacks, policy=policy, transport=transport)
     except llm.LLMError as error:
         if not state.raw:
-            raise gen.GTError(error.kind, str(error)) from None
+            raise gen.GTError(error.kind, str(error), calls=_usage_calls(getattr(error, "partial", None), error, version)) from None
         failure = error
         run = getattr(error, "partial", None)   # lượt/token/chi phí đã tốn trước khi lỗi: không có thì thống kê báo 0 dù tiền đã bị tính
 
@@ -357,4 +368,5 @@ def generate_agent(prd: ParsedPRD, *, model: str, egress_dir: Path, source_root:
              "repo_map": {**(map_stats or {}), "chars": len(map_text)} if map_text else None}
     event(log, "gt.agent", logging.INFO, stories=len(prd.stories), acs=total, test_cases=len(catalog["test_cases"]), orphans=len(orphans), dropped=dropped,
           **{k: v for k, v in stats.items() if k in ("turns", "stop", "completed", "files_read", "bytes_read", "submissions", "dropped_in_loop", "finish_rejections", "waivers", "spec_conflicts")})
-    return AgentResult(catalog=catalog, usage=usage, warnings=tuple(warnings), orphans=tuple(orphans), dropped=state.dropped + dropped, agent=stats, coverage=report)
+    return AgentResult(catalog=catalog, usage=usage, warnings=tuple(warnings), orphans=tuple(orphans), dropped=state.dropped + dropped, agent=stats, coverage=report,
+                       calls=_usage_calls(run, failure, version))

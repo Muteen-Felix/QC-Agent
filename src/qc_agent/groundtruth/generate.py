@@ -15,18 +15,19 @@ import hashlib
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import httpx
 import yaml
 
-from qc_agent import settings
+from qc_agent import costing, settings
 from qc_agent.core import egress
 from qc_agent.groundtruth import cache as gt_cache
 from qc_agent.groundtruth import schema as gt_schema
 from qc_agent.groundtruth.prd import ParsedPRD
 from qc_agent.llm import client as llm
+from qc_agent.llm import prices
 from qc_agent.logging_setup import event
 
 log = logging.getLogger("qc_agent.groundtruth")
@@ -49,21 +50,56 @@ _EVIDENCE_PATH = re.compile(r"[.]?[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[.]?[A-Za-z0-9_-
 
 class GTError(RuntimeError):
     """Không sinh được catalog: thiếu khoá, egress bị chặn, LLM lỗi hoặc trả sai schema kể cả sau một lần sửa, hoặc PRD không có AC nào.
-    `.kind` là một trong `llm.KINDS` hoặc `no_acs`. Thông điệp không chứa nội dung PRD/prompt/response. CLI (S1-06) trả exit 3."""
+    `.kind` là một trong `llm.KINDS`, `no_acs` hoặc `token_cap` (ước lượng đầu vào vượt `QC_LLM_MAX_INPUT_TOKENS`: chưa gửi gì). Thông điệp không chứa nội dung PRD/prompt/response.
+    CLI (S1-06) trả exit 3. `calls` là các lời gọi ĐÃ GỬI trước khi lỗi (kể cả lần bị từ chối schema, lần timeout chưa rõ chi phí) để CLI vẫn ghi `llm_usage.json`."""
 
-    def __init__(self, kind: str, detail: str = ""):
+    def __init__(self, kind: str, detail: str = "", *, calls: tuple = ()):
         super().__init__(f"{kind}: {detail}" if detail else kind)
         self.kind = kind
+        self.calls = tuple(calls)
+
+
+@dataclass(frozen=True)
+class CallRecord:
+    """Một lời gọi LLM đã GỬI (S4-03), đủ để ghi một dòng `llm_usage.json`. `usage=None` nghĩa là CHƯA BIẾT (đã gửi, không có response): không phải 0.
+    `status` là `ok` hoặc `LLMError.kind`. `cache_hit=True`: không có request lần này, `usage` là của lần tạo (không được cộng vào chi phí). `turns` chỉ có ở dòng tổng của agent."""
+    purpose: str
+    model: str
+    prompt_version: str | None
+    status: str
+    usage: llm.Usage | None
+    duration_s: float | None = None
+    unknown_calls: int = 0
+    cache_hit: bool = False
+    turns: int | None = None
+
+
+def usage_rows(calls) -> list[dict]:
+    """Các dòng `llm_usage.json` (xem `qc_agent/costing.py` cho ngữ nghĩa `null`). `est_usd` tính bằng bảng giá DUY NHẤT `llm/prices.py`."""
+    return [costing.row(purpose=c.purpose, model=c.model, prompt_version=c.prompt_version, usage=None if c.usage is None else asdict(c.usage),
+                        est_usd=None if c.usage is None else prices.estimate_cost(c.model, c.usage), cache_hit=c.cache_hit, duration_s=c.duration_s,
+                        status=c.status, unknown_calls=c.unknown_calls, turns=c.turns) for c in calls]
+
+
+def total_usage(calls) -> llm.Usage:
+    """Tổng token của MỌI lời gọi đã biết usage (kể cả lần bị từ chối); lời gọi chưa biết usage không góp số nào (nó nằm ở `unknown_calls`)."""
+    total = llm.Usage()
+    for c in calls:
+        if c.usage is not None:
+            total = llm.Usage(total.input_tokens + c.usage.input_tokens, total.output_tokens + c.usage.output_tokens,
+                              total.cache_creation_input_tokens + c.usage.cache_creation_input_tokens, total.cache_read_input_tokens + c.usage.cache_read_input_tokens)
+    return total
 
 
 @dataclass(frozen=True)
 class GenerateResult:
     catalog: dict                    # đã qua validate_catalog; mọi TC `draft`/`llm`
-    usage: llm.Usage                 # của lời gọi THÀNH CÔNG (lời gọi hỏng đã được client ghi vào log llm.call)
+    usage: llm.Usage                 # TỔNG các lời gọi đã biết usage, kể cả lần bị từ chối schema (S4-03); khi `cache_hit` là của lần sinh gốc
     warnings: tuple[str, ...]
     orphans: tuple[str, ...]         # AC không có TC và cũng không nằm trong uncovered_acs, theo thứ tự PRD
     dropped: int = 0                 # số TC bị bỏ vì vi phạm ngữ nghĩa
     cache_hit: bool = False          # True: không gọi LLM (cache.py); `usage` là của lần sinh gốc, người cộng chi phí phải bỏ qua lần này
+    calls: tuple = ()                # CallRecord của từng lời gọi đã gửi (kể cả lần bị từ chối); nguồn của llm_usage.json
 
 
 class _Drop(Exception):
@@ -340,32 +376,53 @@ def generate(prd: ParsedPRD, *, model: str, egress_dir: Path, transport: httpx.B
         event(log, "gt.cache", logging.INFO, outcome="hit" if hit else "miss", key=cache_key[:8])
 
     fallback = False
+    calls: list[CallRecord] = []
     if hit:
-        data, usage, attempts, used_model = hit["data"], hit["usage"], hit["attempts"], model
+        data, attempts, used_model = hit["data"], hit["attempts"], model
+        calls.append(CallRecord("gt-generate", model, version, "ok", hit["usage"], cache_hit=True))
     else:
+        cap = settings.get().llm_max_input_tokens
+        estimate = llm.estimate_input_tokens(system, build_user(prd, auth=auth), schema)
+        if estimate > cap:   # ước lượng GẦN ĐÚNG (không phải trần cứng): chốt chặn chi phí, chưa gửi gì nên không có dòng usage
+            event(log, "gt.token_cap", logging.WARNING, estimate=estimate, cap=cap, acs=total)
+            raise GTError("token_cap", f"đầu vào ước lượng ~{estimate} token vượt QC_LLM_MAX_INPUT_TOKENS={cap} (ước lượng gần đúng): "
+                                       "tách PRD thành nhiều file nhỏ hơn (mỗi file một nhóm story) rồi chạy từng file")
+
+        def attempt(repair: str | None) -> llm.ToolCall:
+            try:
+                call = ask(repair)
+            except llm.LLMError as error:
+                if error.usage is not None or error.unknown_calls > 0:   # chưa gửi, hoặc API trả lỗi HTTP ([Assumption, chưa kiểm chứng] không tính phí): không có dòng
+                    calls.append(CallRecord("gt-generate", model, version, error.kind, error.usage, error.duration_s, error.unknown_calls))
+                raise
+            calls.append(CallRecord("gt-generate", call.model, version, "ok", call.usage, call.duration_s))
+            return call
+
         attempts = 1
         try:
-            call = ask(None)
+            call = attempt(None)
         except llm.LLMError as first:
             if first.kind != "bad_output":
-                raise GTError(first.kind, str(first)) from None
+                raise GTError(first.kind, str(first), calls=tuple(calls)) from None
             attempts = 2
             try:
-                call = ask(str(first)[:400])   # vị trí + từ khoá vi phạm, do client dựng: không chứa nội dung PRD hay response
+                call = attempt(str(first)[:400])   # vị trí + từ khoá vi phạm, do client dựng: không chứa nội dung PRD hay response
             except llm.LLMError as second:
-                raise GTError(second.kind, f"{second} (sau 1 lần sửa)") from None
-        data, usage, fallback = call.data, call.usage, bool(call.fallback_from)
+                raise GTError(second.kind, f"{second} (sau 1 lần sửa)", calls=tuple(calls)) from None
+        data, fallback = call.data, bool(call.fallback_from)
         used_model = call.model if fallback else model
+    usage = total_usage(calls)
 
     catalog, warnings, orphans, dropped, merged = _assemble(prd, data, model=used_model, version=version, source=source or prd.prd_id)
     problems = gt_schema.validate_catalog(catalog)
     if problems:   # lỗi lập trình (conversion sinh catalog sai schema), không phải lỗi của LLM
-        raise GTError("bad_output", "catalog sinh ra vi phạm schema: " + "; ".join(problems[:3]))
+        raise GTError("bad_output", "catalog sinh ra vi phạm schema: " + "; ".join(problems[:3]), calls=tuple(calls))   # lời gọi đã tốn dù catalog hỏng
     if cache_key and not hit and not fallback:   # chỉ output ĐÃ validate (cả schema tool lẫn catalog) của lời gọi thành công, đúng model đã yêu cầu
         stored = gt_cache.store(cache_dir, cache_key, data, usage, attempts)
         event(log, "gt.cache", logging.INFO, outcome="store" if stored else "store_failed", key=cache_key[:8])
     event(log, "gt.generate", logging.INFO, stories=len(prd.stories), acs=total, test_cases=len(catalog["test_cases"]), orphans=len(orphans),
           uncovered=len(catalog["uncovered_acs"]), dropped=dropped, merged=merged, attempts=attempts, cache_hit=bool(hit),
+          unknown_calls=sum(c.unknown_calls for c in calls),
           input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
           cache_creation_input_tokens=usage.cache_creation_input_tokens, cache_read_input_tokens=usage.cache_read_input_tokens)
-    return GenerateResult(catalog=catalog, usage=usage, warnings=tuple(warnings), orphans=tuple(orphans), dropped=dropped, cache_hit=bool(hit))
+    return GenerateResult(catalog=catalog, usage=usage, warnings=tuple(warnings), orphans=tuple(orphans), dropped=dropped, cache_hit=bool(hit), calls=tuple(calls))

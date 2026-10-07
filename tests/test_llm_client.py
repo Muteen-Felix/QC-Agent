@@ -105,7 +105,7 @@ def test_success_sends_the_documented_request_and_parses_everything(tmp_path):
     assert request.headers["content-type"].startswith("application/json")
     body = json.loads(request.content)
     assert body["model"] == SONNET and body["max_tokens"] == 4096
-    assert body["system"] == [{"type": "text", "text": f"system tĩnh {MARK_SYSTEM}"}]
+    assert body["system"] == [{"type": "text", "text": f"system tĩnh {MARK_SYSTEM}", "cache_control": {"type": "ephemeral"}}]   # S4-03: khối tĩnh cuối của tiền tố
     assert body["messages"] == [{"role": "user", "content": [{"type": "text", "text": f"dữ liệu động {MARK_USER}"}]}]
     (tool,) = body["tools"]
     assert tool["name"] == "pick_workers" and tool["description"] == "Chọn worker" and tool["strict"] is True
@@ -494,3 +494,196 @@ def test_the_llm_package_itself_can_be_imported():
     done = subprocess.run([sys.executable, "-c", "import qc_agent.llm.client as c; print(c.KINDS[0])"], cwd=ROOT, capture_output=True, text=True,
                           encoding="utf-8", timeout=120)
     assert done.returncode == 0 and done.stdout.strip() == "missing_key", done.stderr
+
+
+# ---------------- S4-03: prompt caching, tools tất định, count_tokens, ước lượng token, chi phí của lời gọi hỏng ----------------
+
+def test_system_is_the_cached_static_block_and_an_empty_system_has_no_cache_control(tmp_path):
+    seen = []
+    call(tmp_path, transport=transport(capture=seen))
+    call(tmp_path, system="", transport=transport(capture=seen))
+    with_system, without = (json.loads(r.content) for r in seen)
+    assert with_system["system"] == [{"type": "text", "text": f"system tĩnh {MARK_SYSTEM}", "cache_control": {"type": "ephemeral"}}]
+    assert "system" not in without and "cache_control" not in json.dumps(without)   # không có khối tĩnh thì không có gì để cache
+
+
+def test_two_requests_with_different_user_share_tools_and_system_byte_for_byte(tmp_path):
+    seen = []
+    call(tmp_path, user="PRD một " + MARK_USER, transport=transport(capture=seen))
+    call(tmp_path, user="PRD hai, khác hẳn", transport=transport(capture=seen))
+    first, second = (json.loads(r.content) for r in seen)
+    assert first["messages"] != second["messages"]
+    for part in ("tools", "system", "tool_choice"):
+        assert json.dumps(first[part], sort_keys=False) == json.dumps(second[part], sort_keys=False), part   # giống từng byte: tiền tố cache không lệch
+
+
+def test_tools_are_canonical_whatever_the_key_order_of_the_schema(tmp_path):
+    shuffled = {"additionalProperties": False, "required": ["workers", "note"],
+                "properties": {"note": {"maxLength": 20, "type": "string"},
+                               "workers": {"items": {"enum": ["semgrep", "gitleaks", "schemathesis"], "type": "string"}, "type": "array", "maxItems": 3, "minItems": 1}},
+                "type": "object"}
+    seen = []
+    call(tmp_path, schema=SCHEMA, transport=transport(capture=seen))
+    call(tmp_path, schema=shuffled, transport=transport(capture=seen))
+    first, second = (r.content for r in seen)
+    tools = [json.dumps(json.loads(c)["tools"]) for c in (first, second)]
+    assert tools[0] == tools[1]
+    node = json.loads(first)["tools"][0]["input_schema"]
+    assert list(node) == sorted(node) and list(node["properties"]) == sorted(node["properties"])
+    assert node["required"] == ["workers", "note"]                                    # thứ tự mảng được giữ nguyên
+    assert node["properties"]["workers"]["items"]["enum"] == ["semgrep", "gitleaks", "schemathesis"]
+
+
+# ---- count_tokens ----
+
+def count(tmp_path, *, model=SONNET, transport=None, **kw):
+    args = dict(purpose="count-tokens", model=model, system=f"system tĩnh {MARK_SYSTEM}", user=f"dữ liệu động {MARK_USER}", tool_name="pick_workers",
+                tool_description="Chọn worker", input_schema=SCHEMA, egress_dir=tmp_path / "run", data_categories=["diff"], transport=transport)
+    args.update(kw)
+    return llm.count_tokens(**args)
+
+
+def test_count_tokens_posts_the_same_body_without_max_tokens_and_records_egress_first(tmp_path):
+    seen = []
+
+    def handler(request):
+        assert len(egress_lines(tmp_path)) == 1, "count_tokens gửi nội dung ra ngoài nên phải ghi egress TRƯỚC khi gửi"
+        seen.append(request)
+        return httpx.Response(200, json={"input_tokens": 4321})
+    assert count(tmp_path, model=HAIKU, transport=httpx.MockTransport(handler)) == 4321
+    (request,) = seen
+    assert str(request.url) == "https://api.anthropic.com/v1/messages/count_tokens" and request.headers["x-api-key"] == KEY
+    body = json.loads(request.content)
+    assert "max_tokens" not in body and "temperature" not in body
+    messages = []
+    call(tmp_path, model=HAIKU, transport=transport(message(model=HAIKU), capture=messages))
+    real = json.loads(messages[0].content)
+    for part in ("model", "system", "messages", "tools", "tool_choice"):
+        assert body[part] == real[part], part
+    (line,) = egress_lines(tmp_path)[:1]
+    assert line["capability"] == "llm.count-tokens" and line["categories"] == ["diff"] and MARK_USER not in json.dumps(line)
+
+
+@pytest.mark.parametrize("action", ["deny", "mask"])
+def test_count_tokens_with_a_non_allow_egress_decision_sends_nothing(tmp_path, action):
+    with pytest.raises(LLMError) as caught:
+        count(tmp_path, policy=Deny(action), transport=boom_transport())
+    assert caught.value.kind == "egress_denied" and caught.value.sent is False
+    (line,) = egress_lines(tmp_path)
+    assert line["decision"]["action"] == action
+
+
+def test_count_tokens_on_a_gemini_model_is_a_programming_error_and_calls_nothing(tmp_path):
+    with pytest.raises(ValueError, match="Claude"):
+        count(tmp_path, model="gemini-3.6-flash", transport=boom_transport())
+    assert egress_lines(tmp_path) == []
+
+
+def test_count_tokens_without_a_key_sends_nothing_and_errors_are_classified(tmp_path, monkeypatch):
+    with pytest.raises(LLMError) as caught:
+        count(tmp_path, transport=transport(status=529, response={"type": "error", "error": {"type": "overloaded_error", "message": MARK_BODY}}))
+    assert caught.value.kind == "unavailable" and MARK_BODY not in str(caught.value) and caught.value.usage is None
+    with pytest.raises(LLMError) as caught:
+        count(tmp_path, transport=transport({"nope": 1}))
+    assert caught.value.kind == "bad_output"
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    with pytest.raises(LLMError) as caught:
+        count(tmp_path / "x", transport=boom_transport())
+    assert caught.value.kind == "missing_key"
+
+
+# ---- ước lượng token ----
+
+def test_estimate_is_ceil_of_utf8_bytes_over_three_and_equals_chars_over_three_for_ascii():
+    assert llm.estimate_input_tokens("") == 0 and llm.estimate_input_tokens("a") == 1 and llm.estimate_input_tokens("abc") == 1 and llm.estimate_input_tokens("abcd") == 2
+    text = "x" * 3000
+    assert llm.estimate_input_tokens(text) == 1000
+    assert llm.estimate_input_tokens("ab", "cd", "ef") == 2   # cộng byte của mọi phần (6) rồi mới chia 3
+    assert llm.estimate_input_tokens("a", "b", "c", "d") == 2   # 4 byte => ceil(4/3); chia từng phần rồi cộng sẽ ra 4
+
+
+@pytest.mark.parametrize("text,at_least", [("漢" * 300, 300),            # CJK: 3 byte/ký tự => ≈ 1 token/ký tự (ký tự/3 sẽ báo chỉ 100)
+                                           ("😀" * 300, 400),            # emoji: 4 byte
+                                           ("👨‍👩‍👧‍👦" * 50, 50),      # chuỗi ZWJ: nhiều code point nhưng là một ký tự đồ hoạ
+                                           ("Tiếng Việt có dấu " * 100, len("Tiếng Việt có dấu ") * 100 // 3 + 1)])
+def test_unicode_estimate_is_never_below_chars_over_three_and_is_not_underestimated_for_cjk_and_emoji(text, at_least):
+    estimate = llm.estimate_input_tokens(text)
+    assert estimate >= -(-len(text) // 3)
+    assert estimate >= at_least
+
+
+def test_estimate_is_deterministic_and_accepts_a_schema_dict_in_any_key_order():
+    a = {"b": 1, "a": {"y": 2, "x": 3}}
+    b = {"a": {"x": 3, "y": 2}, "b": 1}
+    assert llm.estimate_input_tokens("hệ thống", a) == llm.estimate_input_tokens("hệ thống", b) == llm.estimate_input_tokens("hệ thống", a)
+
+
+# ---- chi phí của lời gọi hỏng: usage, sent, unknown_calls ----
+
+def test_a_response_rejected_for_schema_carries_the_usage_it_was_billed(tmp_path):
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, transport=transport(message({"workers": [], "note": "ok"}, usage={"input_tokens": 11, "output_tokens": 7,
+                                                                                         "cache_creation_input_tokens": 3, "cache_read_input_tokens": 5})))
+    error = caught.value
+    assert error.kind == "bad_output" and error.usage == Usage(11, 7, 3, 5) and error.sent is True and error.unknown_calls == 0 and error.duration_s >= 0
+
+
+@pytest.mark.parametrize("payload,kind", [(message(stop_reason="refusal"), "refused"), (message(stop_reason="max_tokens"), "bad_output")])
+def test_refused_and_truncated_responses_carry_their_usage(tmp_path, payload, kind):
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, transport=transport(payload))
+    assert caught.value.kind == kind and caught.value.usage == Usage(120, 30, 400, 3000) and caught.value.unknown_calls == 0
+
+
+def test_a_rejected_response_without_a_usage_block_is_an_unknown_cost(tmp_path):
+    payload = message({"workers": []})
+    payload.pop("usage")
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, transport=transport(payload))
+    assert caught.value.usage is None and caught.value.sent is True and caught.value.unknown_calls == 1
+
+
+def test_a_read_timeout_after_sending_is_an_unknown_cost_not_zero(tmp_path):
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, timeout_s=3, transport=transport(raises=httpx.ReadTimeout("x")))
+    error = caught.value
+    assert error.kind == "timeout" and error.sent is True and error.unknown_calls == 1 and error.usage is None and error.duration_s >= 0
+
+
+def test_a_dropped_connection_after_sending_is_an_unknown_cost(tmp_path):
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, transport=transport(raises=httpx.RemoteProtocolError("bad framing")))
+    assert caught.value.kind == "unavailable" and caught.value.sent is True and caught.value.unknown_calls == 1
+
+
+@pytest.mark.parametrize("failure", [httpx.ConnectError("boom"), httpx.ConnectTimeout("slow connect"), httpx.PoolTimeout("busy")])
+def test_a_failure_before_the_request_reached_the_server_is_not_a_cost(tmp_path, failure):
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, transport=transport(raises=failure))
+    assert caught.value.sent is False and caught.value.unknown_calls == 0 and caught.value.usage is None
+
+
+@pytest.mark.parametrize("status", [429, 500, 529, 400])
+def test_an_http_error_response_is_sent_but_has_no_usage_and_no_unknown_call(tmp_path, status):
+    """[Assumption, chưa kiểm chứng] API không tính phí request trả lỗi HTTP: bởi vậy không phải `unknown_calls`."""
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, transport=transport({"type": "error", "error": {"type": "api_error", "message": MARK_BODY}}, status=status))
+    assert caught.value.sent is True and caught.value.usage is None and caught.value.unknown_calls == 0
+
+
+def test_nothing_sent_means_sent_false_for_missing_key_and_denied_egress(tmp_path, monkeypatch):
+    with pytest.raises(LLMError) as denied:
+        call(tmp_path, policy=Deny(), transport=boom_transport())
+    assert denied.value.sent is False and denied.value.usage is None and denied.value.unknown_calls == 0
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    with pytest.raises(LLMError) as missing:
+        call(tmp_path, transport=boom_transport())
+    assert missing.value.sent is False and missing.value.unknown_calls == 0
+
+
+def test_cost_attributes_never_put_content_into_the_message_or_the_log(tmp_path, logs):
+    payload = message({"workers": [], "note": MARK_BODY})
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, transport=transport(payload))
+    text = str(caught.value) + logs.getvalue()
+    assert MARK_BODY not in text and MARK_USER not in text and MARK_SYSTEM not in text and KEY not in text
