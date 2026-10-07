@@ -43,13 +43,15 @@ Test chuỗi đánh dấu (`tests/test_log_no_content_chain.py`) chạy trọn c
 
 | Dữ liệu | Được nằm ở | Không được nằm ở |
 |---|---|---|
-| Rationale của Select (đã làm sạch bằng `selector.agent._clean`) | `selection.json`, `plan.yaml` (selection là một phần plan text để hash vào `plan_id`), `report.md` | stderr, `report.json`, `results/`, `specs/`, `egress.jsonl`, `llm_usage.json` |
+| Rationale của Select (đã làm sạch bằng `selector.agent._clean`) | Đúng ba artifact **top-level** của một run: `runs/<run_id>/selection.json`, `runs/<run_id>/plan.yaml`, `runs/<run_id>/report.md`; cộng bản `runs/selection.json` do `qc-agent select --out` ghi | stderr, `report.json`, file cùng tên ở thư mục con (`results/plan.yaml`, `t-001/selection.json`...), `results/`, `specs/`, `egress.jsonl`, `llm_usage.json`, thư mục egress |
 | Tiêu đề finding (đã làm sạch bằng `clean_md`) | `report.md`, `report.json`, Check Run/comment/review ở GitHub | stderr, `egress.jsonl` |
 | Nội dung PRD, diff, mã nguồn SUT | Không file nào dưới `runs/` hay thư mục egress (chỉ rời máy tới LLM, và egress ghi **loại dữ liệu**, ví dụ `source_code`, không ghi nội dung) | stderr, mọi file dưới `runs/`, `egress.jsonl` |
 | `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `JIRA_API_TOKEN` | Không đâu (chỉ biến môi trường của tiến trình) | stderr, stdout, mọi file |
 | Body lỗi của Jira/Gemini | Không đâu (chỉ `HTTP <mã>` hoặc tên lớp lỗi) | stderr, mọi file |
 
 Nếu thêm một file dưới `runs/` có chứa rationale hoặc nội dung, phải sửa `ALLOWED` trong test **và** bảng này trong cùng PR (có lý do), không được nới lặng lẽ.
+
+**Ngoại lệ có chủ đích (đã chốt, R3): `plan.yaml` được chứa rationale đã làm sạch.** Plan text mang khối `selection` để hash vào `plan_id`, nên rationale (chỉ dạng đã qua `_clean`: một dòng, ký tự không in được thành khoảng trắng, cắt 200 ký tự; đây **không** phải lọc nội dung, nên đừng coi rationale là an toàn để đưa vào log) nằm trong `plan.yaml` cạnh `selection.json`. Ngoại lệ này chỉ áp cho **đường dẫn đầy đủ** ở bảng trên: test so khớp cả đường dẫn, không so tên file, nên `results/plan.yaml` hay `egress-gt/selection.json` vẫn bị bắt là rò rỉ. Muốn bỏ ngoại lệ phải đổi cách tính `plan_id` (việc riêng ngoài S4-07).
 
 ## Xoay khoá
 
@@ -138,5 +140,5 @@ DB là dịch vụ của **gate**; luồng PR và manual không phụ thuộc `Q
 ## Image và kiểm tra gói
 
 - Image đọc/ghi được `test-cases.xlsx` và mang đủ prompt, template, schema, bảng giá; `tests/test_packaging_resources.py` kiểm bản wheel, `tests/test_packaging_image.py` kiểm image (cần Docker).
-- Job Summary của workflow `image` in digest và lệnh ghim cho hai caller (`qc.yml` và `qc-groundtruth.yml`): ghim theo **digest**, không theo tag.
+- Job Summary của workflow `image` in digest và lệnh ghim cho hai caller (`.github/workflows/qc-gate.yml` và `.github/workflows/qc-groundtruth.yml`, đúng hai file `qc-agent init` sinh): ghim theo **digest**, không theo tag. Repo cũ còn tên `qc.yml` (tên cũ, `init` không sinh nữa) thì thay tên file đó vào lệnh `sed` trong Summary.
 - Không có cờ `qc-agent --version`; xem phiên bản: `docker run --rm --entrypoint python <image> -c "import importlib.metadata as m; print(m.version('qc-agent'))"`.

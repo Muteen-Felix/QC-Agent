@@ -95,3 +95,21 @@ def test_the_sed_pattern_would_not_touch_a_db_image_line():
 @pytest.mark.parametrize("trigger", ["pull_request", "push", "workflow_dispatch"])
 def test_the_workflow_still_builds_on_the_same_triggers(trigger):
     assert trigger in DATA[True]
+
+
+def test_the_two_caller_names_agree_between_the_summary_the_operations_doc_the_templates_and_validate():
+    """Tên caller chỉ có MỘT nguồn (hằng số của scaffold). Sai tên (vd. `qc.yml` thay vì `qc-gate.yml`) làm lệnh `sed` trong Summary báo không thấy file."""
+    from qc_agent.scaffold import init, templates, validate
+    gate, gt = templates.GATE_WORKFLOW, init.GT_WORKFLOW
+    assert (gate, gt) == (".github/workflows/qc-gate.yml", ".github/workflows/qc-groundtruth.yml") and validate.GT_WORKFLOW == gt
+    for name in (gate, gt):
+        assert f"`{name}`" in (ROOT / "docs" / "operations.md").read_text(encoding="utf-8"), name
+    step = _step("Digest")["run"]
+    assert "gate=" + gate in step and "gt=" + gt in step, "image.yml phải dùng đúng hai tên này"
+    for template in ("qc-gate.yml.tmpl", "qc-groundtruth.yml.tmpl"):
+        assert (ROOT / "src" / "qc_agent" / "scaffold" / "tmpl" / template).is_file()
+    legacy = templates.LEGACY_WORKFLOW
+    doc = (ROOT / "docs" / "operations.md").read_text(encoding="utf-8")
+    for line in doc.splitlines():
+        if "`qc.yml`" in line:       # tên cũ chỉ được nhắc kèm lời giải thích là tên cũ
+            assert "tên cũ" in line and legacy.endswith("qc.yml"), line

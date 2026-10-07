@@ -4,8 +4,9 @@ manifest worker, policy, web. Thiếu một file là lỗi chỉ lộ ở CI (vd
 Ba lớp, rẻ → đắt:
   1. Cây nguồn: mọi file không-.py dưới src/qc_agent phải được khai báo ở đây (thêm tài nguyên mới mà quên khai báo => đỏ), và mọi `*.tmpl` code nhắc tới phải tồn tại.
   2. `.dockerignore`: bộ khớp mô phỏng luật của Docker; không tài nguyên nào bị loại khỏi ngữ cảnh build. (Mô phỏng, không phải Docker thật: tests/test_packaging_image.py kiểm image thật.)
-  3. Wheel: `uv build --wheel`, mở zip, rồi cài vào venv tạm và đọc từng file bằng importlib.resources từ bản ĐÃ CÀI (không dùng đường dẫn nguồn). Không dựng được (thiếu uv/mạng) => SKIP có lý do
-     (= CHƯA KIỂM CHỨNG, không phải xanh).
+  3. Wheel: `uv build --wheel`, mở zip, rồi cài vào venv tạm và đọc từng file bằng importlib.resources từ bản ĐÃ CÀI (không dùng đường dẫn nguồn). SKIP (= CHƯA KIỂM CHỨNG, không phải xanh)
+     CHỈ khi thiếu `uv` hoặc uv báo rõ KHÔNG LẤY ĐƯỢC build requirement (offline/mạng đứt, xem `build_requirement_unavailable`); mọi lỗi khác (cấu hình pyproject, backend hatchling,
+     đóng gói thiếu file, venv/cài đặt) làm test FAIL.
 Image: tests/test_packaging_image.py."""
 import fnmatch
 import re
@@ -142,6 +143,45 @@ def test_every_directory_the_dockerfile_copies_is_not_ignored_wholesale():
 
 # ───────────────────────── 3. wheel ─────────────────────────
 
+# Mẫu thông báo THẬT của uv 0.12 (đã chụp ngày 2026-10-07 bằng cache rỗng + --offline, proxy chết, và pyproject hỏng). Cắt bớt, giữ nguyên các câu phân loại.
+UV_OFFLINE = """error: Failed to build `D:/qc-agent`
+  cause: Failed to resolve requirements from `build-system.requires`
+  cause: No solution found when resolving: `hatchling>=1.25`
+  cause: Because hatchling was not found in the cache and you require hatchling>=1.25, we can conclude that your requirements are unsatisfiable.
+
+hint: Packages were unavailable because the network was disabled. When the network is disabled, registry packages may only be read from the cache."""
+UV_NETWORK_DOWN = """error: Failed to build `D:/qc-agent`
+  cause: Failed to resolve requirements from `build-system.requires`
+  cause: No solution found when resolving: `hatchling>=1.25`
+  cause: Request failed after 3 retries in 17.5s
+  cause: Failed to fetch: `https://pypi.org/simple/hatchling/`
+  cause: error sending request for url (https://pypi.org/simple/hatchling/)
+  cause: tcp connect error"""
+UV_BACKEND_ERROR = """Traceback (most recent call last):
+  File "hatchling/builders/plugin/interface.py", line 248, in recurse_forced_files
+    raise FileNotFoundError(msg)
+FileNotFoundError: Forced include not found: D:/qc-agent/configs
+error: Failed to build `D:/qc-agent`
+  cause: The build backend returned an error
+  cause: Call to `hatchling.build.build_wheel` failed (exit code: 1)"""
+NETWORK_WORDS = ("network was disabled", "Failed to fetch", "error sending request", "dns error", "tcp connect error", "Request failed after", "certificate", "timed out")
+
+
+def build_requirement_unavailable(stderr: str) -> bool:
+    """Bằng chứng RÕ RÀNG rằng uv không lấy được build requirement (hatchling) vì offline/mạng: có câu 'Failed to resolve requirements from `build-system.requires`' VÀ một dấu vết mạng,
+    VÀ backend chưa từng chạy. Thiếu một trong ba => KHÔNG phải lỗi môi trường, test phải fail."""
+    return ("Failed to resolve requirements from `build-system.requires`" in stderr and any(word in stderr for word in NETWORK_WORDS)
+            and "The build backend returned an error" not in stderr and "Traceback" not in stderr)
+
+
+def test_only_a_missing_build_requirement_is_treated_as_an_environment_problem():
+    assert build_requirement_unavailable(UV_OFFLINE) and build_requirement_unavailable(UV_NETWORK_DOWN)
+    assert not build_requirement_unavailable(UV_BACKEND_ERROR), "lỗi backend/cấu hình phải làm test fail, không được SKIP"
+    assert not build_requirement_unavailable("error: Failed to build `x`\n  cause: Failed to fetch: `https://pypi.org/simple/other/`"), "lỗi mạng không phải của build requirement"
+    assert not build_requirement_unavailable("error: invalid pyproject.toml: unknown field `packagess`"), "lỗi cấu hình"
+    assert not build_requirement_unavailable("")
+
+
 @pytest.fixture(scope="module")
 def wheel(tmp_path_factory) -> Path:
     uv = shutil.which("uv")
@@ -150,7 +190,10 @@ def wheel(tmp_path_factory) -> Path:
     out = tmp_path_factory.mktemp("wheel")
     done = subprocess.run([uv, "build", "--wheel", "--out-dir", str(out)], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     if done.returncode != 0:
-        pytest.skip(f"`uv build --wheel` lỗi (thiếu mạng/hatchling?): {done.stderr.strip()[-200:]} (SKIP = CHƯA KIỂM CHỨNG)")
+        if build_requirement_unavailable(done.stderr):
+            pytest.skip(f"uv không lấy được build requirement (offline/mạng): {done.stderr.strip()[-300:]} (SKIP = CHƯA KIỂM CHỨNG)")
+        pytest.fail(f"`uv build --wheel` lỗi (exit {done.returncode}), không phải do thiếu build requirement; kiểm pyproject.toml / backend / thư mục force-include:\n{done.stderr.strip()[-1500:]}",
+                    pytrace=False)
     found = sorted(out.glob("qc_agent-*.whl"))
     assert len(found) == 1, found
     return found[0]
@@ -190,12 +233,10 @@ def test_the_installed_wheel_reads_every_resource_through_importlib_resources(wh
     uv = shutil.which("uv")
     venv = tmp_path / "venv"
     made = subprocess.run([uv, "venv", "--python", sys.executable, str(venv)], capture_output=True, text=True, timeout=300)
-    if made.returncode != 0:
-        pytest.skip(f"không tạo được venv tạm: {made.stderr.strip()[-200:]} (SKIP = CHƯA KIỂM CHỨNG)")
+    assert made.returncode == 0, f"`uv venv` lỗi (không cần mạng): {made.stderr.strip()[-500:]}"
     python = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     installed = subprocess.run([uv, "pip", "install", "--python", str(python), "--no-deps", str(wheel)], capture_output=True, text=True, timeout=300)
-    if installed.returncode != 0:
-        pytest.skip(f"không cài được wheel vào venv tạm: {installed.stderr.strip()[-200:]} (SKIP = CHƯA KIỂM CHỨNG)")
+    assert installed.returncode == 0, f"cài wheel (--no-deps, không cần mạng) lỗi: {installed.stderr.strip()[-500:]}"
     import json
     wanted = sorted(DECLARED | REQUIRED_MODULES | {f"schemas/{n}" for n in REQUIRED_SCHEMAS} | {"workers/semgrep.yaml", "configs/projects/_default.yaml", "web/index.html"})
     done = subprocess.run([str(python), "-I", "-c", READ_INSTALLED, json.dumps(wanted)], cwd=tmp_path, capture_output=True, text=True, encoding="utf-8", timeout=120)

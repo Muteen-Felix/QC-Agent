@@ -13,6 +13,7 @@ Khẳng định:
 import base64
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,26 +42,31 @@ MARKS = {
     "JIRA_ERR": f"LEAKJIRAERR-{SUFFIX}",
     "GEMINI_ERR": f"LEAKGEMINIERR-{SUFFIX}",
 }
-# File dưới runs/ (và egress) được phép chứa marker nào. Đo ngày 2026-10-07 (spike S4-07): rationale đã làm sạch (`selector.agent._clean`) nằm trong selection.json, trong
-# plan.yaml (selection là một phần của plan text để hash vào plan_id) và trong report.md. Mọi marker khác KHÔNG được có trong file nào.
-ALLOWED = {"RATIONALE": {"selection.json", "plan.yaml", "report.md"}}
+# Marker nào được nằm ở ĐƯỜNG DẪN nào (so khớp TOÀN BỘ đường dẫn, không so tên file). Đo ngày 2026-10-07 (spike S4-07): rationale đã làm sạch (`selector.agent._clean`) nằm ở ba
+# artifact TOP-LEVEL của một run: selection.json, plan.yaml (selection là một phần của plan text để hash vào plan_id; ngoại lệ có chủ đích, đã chốt ở R3) và report.md, cộng
+# bản `runs/selection.json` do `qc-agent select --out` ghi. File cùng tên ở thư mục con (`results/plan.yaml`, `t-001/selection.json`...) KHÔNG được phép. Mọi marker khác KHÔNG
+# được có trong file nào.
+TOP_LEVEL_ARTIFACTS = ("selection.json", "plan.yaml", "report.md")
+ALLOWED = {"RATIONALE": (re.compile(r"runs/selection\.json"), re.compile(r"runs/r-\d+/(?:" + "|".join(re.escape(n) for n in TOP_LEVEL_ARTIFACTS) + ")"))}
 GEMINI_SELECT_MODEL = "gemini-3.6-flash"
 GEMINI_FALLBACK_MODEL = "gemini-3.8-flash"
 
 
-def leaks(texts: dict[str, str], *, allowed: dict[str, set[str]] | None = None) -> list[tuple[str, str]]:
-    """[(tên marker, nơi chứa)] cho mọi chỗ marker xuất hiện ngoài danh sách cho phép. `texts` = {nơi: nội dung}; nơi là tên file thì so theo tên cuối."""
+def leaks(texts: dict[str, str], *, allowed: dict[str, tuple] | None = None) -> list[tuple[str, str]]:
+    """[(tên marker, nơi chứa)] cho mọi chỗ marker xuất hiện ngoài danh sách cho phép. `texts` = {nơi: nội dung}; nơi là đường dẫn tương đối (dấu `\\` được chuẩn hoá thành `/`)
+    và phải khớp TOÀN BỘ một mẫu của marker đó: chỉ trùng tên file ở chỗ khác không đủ."""
     allowed = allowed or {}
     found = []
     for where, text in texts.items():
+        posix = where.replace("\\", "/")
         for name, mark in MARKS.items():
-            if mark in text and Path(where).name not in allowed.get(name, set()):
+            if mark in text and not any(pattern.fullmatch(posix) for pattern in allowed.get(name, ())):
                 found.append((name, where))
     return found
 
 
 def _read_tree(root: Path) -> dict[str, str]:
-    return {str(p.relative_to(root.parent)): p.read_bytes().decode("utf-8", "replace") for p in sorted(root.rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
+    return {p.relative_to(root.parent).as_posix(): p.read_bytes().decode("utf-8", "replace") for p in sorted(root.rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
 
 
 class Chain:
@@ -211,10 +217,25 @@ def chain(tmp_path_factory) -> Chain:
 # ---------------------------------------------------------------- bộ dò
 
 def test_the_detector_catches_a_marker_in_a_log_and_in_a_file_outside_the_allowlist():
-    texts = {"stderr:x": f'{{"event": "llm.call", "note": "{MARKS["PRD"]}"}}', "runs/r-1/selection.json": MARKS["RATIONALE"], "runs/r-1/results/t-001.json": MARKS["RATIONALE"]}
-    assert leaks(texts, allowed=ALLOWED) == [("PRD", "stderr:x"), ("RATIONALE", "runs/r-1/results/t-001.json")]
-    assert leaks({"selection.json": MARKS["JIRA_TOKEN"]}, allowed=ALLOWED) == [("JIRA_TOKEN", "selection.json")]   # allowlist theo TỪNG marker, không theo file
+    texts = {"stderr:x": f'{{"event": "llm.call", "note": "{MARKS["PRD"]}"}}', "runs/r-0001/selection.json": MARKS["RATIONALE"], "runs/r-0001/results/t-001.json": MARKS["RATIONALE"]}
+    assert leaks(texts, allowed=ALLOWED) == [("PRD", "stderr:x"), ("RATIONALE", "runs/r-0001/results/t-001.json")]
+    assert leaks({"runs/r-0001/selection.json": MARKS["JIRA_TOKEN"]}, allowed=ALLOWED) == [("JIRA_TOKEN", "runs/r-0001/selection.json")]   # allowlist theo TỪNG marker, không theo file
     assert leaks({"stderr": "sạch"}, allowed=ALLOWED) == []
+
+
+@pytest.mark.parametrize("where", ["runs/r-0001/selection.json", "runs/r-0001/plan.yaml", "runs/r-0001/report.md", "runs/selection.json", "runs\\r-0001\\plan.yaml"])
+def test_the_rationale_is_allowed_only_in_the_top_level_artifacts_of_a_run(where):
+    assert leaks({where: MARKS["RATIONALE"]}, allowed=ALLOWED) == []
+
+
+@pytest.mark.parametrize("where", [
+    "runs/r-0001/results/plan.yaml", "runs/r-0001/results/selection.json", "runs/r-0001/t-001/report.md", "runs/r-0001/specs/selection.json", "runs/r-0001/evidence/plan.yaml",
+    "runs/r-0001/results/report.md", "runs/r-0001/report.json", "runs/r-0001/selection.json.bak", "runs/r-0001/xplan.yaml", "runs/other/selection.json", "runs/sub/selection.json",
+    "runs/r-0001/selection.json/inner.txt", "egress-gt/selection.json", "egress-agent/plan.yaml", "r-0001/plan.yaml", "plan.yaml", "selection.json", "jira-run/report.md",
+    "runs\\r-0001\\results\\plan.yaml", "runs\\r-0001\\t-001\\selection.json"])
+def test_a_file_with_an_allowed_name_in_any_other_place_is_still_reported_as_a_leak(where):
+    """Hồi quy: trước đây allowlist so theo tên file nên `results/plan.yaml` hay `egress-gt/selection.json` lọt qua."""
+    assert leaks({where: f"x {MARKS['RATIONALE']} y"}, allowed=ALLOWED) == [("RATIONALE", where)]
 
 
 def test_the_markers_are_unique_and_none_contains_another():
@@ -292,8 +313,25 @@ def test_markers_appear_in_runs_and_egress_files_only_where_allowed(chain):
 
 def test_the_allowed_files_really_hold_the_rationale_so_the_allowlist_is_not_stale(chain):
     run = chain.dirs["run"]
-    for name in sorted(ALLOWED["RATIONALE"]):
+    for name in TOP_LEVEL_ARTIFACTS:
         assert MARKS["RATIONALE"] in (run / name).read_text(encoding="utf-8"), f"{name} không còn chứa rationale: bỏ khỏi ALLOWED"
+    assert MARKS["RATIONALE"] in (chain.dirs["sut"] / "runs" / "selection.json").read_text(encoding="utf-8")
+
+
+def test_every_file_that_holds_the_rationale_is_covered_by_the_allowlist_and_nothing_else_holds_it(chain):
+    """Hai chiều: file chứa rationale phải nằm trong allowlist (đã có test trên), và allowlist không rộng hơn thực tế (mỗi mẫu có ít nhất một file thật)."""
+    holders = {rel for rel, text in _read_tree(chain.dirs["sut"] / "runs").items() if MARKS["RATIONALE"] in text}
+    assert holders == {"runs/selection.json", *{f"runs/{chain.dirs['run'].name}/{name}" for name in TOP_LEVEL_ARTIFACTS}}, sorted(holders)
+    assert all(any(pattern.fullmatch(rel) for pattern in ALLOWED["RATIONALE"]) for rel in holders)
+
+
+def test_the_operations_doc_states_the_same_exception_as_the_test():
+    """Tài liệu và test phải nói cùng một thứ: ba artifact top-level (kể cả plan.yaml) và việc file cùng tên ở thư mục con không được phép."""
+    text = (ROOT / "docs" / "operations.md").read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith("| Rationale của Select"))
+    assert all(f"`runs/<run_id>/{name}`" in row for name in TOP_LEVEL_ARTIFACTS), row
+    assert "top-level" in row and "thư mục con" in row
+    assert "ngoại lệ" in text.lower() and "`plan.yaml`" in text.split("### File nào được chứa gì", 1)[1].split("\n## ", 1)[0]
 
 
 def test_the_agent_egress_records_that_source_code_left_without_its_content(chain):
