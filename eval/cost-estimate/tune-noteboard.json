@@ -1,0 +1,673 @@
+{
+  "datasets": {
+    "noteboard": {
+      "dataset": "noteboard",
+      "split": "tune",
+      "token_evidence": "estimate",
+      "model": "claude-haiku-4-5-20251001",
+      "prompt_version": "diff-select/1",
+      "labels_status": "reviewed",
+      "cost_target": {
+        "median_reduction": null,
+        "reason": "Đo 2026-10-07 (eval_cost --ceiling, estimate): trần chặt 1-B_min/A = 2,5% ở median (P90 2,6%) trên 20 ca LLM vì diff chỉ chiếm 7,3% request; 40% không khả thi (S4-04, phương án A)."
+      },
+      "prefix_tokens": 907,
+      "pruner": {
+        "sha": "78f6f90498d6e2a0d22bc079ef0214d78ec4689f",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "baseline_pruner": {
+        "sha": "2f4c2dec4a1a4c5e37037520bf7dbd555719755c",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "policy_sha": "b928a6ad0312b910058683866de6171140e7e695e716f21388479df49eb325e1",
+      "module_map_sha": "e9cc6fe452a9dfc5d641eff0be0d37615e7b54c417995d33246a83e04ef86c67",
+      "cases_detail": [
+        {
+          "name": "diff-001",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 928,
+            "B1": 953,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-002",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 928,
+            "B1": 953,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-003",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 928,
+            "B1": 953,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-004",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 928,
+            "B1": 953,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-005",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 928,
+            "B1": 953,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-006",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 928,
+            "B1": 953,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-007",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 970,
+            "P": 907,
+            "B_min": 926,
+            "B1": 948,
+            "B0": 1017
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-008",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 970,
+            "P": 907,
+            "B_min": 926,
+            "B1": 948,
+            "B0": 1017
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-009",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 970,
+            "P": 907,
+            "B_min": 926,
+            "B1": 948,
+            "B0": 1017
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-010",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 971,
+            "P": 907,
+            "B_min": 926,
+            "B1": 949,
+            "B0": 1018
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-011",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 1,
+          "tokens": {
+            "A": 964,
+            "P": 907,
+            "B_min": 926,
+            "B1": 941,
+            "B0": 1011
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-012",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 1,
+          "tokens": {
+            "A": 964,
+            "P": 907,
+            "B_min": 926,
+            "B1": 941,
+            "B0": 1011
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-013",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 1,
+          "tokens": {
+            "A": 964,
+            "P": 907,
+            "B_min": 926,
+            "B1": 941,
+            "B0": 1011
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-014",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 1,
+          "tokens": {
+            "A": 964,
+            "P": 907,
+            "B_min": 926,
+            "B1": 941,
+            "B0": 1011
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-015",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 968,
+            "P": 907,
+            "B_min": 927,
+            "B1": 943,
+            "B0": 1016
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-016",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 972,
+            "P": 907,
+            "B_min": 929,
+            "B1": 945,
+            "B0": 1021
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-017",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 972,
+            "P": 907,
+            "B_min": 929,
+            "B1": 945,
+            "B0": 1021
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-018",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 962,
+            "P": 907,
+            "B_min": 927,
+            "B1": 927,
+            "B0": 953
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-019",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 959,
+            "P": 907,
+            "B_min": 926,
+            "B1": 926,
+            "B0": 952
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-020",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 952,
+            "P": 907,
+            "B_min": 924,
+            "B1": 924,
+            "B0": 950
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-021",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 975,
+            "P": 907,
+            "B_min": 927,
+            "B1": 951,
+            "B0": 1023
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-022",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 975,
+            "P": 907,
+            "B_min": 927,
+            "B1": 951,
+            "B0": 1023
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-023",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 975,
+            "P": 907,
+            "B_min": 927,
+            "B1": 951,
+            "B0": 1023
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-024",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 975,
+            "P": 907,
+            "B_min": 927,
+            "B1": 951,
+            "B0": 1023
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-025",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1023,
+            "P": 907,
+            "B_min": 944,
+            "B1": 979,
+            "B0": 1115
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-026",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1023,
+            "P": 907,
+            "B_min": 944,
+            "B1": 979,
+            "B0": 1115
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-027",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1023,
+            "P": 907,
+            "B_min": 944,
+            "B1": 979,
+            "B0": 1115
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-028",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1023,
+            "P": 907,
+            "B_min": 944,
+            "B1": 979,
+            "B0": 1115
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-029",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 978,
+            "P": 907,
+            "B_min": 928,
+            "B1": 952,
+            "B0": 1027
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "diff-030",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 978,
+            "P": 907,
+            "B_min": 928,
+            "B1": 952,
+            "B0": 1027
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        }
+      ],
+      "cases": 30,
+      "llm_cases": 20,
+      "excluded": {
+        "full_set": [
+          "diff-015",
+          "diff-016",
+          "diff-017",
+          "diff-018",
+          "diff-019",
+          "diff-020"
+        ],
+        "floor_only": [
+          "diff-011",
+          "diff-012",
+          "diff-013",
+          "diff-014"
+        ],
+        "token_cap": []
+      },
+      "target": null,
+      "tokens": {
+        "A": {
+          "median": 978.5,
+          "p90": 1023
+        },
+        "P": {
+          "median": 907.0,
+          "p90": 907
+        },
+        "B_min": {
+          "median": 928.0,
+          "p90": 944
+        },
+        "B0": {
+          "median": 1027.5,
+          "p90": 1115
+        },
+        "B1": {
+          "median": 952.5,
+          "p90": 979
+        }
+      },
+      "ceiling": {
+        "loose": {
+          "median": 0.07307078505465492,
+          "p90": 0.1133919843597263
+        },
+        "tight": {
+          "median": 0.05160935890928309,
+          "p90": 0.07722385141739985
+        }
+      },
+      "reduction_b0": {
+        "median": -0.050051072522982576,
+        "p90": -0.04845360824742273
+      },
+      "reduction_b1": {
+        "median": 0.026557711950970342,
+        "p90": 0.043010752688172005
+      },
+      "delta_points": 7.7,
+      "increased_vs_b0": [],
+      "above_raw": {
+        "b0": [
+          "diff-001",
+          "diff-002",
+          "diff-003",
+          "diff-004",
+          "diff-005",
+          "diff-006",
+          "diff-007",
+          "diff-008",
+          "diff-009",
+          "diff-010",
+          "diff-021",
+          "diff-022",
+          "diff-023",
+          "diff-024",
+          "diff-025",
+          "diff-026",
+          "diff-027",
+          "diff-028",
+          "diff-029",
+          "diff-030"
+        ],
+        "b1": []
+      },
+      "b_min_ge_a": [],
+      "cut": {
+        "b0": 0,
+        "b1": 0
+      },
+      "margin_points": -34.8,
+      "ceiling_ok": false,
+      "target_met": null
+    }
+  },
+  "aggregate": null
+}

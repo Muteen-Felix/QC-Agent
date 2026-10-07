@@ -1,0 +1,176 @@
+{
+  "datasets": {
+    "node-api": {
+      "dataset": "node-api",
+      "split": "holdout",
+      "token_evidence": "estimate",
+      "model": "claude-haiku-4-5-20251001",
+      "prompt_version": "diff-select/1",
+      "labels_status": "unreviewed",
+      "cost_target": {
+        "median_reduction": null,
+        "reason": "Đo 2026-10-07 (eval_cost --ceiling --split all, estimate): trần chặt 1-B_min/A = 9,8% ở median (P90 46,0%) trên 13 ca LLM vì đa số diff chỉ chạm 1-2 file nhỏ; 40% ở median không khả thi. Diff lớn còn dư địa (nd-008, 45 file: trần 46,0%) nhưng không đại diện cho median (S4-04, phương án A)."
+      },
+      "prefix_tokens": 853,
+      "pruner": {
+        "sha": "78f6f90498d6e2a0d22bc079ef0214d78ec4689f",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "baseline_pruner": {
+        "sha": "2f4c2dec4a1a4c5e37037520bf7dbd555719755c",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "policy_sha": "4826e6a014a77b490a47ad3863c9ffd7f66880938910efd0bfd88634701ee11f",
+      "module_map_sha": "6731ab127eac544b4ccdab025288f357c0ec910e23aee3ab0bf67382fdfbd339",
+      "cases_detail": [
+        {
+          "name": "nd-002",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 986,
+            "P": 853,
+            "B_min": 872,
+            "B1": 966,
+            "B0": 1034
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "nd-005",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1043,
+            "P": 853,
+            "B_min": 881,
+            "B1": 962,
+            "B0": 1048
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "nd-007",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 930,
+            "P": 853,
+            "B_min": 876,
+            "B1": 899,
+            "B0": 981
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "nd-009",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 935,
+            "P": 853,
+            "B_min": 872,
+            "B1": 872,
+            "B0": 898
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        }
+      ],
+      "cases": 4,
+      "llm_cases": 4,
+      "excluded": {
+        "full_set": [],
+        "floor_only": [],
+        "token_cap": []
+      },
+      "target": null,
+      "tokens": {
+        "A": {
+          "median": 960.5,
+          "p90": 1043
+        },
+        "P": {
+          "median": 853.0,
+          "p90": 853
+        },
+        "B_min": {
+          "median": 874.0,
+          "p90": 881
+        },
+        "B0": {
+          "median": 1007.5,
+          "p90": 1048
+        },
+        "B1": {
+          "median": 930.5,
+          "p90": 966
+        }
+      },
+      "ceiling": {
+        "loose": {
+          "median": 0.11129448644661621,
+          "p90": 0.18216682646212845
+        },
+        "tight": {
+          "median": 0.09149917020099574,
+          "p90": 0.15532118887823587
+        }
+      },
+      "reduction_b0": {
+        "median": -0.02673770271820841,
+        "p90": 0.039572192513368964
+      },
+      "reduction_b1": {
+        "median": 0.05035650623885918,
+        "p90": 0.07766059443911788
+      },
+      "delta_points": 7.7,
+      "increased_vs_b0": [],
+      "above_raw": {
+        "b0": [
+          "nd-002",
+          "nd-005",
+          "nd-007"
+        ],
+        "b1": []
+      },
+      "b_min_ge_a": [],
+      "cut": {
+        "b0": 0,
+        "b1": 0
+      },
+      "margin_points": -30.9,
+      "ceiling_ok": false,
+      "target_met": null
+    }
+  },
+  "aggregate": null
+}
