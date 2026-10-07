@@ -168,3 +168,45 @@ def test_binary_detection_is_one_batched_call_and_parallel_processing_keeps_a_st
     assert by_path["new.bin"].kind == "binary" and by_path["new.bin"].hunks is None and by_path["keep.py"].kind == "code"
     assert [item.path for item in result.files] == sorted(by_path) and len(result.files) == 14
     assert prune(tmp_path, base, head).sha256 == result.sha256                              # song song vẫn tất định
+
+
+def test_unicode_paths_and_text_survive_truncation_without_breaking_utf8(tmp_path):
+    from qc_agent.llm.client import estimate_input_tokens
+    git(tmp_path, "init", "-q")
+    (tmp_path / "keep.py").write_text("x = 1\n", encoding="utf-8")
+    base = _commit(tmp_path, "base")
+    folder = tmp_path / "tài-liệu-📘"
+    folder.mkdir()
+    (folder / "ghi-chú.py").write_text("".join(f'ghi_chu_{n} = "Đã lưu ✅ 保存しました 🚀 {n}"\n' for n in range(400)), encoding="utf-8")
+    head = _commit(tmp_path, "head")
+    first = prune(tmp_path, base, head, per_file_tokens=20)
+    second = prune(tmp_path, base, head, per_file_tokens=20)
+    (item,) = first.files
+    assert item.path == "tài-liệu-📘/ghi-chú.py" and item.truncated                                  # tên file Unicode không bị git bọc dấu nháy/escape
+    assert "�" not in item.hunks and item.hunks.encode("utf-8").decode("utf-8") == item.hunks   # cắt theo ký tự, không cắt giữa dãy byte
+    assert "Đã lưu ✅ 保存しました 🚀" in item.hunks and first.sha256 == second.sha256
+    assert estimate_input_tokens(item.hunks) > len(item.hunks) / 3                                    # nhiều byte/ký tự: ước lượng theo byte lớn hơn ký tự/3
+
+
+def test_a_very_large_diff_keeps_every_path_flags_every_cut_and_finishes_in_bounded_time(tmp_path):
+    import time
+    git(tmp_path, "init", "-q")
+    (tmp_path / "seed.txt").write_text("x\n", encoding="utf-8")
+    base = _commit(tmp_path, "base")
+    paths = []
+    for n in range(240):
+        folder = tmp_path / f"pkg{n % 30}"
+        folder.mkdir(exist_ok=True)
+        (folder / f"m{n}.py").write_text(f"def f{n}():\n    return {n}\n", encoding="utf-8")
+        paths.append(f"pkg{n % 30}/m{n}.py")
+    (tmp_path / "huge.py").write_text("".join(f"value_{n} = {n}  # dòng tiếng Việt 🚀\n" for n in range(60000)), encoding="utf-8")   # vài MB
+    head = _commit(tmp_path, "head")
+    started = time.perf_counter()
+    result = prune(tmp_path, base, head)
+    assert time.perf_counter() - started < 240                                                          # chặn trên rộng: phát hiện hồi quy O(n^2) hay treo, không đo tốc độ
+    assert sorted(item.path for item in result.files) == sorted([*paths, "huge.py"])                     # danh sách file đầy đủ
+    huge = next(item for item in result.files if item.path == "huge.py")
+    assert huge.truncated and len(huge.hunks) < 8000 and "[cat" in huge.hunks                           # trần mỗi file giữ và có dấu hiệu cắt
+    tight = prune(tmp_path, base, head, total_tokens=500)
+    assert len(tight.files) == 241 and tight.approx_tokens <= 500                                       # trần tổng giữ, không file nào biến mất
+    assert all(item.truncated and item.dropped_hunks >= 1 for item in tight.files if item.hunks is None and item.kind == "code")   # mọi hunk bị bỏ đều có dấu hiệu

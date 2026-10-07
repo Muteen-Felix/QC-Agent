@@ -94,8 +94,12 @@ def test_compare_only_means_something_between_two_real_runs():
 def test_cli_dataset_flag_reports_a_missing_dataset_as_a_system_error_and_all_reports_each_dataset(tmp_path, capsys):
     assert eval_selector.main(["--dataset", "khong-co"]) == 3
     out = tmp_path / "all.json"
-    assert eval_selector.main(["--dataset", "all", "--out-json", str(out)]) == 0
-    assert set(json.loads(out.read_text(encoding="utf-8"))["datasets"]) == set(sd.names())
+    assert eval_selector.main(["--dataset", "all", "--out-json", str(out)]) == 1                       # monorepo-poly: rules lệch nhãn nháp ở 2 ca (phát hiện về _default.yaml) nên không "passed"
+    results = json.loads(out.read_text(encoding="utf-8"))["datasets"]
+    assert set(results) == set(sd.names())                                                          # báo RIÊNG từng dataset
+    assert (results["noteboard"]["passed"], results["node-api"]["passed"], results["monorepo-poly"]["passed"]) == (True, True, False)
+    assert results["monorepo-poly"]["rules_full_set"] == {"ok": 22, "total": 24} and results["monorepo-poly"]["unverified"].startswith("CHƯA KIỂM CHỨNG")
+    assert all(item["quality_evidence"] == "fake-pipeline-only" for item in results.values())
 
 
 def test_selector_source_never_names_a_dataset_or_fixture_repo():

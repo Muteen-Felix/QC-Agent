@@ -263,3 +263,16 @@ def test_payload_entries_omit_only_default_values_and_never_a_file():
     assert entries[3] == {"kind": "lockfile", "path": "p-lock.yaml", "status": "M"} and entries[4]["status"] == "D"
     for item, entry in zip(files, entries):                                                          # khôi phục mặc định thì ra đúng PrunedFile ban đầu
         assert PrunedFile(**{"old_path": None, "hunks": None, "truncated": False, "dropped_hunks": 0, **entry}) == item
+
+
+@pytest.mark.parametrize("model", ["claude-haiku-4-5-20251001", "gemini-3.6-flash"])
+def test_thousands_of_files_over_the_cap_go_to_full_set_with_zero_llm_calls_for_both_providers(monkeypatch, tmp_path, model):
+    files = tuple(PrunedFile(f"pkg{n % 40}/module_{n:05d}.py", "M", None, "code", "@@ -1 +1 @@\n-a = 1\n+a = 2", False, 0) for n in range(5000))
+    big = PrunedDiff("base", "head", "base", files, 1, "big")
+    monkeypatch.setenv("QC_SELECTOR_MODEL", model)
+    monkeypatch.setenv("QC_LLM_MAX_INPUT_TOKENS", "50000")
+    monkeypatch.setenv("QC_SELECT_CACHE_DIR", "none")
+    monkeypatch.setattr(agent, "call_tool", lambda **kwargs: pytest.fail("vượt trần thì không được gọi LLM"))
+    result = agent.select(big, DECISION, POLICY, SUITES, None, egress_dir=tmp_path)
+    assert result["full_set"] and result["fallback_reason"] == "token_cap" and result["source"] == "fallback" and result["llm"] is None
+    assert "semgrep" in result["workers"]                                                                 # floor vẫn chạy; gate không đỏ vì chi phí
