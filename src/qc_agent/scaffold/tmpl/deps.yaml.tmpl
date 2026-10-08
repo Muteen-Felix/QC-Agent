@@ -1,6 +1,8 @@
 # qc-agent:generated — suite CVE của dependency (Trivy). Chặn merge hay không do POLICY của qc-agent quyết định, không do file này.
 # DB CVE nướng vào image lúc build: `trivy.db_age_days` ép build lại image định kỳ (image quá cũ => đỏ). Cần có lockfile/manifest, thiếu thì error.
 # Bỏ qua một CVE có lý do: thêm vào `.trivyignore` (hiện trong diff PR).
+# SUT thật sự KHÔNG có dependency: Trivy không phân biệt được với "thiếu lockfile" nên mặc định là error. Chỉ khi đúng vậy mới thêm vào `inputs`
+# (đừng bật mặc định): allow_no_dependencies: true  và  expected_manifests: [<lockfile hiện có>]. Xoá lockfile đó thì task vẫn error.
 suite: deps
 description: CVE của dependency bằng Trivy, DB ghim trong image (chặn merge ở mode pr)
 tasks:

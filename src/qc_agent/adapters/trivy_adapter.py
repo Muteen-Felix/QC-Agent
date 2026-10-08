@@ -6,15 +6,20 @@ Ba bẫy xanh giả xử lý ở ĐÂY (mỗi cái là AdapterParseError, không
   1. DB thiếu/hỏng: Trivy vẫn có thể in 0 vuln. Adapter đọc `<cache>/db/metadata.json`; không xác định được thời điểm DB => error.
   2. DB cũ: KHÔNG phải lỗi — đó là một phép đo hợp lệ, `trivy.db_age_days`, do suite chặn (`<= 14`) => oracle fail chứ không phải error.
   3. Không có manifest/lockfile nào (Results rỗng): Trivy in rỗng => "0 CVE". Ở đây là error rõ ràng: không có gì để quét ≠ đã quét và sạch.
+     Trivy in Y HỆT nhau cho "lockfile hợp lệ nhưng 0 dependency" và "không có lockfile" (đo trên Trivy 0.74), nên SUT thật sự không có
+     dependency phải opt-in TƯỜNG MINH trong suite: `allow_no_dependencies: true` kèm `expected_manifests: [<file>, ...]`. Results rỗng chỉ được
+     qua khi MỌI file khai báo vẫn là file thường nằm trong gốc SUT (kiểm cả khi Results không rỗng). Xoá/đổi tên lockfile (PR không đụng file suite) => error, không xanh giả.
+     Giới hạn: chỉ chứng minh file còn tồn tại (và ghi sha256), KHÔNG chứng minh Trivy đã parse nó hay dependency không bị giấu.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 import shlex
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from qc_agent.adapters import _security as sec
 from qc_agent.adapters._base import Adapter, AdapterParseError, ParsedOutput
@@ -25,6 +30,10 @@ STDOUT_NAME = "stdout.log"
 DEFAULT_CACHE_DIR = "/opt/trivy-cache"
 SEVERITY = {"CRITICAL": "critical", "HIGH": "high", "MEDIUM": "medium", "LOW": "low", "UNKNOWN": "unknown"}
 _FRACTION = re.compile(r"(\.\d{6})\d+")
+# Tên file Trivy 0.74 `fs` NHẬN (thử từng loại trong image): khai tên ngoài danh sách thì vô nghĩa nên là error. `requirements-dev.txt` KHÔNG được nhận.
+MANIFEST_NAMES = frozenset({"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "requirements.txt", "Pipfile.lock", "poetry.lock", "uv.lock",
+                            "go.mod", "Cargo.lock", "composer.lock", "Gemfile.lock", "pom.xml", "packages.lock.json"})
+MAX_MANIFESTS = 20
 
 
 def _now() -> datetime:
@@ -56,6 +65,59 @@ def db_age_days(cache_dir: str) -> int:
     return max(0, math.ceil((_now() - updated).total_seconds() / 86400))
 
 
+def _parts(rel: str) -> list[str]:
+    return [part for part in PurePosixPath(rel.replace("\\", "/")).parts if part != "."]
+
+
+def declared_manifests(spec: dict) -> list[str] | None:
+    """None = không opt-in. Có opt-in thì trả danh sách manifest đã chuẩn hoá; MỌI khai báo sai là AdapterParseError (không bao giờ là pass)."""
+    inputs = spec.get("inputs") or {}
+    flag, manifests = inputs.get("allow_no_dependencies"), inputs.get("expected_manifests")
+    if flag is not None and not isinstance(flag, bool):
+        raise AdapterParseError("inputs.allow_no_dependencies phải là true/false")
+    if not flag:
+        if manifests is not None:
+            raise AdapterParseError("inputs.expected_manifests có mặt nhưng inputs.allow_no_dependencies không bật: khai báo mâu thuẫn")
+        return None
+    if not isinstance(manifests, list) or not manifests:
+        raise AdapterParseError("allow_no_dependencies=true cần inputs.expected_manifests là danh sách không rỗng các manifest/lockfile dự kiến")
+    if len(manifests) > MAX_MANIFESTS:
+        raise AdapterParseError(f"inputs.expected_manifests tối đa {MAX_MANIFESTS} phần tử")
+    base = _parts(sec.safe_relpath(inputs.get("path", "."), "inputs.path"))
+    seen, out = set(), []
+    for index, item in enumerate(manifests):
+        parts = _parts(sec.safe_relpath(item, f"inputs.expected_manifests[{index}]"))
+        if len(parts) <= len(base) or parts[:len(base)] != base:
+            raise AdapterParseError(f"inputs.expected_manifests[{index}] phải nằm trong inputs.path: {item!r}")
+        if parts[-1] not in MANIFEST_NAMES:
+            raise AdapterParseError(f"inputs.expected_manifests[{index}] không phải tên manifest/lockfile Trivy nhận: {item!r}")
+        if tuple(parts) in seen:
+            raise AdapterParseError(f"inputs.expected_manifests[{index}] bị trùng: {item!r}")
+        seen.add(tuple(parts))
+        out.append("/".join(parts))
+    return out
+
+
+def declared_manifest_digests(manifests: list[str]) -> list[str]:
+    """Mỗi manifest khai báo phải là FILE THƯỜNG trong gốc SUT (cwd). Thiếu một cái => error. Trả `<tên> sha256=<hex>` để đổi nội dung hiện trong report."""
+    root = Path.cwd().resolve()
+    digests, bad = [], []
+    for name in manifests:
+        path = (root / name).resolve()
+        if root not in path.parents or not path.is_file():
+            bad.append(name)
+            continue
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+        digests.append(f"{name} sha256={digest.hexdigest()}")
+    if bad:
+        raise AdapterParseError("manifest đã khai báo trong inputs.expected_manifests không còn là file trong repo SUT: " + ", ".join(bad)
+                                + " (Trivy không có gì để quét: không được coi là 0 CVE)")
+    return digests
+
+
 class TrivyAdapter(Adapter):
     NAME = "trivy"
     ADAPTER_VERSION = "0.1.0"
@@ -63,12 +125,14 @@ class TrivyAdapter(Adapter):
     def build_cmd(self, spec: dict, workdir: Path) -> list[str]:
         inputs = spec.get("inputs") or {}
         path = sec.safe_relpath(inputs.get("path", "."), "inputs.path")
+        declared_manifests(spec)    # khai báo sai thì dừng NGAY, trước khi chạy Trivy
         out = (workdir / OUT_NAME).resolve()
         out.unlink(missing_ok=True)
         return ["trivy", "fs", "--scanners", "vuln", "--skip-db-update", "--offline-scan", "--cache-dir", _cache_dir(spec),
                 "--format", "json", "--output", str(out), "--exit-code", "0", path]
 
     def parse_output(self, proc: subprocess.CompletedProcess, workdir: Path, spec: dict) -> ParsedOutput:
+        declared = declared_manifests(spec)
         stdout_path = workdir / STDOUT_NAME
         stdout_path.write_text(proc.stdout or "", encoding="utf-8")
         out = workdir / OUT_NAME
@@ -80,9 +144,13 @@ class TrivyAdapter(Adapter):
         if not isinstance(data, dict):
             raise AdapterParseError("trivy.json không phải object")
         age = db_age_days(_cache_dir(spec))    # sau khi biết báo cáo đọc được, TRƯỚC khi đếm: DB không rõ thì không có quyền nói "sạch"
-        results = data.get("Results")
+        results, extra_notes = data.get("Results"), []
+        if declared is not None:    # khai báo là lời hứa về repo: kiểm BẤT KỂ Results rỗng hay không (manifest thiếu mà Trivy vẫn thấy file khác vẫn là error)
+            extra_notes = ["declared_manifests (allow_no_dependencies=true): " + "; ".join(declared_manifest_digests(declared))]
         if not isinstance(results, list) or not results:
-            raise AdapterParseError("trivy không tìm thấy manifest/lockfile nào để quét (Results rỗng): không được coi là 0 CVE")
+            if declared is None or results not in (None, []):
+                raise AdapterParseError("trivy không tìm thấy manifest/lockfile nào để quét (Results rỗng): không được coi là 0 CVE")
+            results = []
 
         rows = []
         for result in results:
@@ -103,7 +171,7 @@ class TrivyAdapter(Adapter):
         rows.sort()
 
         counts = {f"trivy.{level}": 0 for level in (*sec.LEVELS, "unknown")}
-        findings, seen, notes = [], {}, [f"PARSER_VERSION={PARSER_VERSION}", f"trivy exit_code={proc.returncode}"]
+        findings, seen, notes = [], {}, [f"PARSER_VERSION={PARSER_VERSION}", f"trivy exit_code={proc.returncode}", *extra_notes]
         for target, vid, pkg, installed, level in rows:
             counts[f"trivy.{level}"] += 1
             # Trivy không có số dòng đáng tin: vị trí là file lockfile.
