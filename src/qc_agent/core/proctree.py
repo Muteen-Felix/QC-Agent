@@ -1,6 +1,7 @@
 """Giết CẢ CÂY tiến trình của một worker (worker -> npx -> node -> chrome ...).
 
-Windows: `taskkill /T /F` giết cả cây.
+Windows: chụp hậu duệ bằng psutil rồi giết từng cái (đo trên Windows 11: ~0,6 s; `taskkill /T /F` mất ~7 s mỗi lần, cộng thẳng vào mỗi task timeout).
+`taskkill /T /F` chỉ còn là dự phòng khi psutil không đọc được cây hoặc sau đó vẫn có tiến trình sống.
 POSIX: `killpg` chỉ giết NHÓM của tiến trình gốc. Nhưng adapter chạy công cụ của nó trong một session riêng (start_new_session),
 nên hậu duệ nằm NGOÀI nhóm đó và sẽ thành tiến trình mồ côi (bị reparent về init) nếu chỉ dùng killpg. Vì vậy chụp danh sách
 hậu duệ theo quan hệ cha-con TRƯỚC khi giết (sau khi giết cha thì không còn truy ra được), rồi giết từng cái.
@@ -17,8 +18,19 @@ import psutil
 
 def kill_tree(proc: subprocess.Popen, *, wait_s: float = 5) -> None:
     if os.name == "nt":
-        with suppress(OSError):
-            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
+        victims: list[psutil.Process] = []
+        tree_read = False
+        with suppress(psutil.Error):
+            root = psutil.Process(proc.pid)
+            victims = root.children(recursive=True) + [root]  # chụp TRƯỚC khi giết: giết cha rồi thì không truy ra con cháu
+            tree_read = True
+        for victim in victims:
+            with suppress(psutil.Error):
+                victim.kill()
+        _, survivors = psutil.wait_procs(victims, timeout=wait_s)
+        if survivors or not tree_read:  # không đọc được cây (AccessDenied...) hoặc còn tiến trình sống: để taskkill duyệt lại cả cây
+            with suppress(OSError):
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
     else:
         victims: list[psutil.Process] = []
         with suppress(psutil.Error):
