@@ -157,7 +157,7 @@ def test_qc_yml_without_pins_carries_todo_markers_and_still_parses():
     text = t.qc_workflow(project="myapp")
     job = yaml.safe_load(text)["jobs"]["qc"]
     assert text.count(t.TODO) == 2 and job["uses"].endswith("@qc-agent-todo-pin-commit-sha") and "<DIGEST>" in job["with"]["image"]
-    assert set(job["with"]) == {"project", "image"}
+    assert set(job["with"]) == {"project", "image", "workers"}
 
 
 def test_qc_yml_workflow_dispatch_and_pr_triggers_present():
@@ -309,3 +309,39 @@ def test_workflow_marks_annotate_the_right_line_and_keep_the_yaml_valid():
         t.qc_workflow(project="a", marks={"nope": "x"})
     with pytest.raises(t.TemplateError):
         t.qc_workflow(project="a", sut_dockerfile="../evil")
+
+
+def test_qc_yml_has_a_commented_db_sample_that_enables_nothing_and_only_names_declared_inputs():
+    text = t.qc_workflow(project="myapp", qc_ref=SHA, image=DIGEST)
+    job = yaml.safe_load(text)["jobs"]["qc"]
+    assert set(job["with"]) == {"project", "image", "workers"} and job["secrets"] == "inherit"                    # mặc định không bật DB
+    sampled = set(re.findall(r"^\s*#\s*(sut_db_\w+):", text, re.M))
+    assert sampled == {"sut_db_image", "sut_db_env", "sut_db_ready_cmd"} and sampled <= reusable_inputs()   # mẫu không lệch tên input của workflow
+    assert "SUT_SECRET_ENV" in text and "SUT_DB_SECRET_ENV" in text and "sut_base_url" in text and "@sha256:<DIGEST>" in text
+    assert t.TODO not in text
+
+
+def test_uncommenting_the_db_sample_gives_valid_yaml_with_declared_inputs():
+    text = t.qc_workflow(project="myapp", qc_ref=SHA, image=DIGEST)
+    lines = [re.sub(r"^(\s*)# ?", r"\1", line) if re.match(r"\s*#\s*(sut_db_\w+:|POSTGRES_DB=|  POSTGRES_DB=)", line) else line for line in text.splitlines()]
+    job = yaml.safe_load("\n".join(lines))["jobs"]["qc"]
+    assert {"sut_db_image", "sut_db_env", "sut_db_ready_cmd"} <= set(job["with"]) and set(job["with"]) <= reusable_inputs()
+    assert job["with"]["sut_db_env"].strip() == "POSTGRES_DB=app"
+
+
+def test_caller_template_has_a_manual_workers_input_that_reaches_the_reusable_workflow_only_through_with():
+    text = t.qc_workflow(project="myapp", qc_ref=SHA, image=DIGEST)
+    data = yaml.safe_load(text)
+    workers = data[True]["workflow_dispatch"]["inputs"]["workers"]
+    assert workers["type"] == "string" and workers["default"] == "" and "để trống" in workers["description"]
+    assert data[True]["pull_request"] == {"branches": ["main"]}
+    job = data["jobs"]["qc"]
+    assert job["with"]["workers"] == "${{ inputs.workers }}" and "workers" in reusable_inputs()
+    assert data["name"] == "qc-gate" and list(data["jobs"]) == ["qc"]
+    assert "run:" not in text                                                                       # caller không có script: input chỉ đi qua `with:`
+
+
+def test_the_caller_template_file_is_named_after_the_output_file():
+    names = {p.name for p in (Path(t.__file__).parent / "tmpl").iterdir()}
+    assert "qc-gate.yml.tmpl" in names and "qc.yml.tmpl" not in names
+    assert t.GATE_WORKFLOW == ".github/workflows/qc-gate.yml" and t.CALLERS == (t.GATE_WORKFLOW, t.LEGACY_WORKFLOW)

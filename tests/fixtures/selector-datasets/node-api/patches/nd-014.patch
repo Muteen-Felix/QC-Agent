@@ -1,0 +1,11 @@
+diff --git a/package-lock.json b/package-lock.json
+index 795a0cd..93d7d11 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,5 +1,5 @@
+ {
+   "name": "node-api",
+   "lockfileVersion": 3,
+-  "packages": {"node_modules/express": {"version": "4.19.2"}}
++  "packages": {"node_modules/express": {"version": "4.19.3"}}
+ }

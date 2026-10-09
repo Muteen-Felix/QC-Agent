@@ -1,0 +1,45 @@
+# qc-agent:generated — suite CVE của dependency (Trivy). Chặn merge hay không do POLICY của qc-agent quyết định, không do file này.
+# DB CVE nướng vào image lúc build: `trivy.db_age_days` ép build lại image định kỳ (image quá cũ => đỏ). Cần có lockfile/manifest, thiếu thì error.
+# Bỏ qua một CVE có lý do: thêm vào `.trivyignore` (hiện trong diff PR).
+suite: deps
+description: CVE của dependency bằng Trivy, DB ghim trong image (chặn merge ở mode pr)
+tasks:
+- task_id: t-012
+  capability: deps.vuln
+  lane: gate
+  intent: 'Dependency: không có CVE critical/high, và DB CVE của image còn mới'
+  target:
+    kind: source_tree
+    base_url: ${env.APP_BASE_URL}
+  inputs:
+    path: .
+  oracle:
+    kind: threshold
+    assertions:
+    - metric: trivy.critical
+      op: ==
+      value: 0
+    - metric: trivy.high
+      op: ==
+      value: 0
+    - metric: trivy.db_age_days
+      op: <=
+      value: 14
+      unit: days
+  expected_result_kind: verdict
+  budget:
+    wallclock_s: 180
+    tokens: 0
+    usd: 0
+  determinism:
+    seed: 0
+    replayable: true
+  evidence_required:
+  - raw_output
+  - stdout
+  retry:
+    max: 1
+    'on':
+    - error
+  prefer:
+  - trivy

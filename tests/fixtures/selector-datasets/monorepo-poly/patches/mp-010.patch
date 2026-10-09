@@ -1,0 +1,540 @@
+diff --git a/apps/web/src/components/Widget01.tsx b/apps/web/src/components/Widget01.tsx
+index 6f3a4a3..4479fab 100644
+--- a/apps/web/src/components/Widget01.tsx
++++ b/apps/web/src/components/Widget01.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget01({ label }: { label: string }) {
+-  return <span className="w01">{label}</span>;
++  return <span data-testid="w01" className="w01">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget02.tsx b/apps/web/src/components/Widget02.tsx
+index 1c30fcb..df4fa67 100644
+--- a/apps/web/src/components/Widget02.tsx
++++ b/apps/web/src/components/Widget02.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget02({ label }: { label: string }) {
+-  return <span className="w02">{label}</span>;
++  return <span data-testid="w02" className="w02">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget03.tsx b/apps/web/src/components/Widget03.tsx
+index a63872f..d04732a 100644
+--- a/apps/web/src/components/Widget03.tsx
++++ b/apps/web/src/components/Widget03.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget03({ label }: { label: string }) {
+-  return <span className="w03">{label}</span>;
++  return <span data-testid="w03" className="w03">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget04.tsx b/apps/web/src/components/Widget04.tsx
+index f35f2ce..f6f4880 100644
+--- a/apps/web/src/components/Widget04.tsx
++++ b/apps/web/src/components/Widget04.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget04({ label }: { label: string }) {
+-  return <span className="w04">{label}</span>;
++  return <span data-testid="w04" className="w04">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget05.tsx b/apps/web/src/components/Widget05.tsx
+index 6cdbb32..de91c55 100644
+--- a/apps/web/src/components/Widget05.tsx
++++ b/apps/web/src/components/Widget05.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget05({ label }: { label: string }) {
+-  return <span className="w05">{label}</span>;
++  return <span data-testid="w05" className="w05">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget06.tsx b/apps/web/src/components/Widget06.tsx
+index be24c78..59e689e 100644
+--- a/apps/web/src/components/Widget06.tsx
++++ b/apps/web/src/components/Widget06.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget06({ label }: { label: string }) {
+-  return <span className="w06">{label}</span>;
++  return <span data-testid="w06" className="w06">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget07.tsx b/apps/web/src/components/Widget07.tsx
+index ef31087..6762630 100644
+--- a/apps/web/src/components/Widget07.tsx
++++ b/apps/web/src/components/Widget07.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget07({ label }: { label: string }) {
+-  return <span className="w07">{label}</span>;
++  return <span data-testid="w07" className="w07">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget08.tsx b/apps/web/src/components/Widget08.tsx
+index 1c45448..82abf3a 100644
+--- a/apps/web/src/components/Widget08.tsx
++++ b/apps/web/src/components/Widget08.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget08({ label }: { label: string }) {
+-  return <span className="w08">{label}</span>;
++  return <span data-testid="w08" className="w08">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget09.tsx b/apps/web/src/components/Widget09.tsx
+index 5cd20af..9f33848 100644
+--- a/apps/web/src/components/Widget09.tsx
++++ b/apps/web/src/components/Widget09.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget09({ label }: { label: string }) {
+-  return <span className="w09">{label}</span>;
++  return <span data-testid="w09" className="w09">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget10.tsx b/apps/web/src/components/Widget10.tsx
+index d85167e..4bdc779 100644
+--- a/apps/web/src/components/Widget10.tsx
++++ b/apps/web/src/components/Widget10.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget10({ label }: { label: string }) {
+-  return <span className="w10">{label}</span>;
++  return <span data-testid="w10" className="w10">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget11.tsx b/apps/web/src/components/Widget11.tsx
+index 91d528b..fcfd5c2 100644
+--- a/apps/web/src/components/Widget11.tsx
++++ b/apps/web/src/components/Widget11.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget11({ label }: { label: string }) {
+-  return <span className="w11">{label}</span>;
++  return <span data-testid="w11" className="w11">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget12.tsx b/apps/web/src/components/Widget12.tsx
+index d506613..ca86d25 100644
+--- a/apps/web/src/components/Widget12.tsx
++++ b/apps/web/src/components/Widget12.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget12({ label }: { label: string }) {
+-  return <span className="w12">{label}</span>;
++  return <span data-testid="w12" className="w12">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget13.tsx b/apps/web/src/components/Widget13.tsx
+index 3e6e6fa..443e91b 100644
+--- a/apps/web/src/components/Widget13.tsx
++++ b/apps/web/src/components/Widget13.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget13({ label }: { label: string }) {
+-  return <span className="w13">{label}</span>;
++  return <span data-testid="w13" className="w13">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget14.tsx b/apps/web/src/components/Widget14.tsx
+index 12c02fb..a240bb8 100644
+--- a/apps/web/src/components/Widget14.tsx
++++ b/apps/web/src/components/Widget14.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget14({ label }: { label: string }) {
+-  return <span className="w14">{label}</span>;
++  return <span data-testid="w14" className="w14">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget15.tsx b/apps/web/src/components/Widget15.tsx
+index 5542420..2f792bc 100644
+--- a/apps/web/src/components/Widget15.tsx
++++ b/apps/web/src/components/Widget15.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget15({ label }: { label: string }) {
+-  return <span className="w15">{label}</span>;
++  return <span data-testid="w15" className="w15">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget16.tsx b/apps/web/src/components/Widget16.tsx
+index 9ee0666..3381d2e 100644
+--- a/apps/web/src/components/Widget16.tsx
++++ b/apps/web/src/components/Widget16.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget16({ label }: { label: string }) {
+-  return <span className="w16">{label}</span>;
++  return <span data-testid="w16" className="w16">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget17.tsx b/apps/web/src/components/Widget17.tsx
+index 295cde5..0fc54d6 100644
+--- a/apps/web/src/components/Widget17.tsx
++++ b/apps/web/src/components/Widget17.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget17({ label }: { label: string }) {
+-  return <span className="w17">{label}</span>;
++  return <span data-testid="w17" className="w17">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget18.tsx b/apps/web/src/components/Widget18.tsx
+index d08a698..19b89c1 100644
+--- a/apps/web/src/components/Widget18.tsx
++++ b/apps/web/src/components/Widget18.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget18({ label }: { label: string }) {
+-  return <span className="w18">{label}</span>;
++  return <span data-testid="w18" className="w18">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget19.tsx b/apps/web/src/components/Widget19.tsx
+index 5fbf7d1..a08a88e 100644
+--- a/apps/web/src/components/Widget19.tsx
++++ b/apps/web/src/components/Widget19.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget19({ label }: { label: string }) {
+-  return <span className="w19">{label}</span>;
++  return <span data-testid="w19" className="w19">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget20.tsx b/apps/web/src/components/Widget20.tsx
+index f8d5f36..3e5da46 100644
+--- a/apps/web/src/components/Widget20.tsx
++++ b/apps/web/src/components/Widget20.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget20({ label }: { label: string }) {
+-  return <span className="w20">{label}</span>;
++  return <span data-testid="w20" className="w20">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget21.tsx b/apps/web/src/components/Widget21.tsx
+index e969699..7eea102 100644
+--- a/apps/web/src/components/Widget21.tsx
++++ b/apps/web/src/components/Widget21.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget21({ label }: { label: string }) {
+-  return <span className="w21">{label}</span>;
++  return <span data-testid="w21" className="w21">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget22.tsx b/apps/web/src/components/Widget22.tsx
+index f941522..c6571a0 100644
+--- a/apps/web/src/components/Widget22.tsx
++++ b/apps/web/src/components/Widget22.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget22({ label }: { label: string }) {
+-  return <span className="w22">{label}</span>;
++  return <span data-testid="w22" className="w22">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget23.tsx b/apps/web/src/components/Widget23.tsx
+index 834a50a..1ebf27a 100644
+--- a/apps/web/src/components/Widget23.tsx
++++ b/apps/web/src/components/Widget23.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget23({ label }: { label: string }) {
+-  return <span className="w23">{label}</span>;
++  return <span data-testid="w23" className="w23">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget24.tsx b/apps/web/src/components/Widget24.tsx
+index e3f703b..ef043dc 100644
+--- a/apps/web/src/components/Widget24.tsx
++++ b/apps/web/src/components/Widget24.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget24({ label }: { label: string }) {
+-  return <span className="w24">{label}</span>;
++  return <span data-testid="w24" className="w24">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget25.tsx b/apps/web/src/components/Widget25.tsx
+index 972b58a..5d275ae 100644
+--- a/apps/web/src/components/Widget25.tsx
++++ b/apps/web/src/components/Widget25.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget25({ label }: { label: string }) {
+-  return <span className="w25">{label}</span>;
++  return <span data-testid="w25" className="w25">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget26.tsx b/apps/web/src/components/Widget26.tsx
+index d9ea5ae..bae7da2 100644
+--- a/apps/web/src/components/Widget26.tsx
++++ b/apps/web/src/components/Widget26.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget26({ label }: { label: string }) {
+-  return <span className="w26">{label}</span>;
++  return <span data-testid="w26" className="w26">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget27.tsx b/apps/web/src/components/Widget27.tsx
+index 95d6349..004816b 100644
+--- a/apps/web/src/components/Widget27.tsx
++++ b/apps/web/src/components/Widget27.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget27({ label }: { label: string }) {
+-  return <span className="w27">{label}</span>;
++  return <span data-testid="w27" className="w27">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget28.tsx b/apps/web/src/components/Widget28.tsx
+index de09d95..44bab88 100644
+--- a/apps/web/src/components/Widget28.tsx
++++ b/apps/web/src/components/Widget28.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget28({ label }: { label: string }) {
+-  return <span className="w28">{label}</span>;
++  return <span data-testid="w28" className="w28">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget29.tsx b/apps/web/src/components/Widget29.tsx
+index 4ea84aa..d81b942 100644
+--- a/apps/web/src/components/Widget29.tsx
++++ b/apps/web/src/components/Widget29.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget29({ label }: { label: string }) {
+-  return <span className="w29">{label}</span>;
++  return <span data-testid="w29" className="w29">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget30.tsx b/apps/web/src/components/Widget30.tsx
+index 5be2074..fc571b9 100644
+--- a/apps/web/src/components/Widget30.tsx
++++ b/apps/web/src/components/Widget30.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget30({ label }: { label: string }) {
+-  return <span className="w30">{label}</span>;
++  return <span data-testid="w30" className="w30">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget31.tsx b/apps/web/src/components/Widget31.tsx
+index db1a330..d31f6e3 100644
+--- a/apps/web/src/components/Widget31.tsx
++++ b/apps/web/src/components/Widget31.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget31({ label }: { label: string }) {
+-  return <span className="w31">{label}</span>;
++  return <span data-testid="w31" className="w31">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget32.tsx b/apps/web/src/components/Widget32.tsx
+index d6faec6..3c9f184 100644
+--- a/apps/web/src/components/Widget32.tsx
++++ b/apps/web/src/components/Widget32.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget32({ label }: { label: string }) {
+-  return <span className="w32">{label}</span>;
++  return <span data-testid="w32" className="w32">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget33.tsx b/apps/web/src/components/Widget33.tsx
+index aa55563..19d485e 100644
+--- a/apps/web/src/components/Widget33.tsx
++++ b/apps/web/src/components/Widget33.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget33({ label }: { label: string }) {
+-  return <span className="w33">{label}</span>;
++  return <span data-testid="w33" className="w33">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget34.tsx b/apps/web/src/components/Widget34.tsx
+index f54811f..85395d2 100644
+--- a/apps/web/src/components/Widget34.tsx
++++ b/apps/web/src/components/Widget34.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget34({ label }: { label: string }) {
+-  return <span className="w34">{label}</span>;
++  return <span data-testid="w34" className="w34">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget35.tsx b/apps/web/src/components/Widget35.tsx
+index c85c3cb..91de4b8 100644
+--- a/apps/web/src/components/Widget35.tsx
++++ b/apps/web/src/components/Widget35.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget35({ label }: { label: string }) {
+-  return <span className="w35">{label}</span>;
++  return <span data-testid="w35" className="w35">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget36.tsx b/apps/web/src/components/Widget36.tsx
+index a7d2ee7..37f65dd 100644
+--- a/apps/web/src/components/Widget36.tsx
++++ b/apps/web/src/components/Widget36.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget36({ label }: { label: string }) {
+-  return <span className="w36">{label}</span>;
++  return <span data-testid="w36" className="w36">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget37.tsx b/apps/web/src/components/Widget37.tsx
+index 77866ba..cbd6130 100644
+--- a/apps/web/src/components/Widget37.tsx
++++ b/apps/web/src/components/Widget37.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget37({ label }: { label: string }) {
+-  return <span className="w37">{label}</span>;
++  return <span data-testid="w37" className="w37">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget38.tsx b/apps/web/src/components/Widget38.tsx
+index d4d8c55..c93f9bd 100644
+--- a/apps/web/src/components/Widget38.tsx
++++ b/apps/web/src/components/Widget38.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget38({ label }: { label: string }) {
+-  return <span className="w38">{label}</span>;
++  return <span data-testid="w38" className="w38">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget39.tsx b/apps/web/src/components/Widget39.tsx
+index 799ef27..92cbb9a 100644
+--- a/apps/web/src/components/Widget39.tsx
++++ b/apps/web/src/components/Widget39.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget39({ label }: { label: string }) {
+-  return <span className="w39">{label}</span>;
++  return <span data-testid="w39" className="w39">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget40.tsx b/apps/web/src/components/Widget40.tsx
+index 862045d..7a60de0 100644
+--- a/apps/web/src/components/Widget40.tsx
++++ b/apps/web/src/components/Widget40.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget40({ label }: { label: string }) {
+-  return <span className="w40">{label}</span>;
++  return <span data-testid="w40" className="w40">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget41.tsx b/apps/web/src/components/Widget41.tsx
+index 8efa3b5..be102d8 100644
+--- a/apps/web/src/components/Widget41.tsx
++++ b/apps/web/src/components/Widget41.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget41({ label }: { label: string }) {
+-  return <span className="w41">{label}</span>;
++  return <span data-testid="w41" className="w41">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget42.tsx b/apps/web/src/components/Widget42.tsx
+index ed92d23..a119e94 100644
+--- a/apps/web/src/components/Widget42.tsx
++++ b/apps/web/src/components/Widget42.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget42({ label }: { label: string }) {
+-  return <span className="w42">{label}</span>;
++  return <span data-testid="w42" className="w42">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget43.tsx b/apps/web/src/components/Widget43.tsx
+index 3295cda..7a071a5 100644
+--- a/apps/web/src/components/Widget43.tsx
++++ b/apps/web/src/components/Widget43.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget43({ label }: { label: string }) {
+-  return <span className="w43">{label}</span>;
++  return <span data-testid="w43" className="w43">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget44.tsx b/apps/web/src/components/Widget44.tsx
+index d7b70ff..29b5512 100644
+--- a/apps/web/src/components/Widget44.tsx
++++ b/apps/web/src/components/Widget44.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget44({ label }: { label: string }) {
+-  return <span className="w44">{label}</span>;
++  return <span data-testid="w44" className="w44">{label}</span>;
+ }
+diff --git a/apps/web/src/components/Widget45.tsx b/apps/web/src/components/Widget45.tsx
+index 003d8c1..d042970 100644
+--- a/apps/web/src/components/Widget45.tsx
++++ b/apps/web/src/components/Widget45.tsx
+@@ -1,5 +1,5 @@
+-import React from "react";
++import * as React from "react";
+ 
+ export function Widget45({ label }: { label: string }) {
+-  return <span className="w45">{label}</span>;
++  return <span data-testid="w45" className="w45">{label}</span>;
+ }

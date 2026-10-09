@@ -495,3 +495,85 @@ def test_gt_repair_round_after_a_bad_gemini_answer_is_a_second_request(tmp_path,
     seen = []
     result = generate(prd, model=PRIMARY, egress_dir=tmp_path / "e", transport=script(bad, _gemini_reply_from_fixture(), capture=seen))
     assert len(seen) == 2 and "<validation_error>" in json.loads(seen[1].content)["contents"][0]["parts"][0]["text"] and result.catalog["test_cases"]
+
+
+# ---------------- S4-03: request Gemini KHÔNG đổi; chi phí của lời gọi hỏng ----------------
+
+def test_the_gemini_request_has_no_cache_control_and_exactly_the_documented_top_level_keys(tmp_path, clock):
+    seen = []
+    call(tmp_path, transport=script(reply(), capture=seen))
+    text = seen[0].content.decode("utf-8")
+    body = json.loads(text)
+    assert set(body) == {"contents", "tools", "toolConfig", "generationConfig", "systemInstruction"}
+    assert "cache_control" not in text and "cachedContent" not in text and "ephemeral" not in text
+    assert body["systemInstruction"] == {"parts": [{"text": "system tĩnh"}]}   # chuỗi trần, không bọc thành khối có cache_control
+
+
+def test_count_tokens_never_serves_a_gemini_model(tmp_path):
+    with pytest.raises(ValueError, match="Claude"):
+        llm.count_tokens(purpose="count-tokens", model=PRIMARY, system="s", user="u", tool_name="pick_workers", tool_description="d", input_schema=SCHEMA,
+                         egress_dir=tmp_path / "run", data_categories=["prd_text"], transport=boom())
+    assert egress_lines(tmp_path) == []
+
+
+def test_a_rejected_gemini_answer_carries_the_usage_it_was_billed_for(tmp_path, clock):
+    bad = reply({"workers": "not-a-list", "kind": "pick", "note": "ok"})
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, max_retries=0, transport=script(bad))
+    error = caught.value
+    assert error.kind == "bad_output" and error.usage == Usage(500, 120, 0, 3000) and error.sent is True and error.unknown_calls == 0 and error.duration_s is not None
+
+
+def test_every_network_failure_after_sending_is_one_unknown_call_across_retries(tmp_path, clock):
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, max_retries=2, transport=script(httpx.RemoteProtocolError("bad framing")))
+    assert caught.value.kind == "unavailable" and caught.value.sent is True and caught.value.unknown_calls == 3 and caught.value.usage is None
+
+
+def test_a_gemini_timeout_is_one_unknown_call_and_is_not_retried(tmp_path, clock):
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        raise httpx.ReadTimeout("slow")
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, max_retries=3, transport=httpx.MockTransport(handler))
+    assert caught.value.kind == "timeout" and len(seen) == 1 and caught.value.unknown_calls == 1 and caught.value.sent is True and caught.value.duration_s is not None
+
+
+def test_connection_failures_and_http_errors_are_not_unknown_calls(tmp_path, clock):
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, max_retries=1, transport=script(httpx.ConnectError("boom")))
+    assert caught.value.sent is False and caught.value.unknown_calls == 0
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, max_retries=1, transport=script(RATE_LIMIT))
+    assert caught.value.sent is True and caught.value.unknown_calls == 0 and caught.value.usage is None   # [Assumption] lỗi HTTP không bị tính phí
+
+
+def test_denied_egress_sends_nothing_so_sent_is_false(tmp_path, clock):
+    class Deny(egress.EgressPolicy):
+        def decide(self, event):
+            return egress.Decision("deny", "test")
+    with pytest.raises(LLMError) as caught:
+        call(tmp_path, policy=Deny(), max_retries=0, transport=boom())
+    assert caught.value.kind == "egress_denied" and caught.value.sent is False and caught.value.unknown_calls == 0
+
+
+# ---- chi phí chưa xác định KHÔNG được mất khi lần thử sau thành công ----
+
+def test_a_network_error_followed_by_success_keeps_the_earlier_call_as_unknown(tmp_path, clock):
+    result = call(tmp_path, max_retries=2, transport=script(httpx.RemoteProtocolError("bad framing"), reply()))
+    assert result.data == GOOD and result.unknown_calls == 1
+    assert result.usage == Usage(500, 120, 0, 3000)   # usage chỉ là của lần thành công; lần trước nằm ở unknown_calls, không bị gộp thành 0
+
+
+def test_unknown_calls_accumulate_across_retries_and_fallback_models(tmp_path, clock, monkeypatch):
+    monkeypatch.setenv("QC_LLM_FALLBACK_MODELS", FALLBACK)
+    result = call(tmp_path, max_retries=1, transport=script(httpx.RemoteProtocolError("a"), httpx.RemoteProtocolError("b"), reply(model_version=FALLBACK)))
+    assert result.model == FALLBACK and result.fallback_from == PRIMARY and result.unknown_calls == 2
+
+
+def test_a_clean_call_and_a_never_sent_failure_leave_no_unknown_calls(tmp_path, clock):
+    assert call(tmp_path, transport=script(reply())).unknown_calls == 0
+    assert call(tmp_path, max_retries=2, transport=script(httpx.ConnectError("refused"), reply())).unknown_calls == 0   # chưa gửi được gì nên không có chi phí
+    assert call(tmp_path, max_retries=2, transport=script(error(503, "UNAVAILABLE"), reply())).unknown_calls == 0       # [Assumption] lỗi HTTP không bị tính phí

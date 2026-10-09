@@ -170,6 +170,9 @@ def render_summary(run: dict, *, project: str, mode: str, exit_code: int | None 
     if selection:
         lines.append(f"Phạm vi: {selection.get('selected_suites', '?')}/{selection.get('policy_suites', '?')} suites"
                      f" ({clean_md(selection.get('source', '?'), 20)})")
+    usage = report.get("llm_usage") if isinstance(report.get("llm_usage"), dict) else None
+    if usage and isinstance(usage.get("line"), str):
+        lines.append(clean_md(usage["line"], 400))   # đúng chuỗi của report.md (một con số tiền); report cũ không có khối này thì bỏ qua
     if report.get("jira_warning"):
         lines.append("⚠️ Jira: " + clean_md(report["jira_warning"], 100))
     counts = report.get("severity_counts") or {}

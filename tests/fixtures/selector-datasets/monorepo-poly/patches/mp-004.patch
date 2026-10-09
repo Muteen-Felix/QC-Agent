@@ -1,0 +1,4 @@
+diff --git a/apps/api/routes/items.py b/apps/api/routes/products.py
+similarity index 100%
+rename from apps/api/routes/items.py
+rename to apps/api/routes/products.py

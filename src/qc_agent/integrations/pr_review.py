@@ -10,7 +10,7 @@ from pathlib import Path
 
 from qc_agent.integrations import ci, github
 from qc_agent.integrations.refine_review import MAX_COMMENTS, MAX_PAGES, pr_diff_lines
-from qc_agent.logging_setup import event
+from qc_agent.logging_setup import configure, event
 
 log = logging.getLogger("qc_agent.pr_review")
 MARKER = "<!-- qc-agent:review sha256={digest} -->"
@@ -118,6 +118,7 @@ def post_pr_review(run_dir, *, env: dict, ctx: dict) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure()   # điểm vào riêng (`python -m`): không cấu hình thì event review.*/jira.sync bị logger nuốt, CI không thấy
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
     args = parser.parse_args(argv)

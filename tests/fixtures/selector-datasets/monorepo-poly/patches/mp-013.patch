@@ -1,0 +1,8 @@
+diff --git a/vendor/lodash-lite/index.js b/vendor/lodash-lite/index.js
+index ee7e6d2..5bd0e49 100644
+--- a/vendor/lodash-lite/index.js
++++ b/vendor/lodash-lite/index.js
+@@ -1,2 +1,2 @@
+-// lodash-lite 1.0.0 (third party)
++// lodash-lite 1.0.1 (third party)
+ module.exports = { chunk: (a, n) => a.length ? [a.slice(0, n), ...module.exports.chunk(a.slice(n), n)] : [] };

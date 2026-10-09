@@ -1,17 +1,29 @@
-"""Rut gon diff tu merge-base. Uoc luong token bang so ky tu / 4."""
+"""Rút gọn diff từ merge-base cho Diff Agent. Danh sách file LUÔN đầy đủ; hunk của file code giữ mọi dòng +/- (S4-04).
+
+Tham số đã chốt (S4-04): `per_file_tokens=1500` và `total_tokens=12000`. Đơn vị của hai trần là **ký tự / 4** (xấp xỉ nội bộ, KHÔNG phải số token thật; ước lượng
+của S4-03 là `client.estimate_input_tokens` = ceil(byte UTF-8 / 3) và số thật chỉ có từ `count_tokens`/`usage`). Không hạ hai trần để giảm token: phần bị cắt hiện qua
+`truncated`/`dropped_hunks`, và một ca trước đây không bị cắt mà nay bị cắt phải được duyệt.
+
+Núm đã nhận (đều không bỏ dòng thay đổi nào): bỏ header git khỏi hunk (path/old_path/status đã ở entry); file đổi tên pathspec cũ+mới với -M (chỉ phần sửa, không nhúng cả file);
+numstat nhị phân gọi một lần và xử lý file song song. Cùng với `agent.payload_json` (JSON gọn, bỏ trường mặc định). Đã thử, chưa nhận: `-U0` (thêm +0,8 đến +1,8 điểm % nhưng
+mất dòng ngữ cảnh khi chưa có recall thật). Ứng viên chưa làm: `linguist-generated` trong .gitattributes (ca đại diện nằm ở holdout). Số đo: docs/usage-ci.md (mục chi phí).
+"""
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
 import re
+import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from qc_agent.logging_setup import event
 
 log = logging.getLogger("qc_agent.selector.pruner")
+WORKERS = min(8, os.cpu_count() or 4)   # số lệnh git chạy song song cho mỗi file của diff
 REF = re.compile(r"^(?!-)[A-Za-z0-9_./-]{1,200}$")
 LOCKFILES = {"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "poetry.lock", "Pipfile.lock", "Cargo.lock", "go.sum", "composer.lock"}
 COMMENT = {".py": ("#",), ".js": ("//", "/*", "*", "*/"), ".ts": ("//", "/*", "*", "*/"),
@@ -44,14 +56,28 @@ class PrunedDiff:
 
 
 def _git(repo: Path, *args: str) -> bytes:
-    run = subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=repo,
+    # safe.directory=*: gate chạy container với `--user <uid runner>` trên checkout bind-mount; Docker Desktop hoặc runner tự host (chủ thư mục lệch)
+    # thì git từ chối ("dubious ownership") và Select lùi về FULL SET. Chỉ áp cho lệnh ĐỌC (diff/show/merge-base) tại SUT root do vận hành chỉ định.
+    run = subprocess.run(["git", "-c", "core.quotepath=off", "-c", "safe.directory=*", *args], cwd=repo,
                          capture_output=True, timeout=30, check=False)
     if run.returncode:
         raise ValueError("git diff khong thanh cong")
     return run.stdout
 
 
-def _kind(repo: Path, path: str, status: str, merge_base: str, head: str) -> str:
+def _binary_paths(repo: Path, merge_base: str, head: str) -> frozenset[str]:
+    """Đường dẫn file nhị phân của cả diff trong MỘT lần gọi git (numstat báo `-` `-` cho file nhị phân; --no-renames: file đổi tên là file mới, như khi hỏi từng đường dẫn; git mặc định tự nhận đổi tên)."""
+    out = _git(repo, "diff", "--numstat", "-z", "--no-renames", merge_base, head).decode("utf-8", "replace")
+    found = set()
+    for entry in out.split("\0"):
+        added, _, rest = entry.partition("\t")
+        deleted, _, path = rest.partition("\t")
+        if added == "-" and deleted == "-" and path:
+            found.add(path)
+    return frozenset(found)
+
+
+def _kind(repo: Path, path: str, status: str, merge_base: str, head: str, binary: frozenset[str]) -> str:
     if status == "D":
         return "deleted"
     p = Path(path)
@@ -61,8 +87,7 @@ def _kind(repo: Path, path: str, status: str, merge_base: str, head: str) -> str
         return "vendor"
     if any(part in {"dist", "build"} for part in p.parts) or path.endswith((".min.js", ".map")):
         return "generated"
-    numstat = _git(repo, "diff", "--numstat", "-z", merge_base, head, "--", path)
-    if numstat.startswith(b"-\t-\t"):
+    if path in binary:
         return "binary"
     header = _git(repo, "show", f"{head}:{path}").decode("utf-8", "replace").splitlines()[:5]
     if any("@generated" in line or "DO NOT EDIT" in line for line in header):
@@ -72,7 +97,8 @@ def _kind(repo: Path, path: str, status: str, merge_base: str, head: str) -> str
 
 def _trim_comments(diff: str, suffix: str) -> tuple[str | None, int]:
     chunks = re.split(r"(?=^@@ )", diff, flags=re.MULTILINE)
-    header = chunks.pop(0) if chunks and not chunks[0].startswith("@@ ") else ""
+    if chunks and not chunks[0].startswith("@@ "):
+        chunks.pop(0)   # header git (diff --git/index/---/+++): path, old_path và status đã nằm trong entry nên giữ lại chỉ là lặp
     kept = []
     dropped = 0
     markers = COMMENT.get(suffix, ())
@@ -84,7 +110,7 @@ def _trim_comments(diff: str, suffix: str) -> tuple[str | None, int]:
             dropped += 1
         elif edits:
             kept.append(chunk)
-    return (header + "".join(kept)).strip() if kept else None, dropped
+    return "".join(kept).strip() if kept else None, dropped
 
 
 def _cap(value: str | None, tokens: int) -> tuple[str | None, bool]:
@@ -101,23 +127,36 @@ def prune(repo: Path, base: str, head: str, *, per_file_tokens: int = 1500, tota
     repo = Path(repo)
     merge_base = _git(repo, "merge-base", base, head).decode().strip()
     raw = _git(repo, "diff", "--name-status", "-z", "-M", merge_base, head, "--").decode("utf-8", "replace").split("\0")
-    files = []
+    entries = []
     i = 0
     while i < len(raw) and raw[i]:
         status = raw[i][0]
         if status == "R":
-            old_path, path = raw[i + 1], raw[i + 2]
+            entries.append((status, raw[i + 2], raw[i + 1]))
             i += 3
         else:
-            path, old_path = raw[i + 1], None
+            entries.append((status, raw[i + 1], None))
             i += 2
-        kind = _kind(repo, path, status, merge_base, head)
+    binary = _binary_paths(repo, merge_base, head) if entries else frozenset()
+
+    def build(entry: tuple[str, str, str | None]) -> PrunedFile:
+        status, path, old_path = entry
+        kind = _kind(repo, path, status, merge_base, head, binary)
         hunks, dropped = None, 0
         if kind == "code":
-            diff = _git(repo, "diff", "--no-color", "--no-ext-diff", "-w", "-U1", merge_base, head, "--", path).decode("utf-8", "replace")
+            # đổi tên + sửa: đưa CẢ đường dẫn cũ vào pathspec thì git mới ghép cặp (-M) và hunk chỉ có phần sửa; chỉ có đường dẫn mới thì cả file hiện ra như file mới
+            specs = [old_path, path] if old_path else [path]
+            diff = _git(repo, "diff", "--no-color", "--no-ext-diff", "-w", "-U1", "-M", merge_base, head, "--", *specs).decode("utf-8", "replace")
             hunks, dropped = _trim_comments(diff, Path(path).suffix.lower())
         hunks, truncated = _cap(hunks, per_file_tokens)
-        files.append(PrunedFile(path, status, old_path, kind, hunks, truncated, dropped))
+        return PrunedFile(path, status, old_path, kind, hunks, truncated, dropped)
+
+    # mỗi file cần vài lệnh git (thời gian chủ yếu là dựng tiến trình): chạy song song, kết quả giữ đúng thứ tự `entries`
+    if len(entries) > 1:
+        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+            files = list(pool.map(build, entries))
+    else:
+        files = [build(entry) for entry in entries]
     files.sort(key=lambda item: item.path)
     total = sum(len(item.hunks or "") // 4 for item in files)
     if total > total_tokens:

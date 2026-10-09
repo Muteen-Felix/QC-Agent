@@ -180,7 +180,7 @@ def read(tmp_path, rel):
 
 
 def workflow_with(tmp_path):
-    return yaml.safe_load(read(tmp_path, ".github/workflows/qc.yml"))["jobs"]["qc"]["with"]
+    return yaml.safe_load(read(tmp_path, ".github/workflows/qc-gate.yml"))["jobs"]["qc"]["with"]
 
 
 def test_vahan_fixture_generates_the_phase1_file_set_with_a_real_ui_dockerfile(tmp_path):
@@ -189,7 +189,7 @@ def test_vahan_fixture_generates_the_phase1_file_set_with_a_real_ui_dockerfile(t
     assert [label for label in labels if label not in lane_files()] == [
         ".qc-agent/suites/api-contract.yaml", ".qc-agent/suites/perf-smoke.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/Dockerfile.ui",
         ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml", ".qc-agent/midscene/canary.yaml",
-        ".github/workflows/qc-groundtruth.yml", ".github/CODEOWNERS", ".github/workflows/qc.yml"]
+        ".github/workflows/qc-groundtruth.yml", ".github/CODEOWNERS", ".github/workflows/qc-gate.yml"]
     assert set(lane_files()) <= set(labels)      # suite Security/Integration được sinh cùng
     assert all(o.status == "created" for o in outcomes) and plan.slug == "vahan-rpa"
     dockerfile = read(tmp_path, ".qc-agent/Dockerfile.ui")
@@ -205,7 +205,7 @@ def test_vahan_fixture_generates_the_phase1_file_set_with_a_real_ui_dockerfile(t
 
 def test_ambiguous_choices_carry_verify_and_nothing_else_does(tmp_path):
     run_init(tmp_path)
-    workflow = read(tmp_path, ".github/workflows/qc.yml")
+    workflow = read(tmp_path, ".github/workflows/qc-gate.yml")
     verify = [line for line in workflow.splitlines() if "qc-agent:todo VERIFY" in line]
     assert len(verify) == 1 and "sut_env" in verify[0]
     assert "chọn VAHAN_API_CORS_ORIGINS trong [VAHAN_API_CORS_ORIGINS, VAHAN_API_SOCKETIO_CORS_ORIGINS]" in verify[0]   # có 2 tên CORS
@@ -259,7 +259,7 @@ def test_flags_override_the_scanner_and_leave_no_verify(tmp_path):
     run_init(tmp_path, sut_port="9000", sut_health_path="/api/health", sut_env=["X=y"])
     with_ = workflow_with(tmp_path)
     assert with_["sut_port"] == "9000" and with_["sut_health_path"] == "/api/health" and with_["sut_env"].strip() == "X=y"
-    assert "qc-agent:todo VERIFY" not in read(tmp_path, ".github/workflows/qc.yml")
+    assert "qc-agent:todo VERIFY" not in read(tmp_path, ".github/workflows/qc-gate.yml")
 
 
 def test_non_default_dockerfile_and_context_are_declared(tmp_path):
@@ -271,13 +271,13 @@ def test_non_default_dockerfile_and_context_are_declared(tmp_path):
 def test_workflow_pin_comes_from_the_image_build_sha_but_the_digest_stays_a_todo(tmp_path, monkeypatch):
     monkeypatch.setenv("QC_AGENT_GIT_SHA", "c" * 40)
     run_init(tmp_path)
-    text = read(tmp_path, ".github/workflows/qc.yml")
+    text = read(tmp_path, ".github/workflows/qc-gate.yml")
     assert "qc-gate.reusable.yml@" + "c" * 40 in text and "qc-agent-todo-pin" not in text
     assert "<DIGEST>" in text and "qc-agent:todo" in text
     monkeypatch.setenv("QC_AGENT_GIT_SHA", "unknown")
-    (tmp_path / "sut" / ".github" / "workflows" / "qc.yml").unlink()
+    (tmp_path / "sut" / ".github" / "workflows" / "qc-gate.yml").unlink()
     run_init(tmp_path)
-    assert "qc-agent-todo-pin-commit-sha" in read(tmp_path, ".github/workflows/qc.yml")
+    assert "qc-agent-todo-pin-commit-sha" in read(tmp_path, ".github/workflows/qc-gate.yml")
 
 
 def test_default_slug_comes_from_origin_then_directory_name(tmp_path):
@@ -285,7 +285,7 @@ def test_default_slug_comes_from_origin_then_directory_name(tmp_path):
     (tmp_path / "sut" / ".git").mkdir()
     (tmp_path / "sut" / ".git" / "config").write_text('[remote "origin"]\n\turl = https://github.com/Muteen-Felix/Vahan-RPA.git\n', encoding="utf-8")
     plan = init_mod.build(options(tmp_path, files={"Dockerfile": "x"}, slug=None))
-    assert plan.slug == "vahan-rpa" and "project: vahan-rpa" in next(f.content for f in plan.files if f.label.endswith("qc.yml"))
+    assert plan.slug == "vahan-rpa" and "project: vahan-rpa" in next(f.content for f in plan.files if f.label.endswith("qc-gate.yml"))
 
 
 def test_init_writes_only_inside_sut_root_and_leaves_no_temp_files(tmp_path):
@@ -299,7 +299,7 @@ def test_todos_are_reported_with_their_location(tmp_path):
     _, outcomes = run_init(tmp_path)
     todos = {o.label: o.todos for o in outcomes if o.todos}
     assert set(todos) == {".qc-agent/suites/api-contract.yaml", ".qc-agent/perf/smoke.js", ".qc-agent/midscene/explore.yaml",
-                          ".github/workflows/qc.yml", ".github/workflows/qc-groundtruth.yml", ".github/CODEOWNERS"}   # ghim SHA/digest và team QA đều chưa có; khung .example không tính
+                          ".github/workflows/qc-gate.yml", ".github/workflows/qc-groundtruth.yml", ".github/CODEOWNERS"}   # ghim SHA/digest và team QA đều chưa có; khung .example không tính
     assert all(entry.startswith("dòng ") for entries in todos.values() for entry in entries)
 
 
@@ -330,11 +330,11 @@ def test_dry_run_writes_nothing_and_shows_a_diff_when_forcing(tmp_path):
     _, outcomes = run_init(tmp_path, dry_run=True)
     assert all(o.status == "would-create" for o in outcomes) and not (tmp_path / "sut" / ".qc-agent").exists()
     run_init(tmp_path)
-    workflow = tmp_path / "sut" / ".github" / "workflows" / "qc.yml"
+    workflow = tmp_path / "sut" / ".github" / "workflows" / "qc-gate.yml"
     workflow.write_text(workflow.read_text(encoding="utf-8").replace("name: qc", "name: mine"), encoding="utf-8")
     before = workflow.read_text(encoding="utf-8")
     _, preview = run_init(tmp_path, dry_run=True, force=True)
-    diff = next(o.diff for o in preview if o.label == ".github/workflows/qc.yml")
+    diff = next(o.diff for o in preview if o.label == ".github/workflows/qc-gate.yml")
     assert "-name: mine" in diff and "+name: qc" in diff and workflow.read_text(encoding="utf-8") == before
 
 
@@ -351,7 +351,7 @@ def test_generated_files_load_through_the_real_loaders_and_the_default_policy(tm
 def test_no_api_generates_only_ui_and_warns_it_is_not_eligible_for_pr_mode(tmp_path):
     plan, outcomes = run_init(tmp_path, no_api=True)
     assert {o.label for o in outcomes} == {".qc-agent/Dockerfile.ui", ".qc-agent/suites/ui-explore.yaml", ".qc-agent/midscene/explore.yaml",
-                                           ".qc-agent/midscene/canary.yaml", ".github/workflows/qc.yml", ".github/workflows/qc-groundtruth.yml",
+                                           ".qc-agent/midscene/canary.yaml", ".github/workflows/qc-gate.yml", ".github/workflows/qc-groundtruth.yml",
                                            ".github/CODEOWNERS", *lane_files()}    # Security/Integration không phụ thuộc API
     assert any("không đủ điều kiện mode pr" in w for w in plan.warnings)
     assert "sut_health_path" not in workflow_with(tmp_path) and "sut_env" not in workflow_with(tmp_path)
@@ -371,7 +371,7 @@ def test_bad_options_fail_before_anything_is_written(tmp_path, over, message):
 
 def test_a_directory_in_the_way_is_an_error_not_a_crash(tmp_path):
     plan = init_mod.build(options(tmp_path))
-    (tmp_path / "sut" / ".github" / "workflows" / "qc.yml").mkdir(parents=True)
+    (tmp_path / "sut" / ".github" / "workflows" / "qc-gate.yml").mkdir(parents=True)
     with pytest.raises(init_mod.InitError, match="là thư mục"):
         init_mod.apply(plan)
 
@@ -396,7 +396,7 @@ def test_running_as_root_in_a_container_chowns_only_what_it_created(tmp_path, mo
     plan = init_mod.build(options(tmp_path, files={"Dockerfile": "x"}))
     init_mod.apply(plan)
     chowned = {p.relative_to(tmp_path / "sut").as_posix() for p, uid, gid in calls}
-    assert ".github/workflows/qc.yml" in chowned and ".github/workflows" in chowned and ".qc-agent/suites/api-contract.yaml" in chowned
+    assert ".github/workflows/qc-gate.yml" in chowned and ".github/workflows" in chowned and ".qc-agent/suites/api-contract.yaml" in chowned
     assert ".github" not in chowned and "" not in chowned and all((uid, gid) == (1000, 1001) for _, uid, gid in calls)
     init_mod.apply(plan, dry_run=True)
     assert len(calls) == len(chowned)      # dry-run không chown gì thêm
@@ -488,7 +488,7 @@ def test_generated_files_are_world_readable_like_ordinary_files_not_0600(tmp_pat
     """mkstemp tạo 0600; gate chạy bằng uid khác trong container nên phải đọc được (bug thật gặp khi chạy `docker run … init` rồi gate)."""
     run_init(tmp_path)
     modes = {p.relative_to(tmp_path / "sut").as_posix(): p.stat().st_mode & 0o777 for p in (tmp_path / "sut" / ".qc-agent").rglob("*") if p.is_file()}
-    workflow = (tmp_path / "sut" / ".github" / "workflows" / "qc.yml").stat().st_mode & 0o777
+    workflow = (tmp_path / "sut" / ".github" / "workflows" / "qc-gate.yml").stat().st_mode & 0o777
     assert modes and all(mode & 0o044 == 0o044 for mode in modes.values()) and workflow & 0o044 == 0o044
 
 
@@ -665,3 +665,202 @@ def test_the_groundtruth_workflow_explains_how_to_switch_to_gemini_without_chang
     with_ = gt_workflow(tmp_path)["jobs"]["groundtruth"]["with"]
     assert set(with_) == {"project", "image", "prd_path"}                                    # mặc định vẫn là Claude: các dòng Gemini chỉ là comment
     assert "qc-agent:todo" not in text and gt_workflow(tmp_path)["jobs"]["groundtruth"]["secrets"] == "inherit"
+
+
+# ---------- S4-08: tìm thấy ≠ xác nhận (dấu VERIFY của Dockerfile/context phải tới được caller) ----------
+
+API_DF = "FROM python:3.12\nCOPY . .\nEXPOSE 8000\n"
+SPA_DF = "FROM node:22 AS build\nFROM nginx:1.27\nCOPY --from=build /app/dist /usr/share/nginx/html\n"
+
+
+def caller_lines(tmp_path, **over):
+    """Các dòng khai input `sut_dockerfile`/`sut_context` trong qc.yml được sinh (đủ để thấy dấu qc-agent:todo cuối dòng)."""
+    run_init(tmp_path, **over)
+    return {line.split(":", 1)[0].strip(): line for line in read(tmp_path, ".github/workflows/qc-gate.yml").splitlines()
+            if line.strip().startswith(("sut_dockerfile:", "sut_context:"))}
+
+
+def test_root_dockerfile_beside_web_declares_the_default_value_with_a_verify_mark(tmp_path):
+    lines = caller_lines(tmp_path, files={"Dockerfile": API_DF, "web/Dockerfile": SPA_DF})
+    assert 'sut_dockerfile: "Dockerfile"' in lines["sut_dockerfile"] and "qc-agent:todo VERIFY" in lines["sut_dockerfile"]
+    assert "Dockerfile, web/Dockerfile" in lines["sut_dockerfile"]
+    assert "sut_context" not in lines                      # gốc + một context khả dĩ, bằng mặc định: không khai
+
+
+def test_ambiguous_context_equal_to_the_default_is_still_declared_with_a_mark(tmp_path):
+    lines = caller_lines(tmp_path, files={"docker/prod.Dockerfile": API_DF})
+    assert 'sut_context: "."' in lines["sut_context"] and "qc-agent:todo VERIFY" in lines["sut_context"]
+    assert "sut_dockerfile: \"docker/prod.Dockerfile\"" in lines["sut_dockerfile"] and "VERIFY" not in lines["sut_dockerfile"]
+
+
+def test_single_service_with_copy_dot_marks_only_the_context(tmp_path):
+    lines = caller_lines(tmp_path, files={"apps/api-server/Dockerfile": API_DF})
+    assert "VERIFY" not in lines["sut_dockerfile"]
+    assert 'sut_context: "apps/api-server"' in lines["sut_context"] and "qc-agent:todo VERIFY" in lines["sut_context"]
+
+
+def test_vahan_style_copy_declares_the_dockerfile_but_not_the_default_context(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY apps/api-server/pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""}
+    lines = caller_lines(tmp_path, files=files)
+    assert lines["sut_dockerfile"].strip() == 'sut_dockerfile: "apps/api-server/Dockerfile"' and "sut_context" not in lines
+
+
+def test_copy_relative_to_the_service_declares_the_context_without_a_mark(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""}
+    lines = caller_lines(tmp_path, files=files)
+    assert lines["sut_context"].strip() == 'sut_context: "apps/api-server"'
+    assert "VERIFY" not in "".join(lines.values())
+
+
+def test_web_beside_api_server_marks_the_dockerfile_and_lists_both_candidates(tmp_path):
+    lines = caller_lines(tmp_path, files={"web/Dockerfile": SPA_DF, "apps/api-server/Dockerfile": API_DF})
+    assert "apps/api-server/Dockerfile, web/Dockerfile" in lines["sut_dockerfile"] and "chưa xác nhận" in lines["sut_dockerfile"]
+    for text in lines.values():
+        assert "đã xác định" not in text
+
+
+def test_only_a_web_looking_dockerfile_is_marked_not_sure_it_is_the_api(tmp_path):
+    lines = caller_lines(tmp_path, files={"web/Dockerfile": SPA_DF})
+    assert "chưa chắc web/Dockerfile là Dockerfile của API" in lines["sut_dockerfile"]
+
+
+def test_unparseable_copy_marks_the_context(tmp_path):
+    lines = caller_lines(tmp_path, files={"api/Dockerfile": "FROM x\nARG S=app\nCOPY ${S} ./app\n"})
+    assert "không suy được context" in lines["sut_context"] and 'sut_context: "api"' in lines["sut_context"]
+
+
+def test_dockerfile_flag_alone_still_marks_an_ambiguous_context(tmp_path):
+    lines = caller_lines(tmp_path, files={"apps/api-server/Dockerfile": API_DF}, sut_dockerfile="apps/api-server/Dockerfile")
+    assert "VERIFY" not in lines["sut_dockerfile"] and "qc-agent:todo VERIFY" in lines["sut_context"]
+
+
+def test_context_flag_is_declared_without_a_mark_but_warns_when_copy_does_not_match(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\n", "apps/api-server/pyproject.toml": ""}
+    plan, _ = run_init(tmp_path, files=files, sut_context=".", dry_run=True)
+    workflow = next(f.content for f in plan.files if f.label.endswith("qc-gate.yml"))
+    assert 'sut_context: "."' in workflow and "VERIFY" not in workflow.split("sut_context")[1].splitlines()[0]
+    assert any("--sut-context ." in w and "pyproject.toml" in w for w in plan.warnings)
+
+
+def test_clear_trees_add_no_dockerfile_or_context_mark_and_no_extra_warning(tmp_path):
+    plan, _ = run_init(tmp_path, dry_run=True)             # bản cắt vahan-rpa
+    workflow = next(f.content for f in plan.files if f.label.endswith("qc-gate.yml"))
+    assert "sut_dockerfile" not in workflow and "sut_context" not in workflow
+    assert not [w for w in plan.warnings if "COPY" in w or "context" in w]
+
+
+def test_root_dockerfile_with_a_missing_copy_source_marks_the_default_context(tmp_path):
+    lines = caller_lines(tmp_path, files={"Dockerfile": "FROM x\nCOPY absent.txt /app/\nEXPOSE 8000\n"})
+    assert 'sut_context: "."' in lines["sut_context"] and "qc-agent:todo VERIFY: không context nào" in lines["sut_context"]
+    assert "sut_dockerfile" not in lines
+
+
+# ---------- S4-11: sut_health_path có VERIFY thì luôn tới caller, kể cả khi là `/` ----------
+
+def _svc(route=None):
+    body = f'@app.get("{route}")\ndef health():\n    return {{}}\n' if route else ""
+    return f"from fastapi import FastAPI\napp = FastAPI()\n{body}"
+
+
+def health_line(tmp_path, **over):
+    run_init(tmp_path, **over)
+    return next((line for line in read(tmp_path, ".github/workflows/qc-gate.yml").splitlines() if line.strip().startswith("sut_health_path:")), None)
+
+
+TWO_SERVICES = {"Dockerfile": "FROM x\nCOPY . .\nEXPOSE 8000\n", "apps/a/main.py": _svc("/health"), "apps/b/main.py": _svc("/api/health")}
+
+
+def test_unproven_health_scope_declares_a_temporary_slash_with_a_verify_mark(tmp_path):
+    line = health_line(tmp_path, files=TWO_SERVICES)
+    assert line.strip().startswith('sut_health_path: "/"') and "qc-agent:todo VERIFY" in line
+    for needle in ("TẠM", "--health-path", "2xx", "/health (apps/a/main.py)", "/api/health (apps/b/main.py)"):
+        assert needle in line, needle
+    for banned in ("đã xác định", "chắc chắn", "an toàn"):
+        assert banned not in line
+
+
+def test_proven_scope_declares_the_health_path_of_the_api_without_a_mark(tmp_path):
+    files = {"Dockerfile": "FROM x\nCOPY apps/a/ ./a\nEXPOSE 8000\n", "apps/a/main.py": _svc("/health"), "apps/b/main.py": _svc("/api/health")}
+    assert health_line(tmp_path, files=files).strip() == 'sut_health_path: "/health"'
+
+
+def test_health_flag_is_declared_without_scanning_or_a_mark(tmp_path):
+    line = health_line(tmp_path, files=TWO_SERVICES, sut_health_path="/x")
+    assert line.strip() == 'sut_health_path: "/x"'
+
+
+def test_no_health_route_anywhere_keeps_the_workflow_default_and_declares_nothing(tmp_path):
+    assert health_line(tmp_path, files={"Dockerfile": "FROM x\nCOPY . .\nEXPOSE 8000\n", "main.py": _svc()}) is None
+
+
+# ---------- SUT cần database (S4-09): init chỉ cảnh báo, không đoán ----------
+
+def test_db_env_reference_in_api_code_warns_with_guidance_and_names_the_file(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", "app/main.py": "import os\nURL = os.environ['DATABASE_URL']\n", "app/db.py": "DATABASE_URL = 1\nMONGODB_URI = 2\n"}
+    plan, _ = run_init(tmp_path, files=files, dry_run=True)
+    warning = next(w for w in plan.warnings if "DATABASE_URL" in w)
+    assert "app/db.py" in warning and "app/main.py" in warning and "MONGODB_URI" in warning
+    assert "sut_db_image" in warning and "SUT_SECRET_ENV" in warning and "sut_base_url" in warning and "SUT cần database" in warning
+
+
+def test_db_reference_in_tests_or_lookalike_names_does_not_warn(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", "app/main.py": "import os\nX = os.environ['MY_DATABASE_URL_X']\n", "app/test_db.py": "DATABASE_URL = 1\n",
+             "app/conftest.py": "DATABASE_URL = 1\n", "tests/test_it.py": "DATABASE_URL = 1\n"}
+    plan, _ = run_init(tmp_path, files=files, dry_run=True)
+    assert not [w for w in plan.warnings if "biến DB" in w]
+
+
+def test_db_reference_outside_the_proven_api_scope_is_ignored_in_a_monorepo(tmp_path):
+    files = {"services/api/Dockerfile": "FROM x\nCOPY app /srv/app\nEXPOSE 8000\n", "services/api/app/main.py": "print(1)\n", "services/worker/job.py": "DATABASE_URL = 1\n"}
+    plan, _ = run_init(tmp_path, files=files, sut_dockerfile="services/api/Dockerfile", sut_context="services/api", dry_run=True)
+    assert not [w for w in plan.warnings if "biến DB" in w]
+
+
+def test_init_never_enables_the_db_service_by_itself(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", "app/main.py": "import os\nURL = os.environ['DATABASE_URL']\n"}
+    plan, _ = run_init(tmp_path, files=files, dry_run=True)
+    workflow = next(f.content for f in plan.files if f.label.endswith("qc-gate.yml"))
+    assert not any(key.startswith("sut_db_") for key in yaml.safe_load(workflow)["jobs"]["qc"]["with"])      # chỉ có comment mẫu
+    assert "# sut_db_image:" in workflow
+
+
+# ---------- S4-01: caller là qc-gate.yml; repo còn tên cũ qc.yml thì người dùng tự đổi tên ----------
+
+LEGACY = ".github/workflows/qc.yml"
+GATE = ".github/workflows/qc-gate.yml"
+LEGACY_TEXT = "name: old\non: [pull_request]\njobs: {}\n"
+
+
+def test_a_fresh_repo_gets_qc_gate_yml_and_never_the_old_name(tmp_path):
+    plan, outcomes = run_init(tmp_path)
+    labels = {o.label for o in outcomes}
+    assert GATE in labels and LEGACY not in labels and ".github/workflows/qc-groundtruth.yml" in labels and ".github/CODEOWNERS" in labels
+    workflow = yaml.safe_load(read(tmp_path, GATE))
+    assert workflow["name"] == "qc-gate" and list(workflow["jobs"]) == ["qc"]                      # job id giữ `qc`: Check Run/branch protection không đổi
+    assert workflow[True]["workflow_dispatch"]["inputs"]["workers"]["default"] == ""
+    assert workflow["jobs"]["qc"]["with"]["workers"] == "${{ inputs.workers }}"
+    assert not (tmp_path / "sut" / LEGACY).exists()
+
+
+def test_a_repo_that_still_has_qc_yml_is_not_given_a_second_gate_job_and_is_told_how_to_rename(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", LEGACY: LEGACY_TEXT}
+    plan, outcomes = run_init(tmp_path, files=files)
+    assert GATE not in {f.label for f in plan.files} and GATE not in {o.label for o in outcomes}
+    warning = next(w for w in plan.warnings if LEGACY in w)
+    assert f"git mv {LEGACY} {GATE}" in warning and "--force" in warning and "workers" in warning
+    assert read(tmp_path, LEGACY) == LEGACY_TEXT and not (tmp_path / "sut" / GATE).exists()      # qc.yml nguyên vẹn, không có file mới
+
+
+def test_force_writes_qc_gate_yml_next_to_the_old_file_and_leaves_removal_to_the_user(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", LEGACY: LEGACY_TEXT}
+    plan = init_mod.build(options(tmp_path, files=files, force=True))          # --force vào cả build (quyết định sinh file) lẫn apply (ghi đè)
+    init_mod.apply(plan, force=True)
+    assert yaml.safe_load(read(tmp_path, GATE))["jobs"]["qc"]["with"]["project"] == "vahan-rpa"
+    assert not [w for w in plan.warnings if "git mv" in w]
+
+
+def test_an_existing_qc_gate_yml_is_kept_even_when_the_old_file_is_also_there(tmp_path):
+    files = {"Dockerfile": "FROM x\nEXPOSE 8000\n", LEGACY: LEGACY_TEXT, GATE: "name: mine\n"}
+    plan, outcomes = run_init(tmp_path, files=files)
+    assert read(tmp_path, GATE) == "name: mine\n" and {o.label: o.status for o in outcomes}[GATE] == "kept"
+    assert not [w for w in plan.warnings if "git mv" in w]

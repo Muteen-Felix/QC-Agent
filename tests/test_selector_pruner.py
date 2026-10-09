@@ -82,3 +82,131 @@ def test_binary_generated_vendor_rename_delete_and_total_cap(tmp_path):
     assert by_path["new.py"].status == "R" and by_path["new.py"].old_path == "old.py"
     assert by_path["large.py"].truncated
     assert len(result.files) == 8
+
+
+def test_git_reads_ignore_directory_ownership(tmp_path, monkeypatch):
+    """Container gate chạy `--user` lệch chủ thư mục (Docker Desktop): thiếu safe.directory thì git từ chối và Select lùi về FULL SET (S4-05b)."""
+    from qc_agent.selector import pruner
+    seen = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(pruner.subprocess, "run", fake_run)
+    pruner._git(tmp_path, "rev-parse", "HEAD")
+    assert seen[0][:5] == ["git", "-c", "core.quotepath=off", "-c", "safe.directory=*"]
+
+
+def _commit(repo, message):
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=QC", "-c", "user.email=qc@example.invalid", "commit", "-qm", message)
+    return git(repo, "rev-parse", "HEAD")
+
+
+def _repo_with_changes(tmp_path):
+    git(tmp_path, "init", "-q")
+    body = "\n".join(f"line_{n} = {n}" for n in range(60)) + "\n"
+    def text(name):
+        return f"# {name}\n" + body   # mỗi file một dòng đầu riêng: nội dung giống hệt nhau thì git ghép nhầm cặp đổi tên
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / name).write_text(text(name), encoding="utf-8")
+    base = _commit(tmp_path, "base")
+    (tmp_path / "a.py").write_text(text("a.py").replace("line_5 = 5", "line_5 = 50").replace("line_40 = 40", "line_40 = 400"), encoding="utf-8")
+    (tmp_path / "n.py").write_text("def new():\n    return 'mới 🚀'\n", encoding="utf-8")
+    git(tmp_path, "mv", "b.py", "b2.py")
+    (tmp_path / "b2.py").write_text(text("b.py").replace("line_20 = 20", "line_20 = 21"), encoding="utf-8")
+    git(tmp_path, "mv", "c.py", "c2.py")
+    return base, _commit(tmp_path, "head")
+
+
+def _assert_hunks_are_headerless_and_complete(tmp_path, base, head, item):
+    hunks = item.hunks
+    assert hunks.startswith("@@ ") and not any(line.startswith(("diff --git", "index ", "--- ", "+++ ", "rename ", "similarity", "new file")) for line in hunks.splitlines())
+    raw = subprocess.run(["git", "diff", "--no-color", "-w", "-U1", "-M", base, head, "--", *([item.old_path] if item.old_path else []), item.path], cwd=tmp_path, check=True,
+                         capture_output=True).stdout.decode("utf-8").splitlines()   # UTF-8 tường minh: text=True giải mã bằng cp1252 trên Windows
+    changed = [line for line in raw if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))]
+    assert changed and all(line in hunks.splitlines() for line in changed), item.path   # không mất dòng thay đổi nào
+    assert not item.truncated and item.dropped_hunks == 0
+
+
+def test_hunks_carry_no_git_header_but_every_changed_line_and_the_file_identity_survive(tmp_path):
+    base, head = _repo_with_changes(tmp_path)
+    by_path = {item.path: item for item in prune(tmp_path, base, head).files}
+    assert sorted(by_path) == ["a.py", "b2.py", "c2.py", "n.py"]
+    for path in ("a.py", "n.py"):
+        _assert_hunks_are_headerless_and_complete(tmp_path, base, head, by_path[path])
+    assert (by_path["b2.py"].status, by_path["b2.py"].old_path) == ("R", "b.py") and (by_path["c2.py"].status, by_path["c2.py"].old_path) == ("R", "c.py")   # danh tính file nằm ở entry, không ở header
+    assert (by_path["n.py"].status, by_path["n.py"].old_path) == ("A", None) and "mới 🚀" in by_path["n.py"].hunks
+
+
+def test_renamed_files_carry_only_the_real_change_not_the_whole_file_as_new(tmp_path):
+    base, head = _repo_with_changes(tmp_path)
+    by_path = {item.path: item for item in prune(tmp_path, base, head).files}
+    _assert_hunks_are_headerless_and_complete(tmp_path, base, head, by_path["b2.py"])
+    assert "line_20 = 21" in by_path["b2.py"].hunks and "+line_0 = 0" not in by_path["b2.py"].hunks and len(by_path["b2.py"].hunks) < 200   # 60 dòng gốc không lặp lại
+    assert (by_path["c2.py"].status, by_path["c2.py"].old_path, by_path["c2.py"].hunks) == ("R", "c.py", None)                             # đổi tên thuần: không có nội dung nào để gửi
+
+
+def test_binary_detection_is_one_batched_call_and_parallel_processing_keeps_a_stable_order(tmp_path, monkeypatch):
+    from qc_agent.selector import pruner
+    git(tmp_path, "init", "-q")
+    (tmp_path / "keep.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "old.bin").write_bytes(b"\x00\x01\x02" * 50)
+    base = _commit(tmp_path, "base")
+    git(tmp_path, "mv", "old.bin", "new.bin")
+    (tmp_path / "keep.py").write_text("x = 2\n", encoding="utf-8")
+    for n in range(12):
+        (tmp_path / f"m{n:02d}.py").write_text(f"v = {n}\n", encoding="utf-8")
+    head = _commit(tmp_path, "head")
+    numstat_calls = []
+    real = pruner._git
+    monkeypatch.setattr(pruner, "_git", lambda repo, *args: numstat_calls.append(args) or real(repo, *args))
+    result = prune(tmp_path, base, head)
+    assert sum(1 for args in numstat_calls if "--numstat" in args) == 1                     # một lần cho cả diff, không phải mỗi file một lần
+    by_path = {item.path: item for item in result.files}
+    assert by_path["new.bin"].kind == "binary" and by_path["new.bin"].hunks is None and by_path["keep.py"].kind == "code"
+    assert [item.path for item in result.files] == sorted(by_path) and len(result.files) == 14
+    assert prune(tmp_path, base, head).sha256 == result.sha256                              # song song vẫn tất định
+
+
+def test_unicode_paths_and_text_survive_truncation_without_breaking_utf8(tmp_path):
+    from qc_agent.llm.client import estimate_input_tokens
+    git(tmp_path, "init", "-q")
+    (tmp_path / "keep.py").write_text("x = 1\n", encoding="utf-8")
+    base = _commit(tmp_path, "base")
+    folder = tmp_path / "tài-liệu-📘"
+    folder.mkdir()
+    (folder / "ghi-chú.py").write_text("".join(f'ghi_chu_{n} = "Đã lưu ✅ 保存しました 🚀 {n}"\n' for n in range(400)), encoding="utf-8")
+    head = _commit(tmp_path, "head")
+    first = prune(tmp_path, base, head, per_file_tokens=20)
+    second = prune(tmp_path, base, head, per_file_tokens=20)
+    (item,) = first.files
+    assert item.path == "tài-liệu-📘/ghi-chú.py" and item.truncated                                  # tên file Unicode không bị git bọc dấu nháy/escape
+    assert "�" not in item.hunks and item.hunks.encode("utf-8").decode("utf-8") == item.hunks   # cắt theo ký tự, không cắt giữa dãy byte
+    assert "Đã lưu ✅ 保存しました 🚀" in item.hunks and first.sha256 == second.sha256
+    assert estimate_input_tokens(item.hunks) > len(item.hunks) / 3                                    # nhiều byte/ký tự: ước lượng theo byte lớn hơn ký tự/3
+
+
+def test_a_very_large_diff_keeps_every_path_flags_every_cut_and_finishes_in_bounded_time(tmp_path):
+    import time
+    git(tmp_path, "init", "-q")
+    (tmp_path / "seed.txt").write_text("x\n", encoding="utf-8")
+    base = _commit(tmp_path, "base")
+    paths = []
+    for n in range(240):
+        folder = tmp_path / f"pkg{n % 30}"
+        folder.mkdir(exist_ok=True)
+        (folder / f"m{n}.py").write_text(f"def f{n}():\n    return {n}\n", encoding="utf-8")
+        paths.append(f"pkg{n % 30}/m{n}.py")
+    (tmp_path / "huge.py").write_text("".join(f"value_{n} = {n}  # dòng tiếng Việt 🚀\n" for n in range(60000)), encoding="utf-8")   # vài MB
+    head = _commit(tmp_path, "head")
+    started = time.perf_counter()
+    result = prune(tmp_path, base, head)
+    assert time.perf_counter() - started < 240                                                          # chặn trên rộng: phát hiện hồi quy O(n^2) hay treo, không đo tốc độ
+    assert sorted(item.path for item in result.files) == sorted([*paths, "huge.py"])                     # danh sách file đầy đủ
+    huge = next(item for item in result.files if item.path == "huge.py")
+    assert huge.truncated and len(huge.hunks) < 8000 and "[cat" in huge.hunks                           # trần mỗi file giữ và có dấu hiệu cắt
+    tight = prune(tmp_path, base, head, total_tokens=500)
+    assert len(tight.files) == 241 and tight.approx_tokens <= 500                                       # trần tổng giữ, không file nào biến mất
+    assert all(item.truncated and item.dropped_hunks >= 1 for item in tight.files if item.hunks is None and item.kind == "code")   # mọi hunk bị bỏ đều có dấu hiệu

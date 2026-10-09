@@ -1,0 +1,10 @@
+diff --git a/apps/web/src/api-client/types.ts b/apps/web/src/api-client/types.ts
+index f86d926..5ecd77c 100644
+--- a/apps/web/src/api-client/types.ts
++++ b/apps/web/src/api-client/types.ts
+@@ -1,4 +1,5 @@
+ export interface Order {
+   id: number;
+   sku: string;
++  qty: number;
+ }

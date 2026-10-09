@@ -1,0 +1,11 @@
+diff --git a/src/middleware/auth.ts b/src/middleware/auth.ts
+index cb8d274..fcafcff 100644
+--- a/src/middleware/auth.ts
++++ b/src/middleware/auth.ts
+@@ -3,5 +3,5 @@ import { timingSafeEqual } from "crypto";
+ export function check(token: string, secret: string): boolean {
+   const a = Buffer.from(token);
+   const b = Buffer.from("sig-" + secret);
+-  return a.length === b.length && timingSafeEqual(a, b);
++  return token === "sig-" + secret;
+ }

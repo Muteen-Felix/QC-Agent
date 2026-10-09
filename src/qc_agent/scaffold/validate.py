@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import posixpath
 import re
 import sys
 from dataclasses import dataclass
@@ -20,7 +21,7 @@ from qc_agent.core import plan as plan_lib
 from qc_agent.core import project as pj
 from qc_agent.core import registry
 from qc_agent.core.plan import PlanError
-from qc_agent.scaffold import gitinfo, policy_source
+from qc_agent.scaffold import dockerfile_copy, gitinfo, policy_source, scan
 from qc_agent.scaffold import templates as t
 
 SYSTEM_ERROR = 3
@@ -33,6 +34,11 @@ REUSABLE = "qc-gate.reusable.yml"
 GT_REUSABLE = "qc-groundtruth.reusable.yml"
 GT_WORKFLOW = ".github/workflows/qc-groundtruth.yml"
 CODEOWNERS_FILES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")   # thứ tự ưu tiên của GitHub
+# Owner MẪU trong docs: chép nguyên thì quy tắc `/.qc-agent/` trỏ vào team không tồn tại và không ai duyệt được (so sánh không phân biệt hoa thường).
+# Nơi docs dùng chúng: @my-org/qa-team -> docs/user-guide-sprint-1.md (ví dụ `--qa-team`); @org/team -> docs/onboarding.md, docs/groundtruth-real-sut.md
+# và thông báo của `init`; @org/qa-team -> docs/groundtruth.md (§ CODEOWNERS); @owner/qa-team -> docs/groundtruth-real-sut.md;
+# @qc-agent-todo/qa-team -> owner giữ chỗ do scaffold/templates.py sinh khi thiếu --qa-team. Thêm ví dụ mới vào docs thì thêm vào đây.
+PLACEHOLDER_OWNERS = frozenset({"@my-org/qa-team", "@org/team", "@org/qa-team", "@owner/qa-team", "@qc-agent-todo/qa-team"})
 # Biến môi trường mà workflow tái sử dụng chuyển vào container gate (khớp bước "Run qc-agent gate"; test đối chiếu với file workflow thật).
 PASSTHROUGH = frozenset({"OPENAI_API_KEY", "GEMINI_API_KEY", "MIDSCENE_MODEL_BASE_URL", "MIDSCENE_MODEL_API_KEY", "MIDSCENE_MODEL_NAME",
                          "MIDSCENE_MODEL_FAMILY", "QC_JUDGE_PROVIDER", "QC_JUDGE_MODEL", "QC_JUDGE_FALLBACK_PROVIDER", "QC_JUDGE_FALLBACK_MODEL",
@@ -140,6 +146,16 @@ def _check_ref(report: Report, sut_root: Path, rel: str, origin: str, *, scan_to
             report.add(ERROR, f"{rel}:{line}", _todo_message(text))
 
 
+def _qc_agent_rule_owners(text: str) -> list[str]:
+    """Owner của mọi quy tắc cho `/.qc-agent/` (bỏ comment), cùng cách đọc dòng với `templates.codeowners_locks_ground_truth`."""
+    owners = []
+    for line in text.splitlines():
+        parts = line.split("#", 1)[0].split()
+        if len(parts) >= 2 and parts[0].rstrip("*").rstrip("/") in ("/.qc-agent", ".qc-agent"):
+            owners.extend(parts[1:])
+    return owners
+
+
 def _check_groundtruth_setup(report: Report, sut_root: Path) -> None:
     """CODEOWNERS và workflow sinh Ground-Truth (S1-07). Có `.qc-agent/ground-truth/` mà CODEOWNERS không giao `/.qc-agent/` cho ai thì khoá QA vô hiệu: lỗi."""
     has_gt = (sut_root / ".qc-agent" / "ground-truth").is_dir()
@@ -154,6 +170,10 @@ def _check_groundtruth_setup(report: Report, sut_root: Path) -> None:
             text = (sut_root / owners).read_text(encoding="utf-8-sig")
         except (OSError, UnicodeError):
             text = ""
+        placeholder = sorted({owner for owner in _qc_agent_rule_owners(text) if owner.lower() in PLACEHOLDER_OWNERS})
+        if placeholder:
+            report.add(ERROR, owners, f"quy tắc `/.qc-agent/` trỏ tới owner mẫu trong docs ({', '.join(placeholder)}): team này không tồn tại nên không ai duyệt được "
+                                      f"thay đổi Ground-Truth. Chạy lại `qc-agent init --qa-team @<org>/<team QA thật>`")
         if has_gt and not t.codeowners_locks_ground_truth(text):
             report.add(ERROR, owners, "có .qc-agent/ground-truth/ nhưng CODEOWNERS thiếu quy tắc `/.qc-agent/ @<team QA>`: khoá QA không có tác dụng "
                                       "(chạy `qc-agent init --qa-team @org/team`)")
@@ -240,8 +260,13 @@ def validate(slug: str, sut_root: Path, *, projects_dir: Path | None = None, wor
 
     if (sut_root / ".qc-agent" / "ground-truth").is_dir():   # Ground-Truth (S1-06): cùng cổng HITL với `qc-agent gt validate`; TC draft là lỗi
         from qc_agent.groundtruth import check as gt_check   # import lười: chỉ khi repo có Ground-Truth
+        from qc_agent.groundtruth import render as gt_render
         try:
-            checked = gt_check.check(sut_root)
+            if (sut_root / gt_render.CATALOG_PATH).is_file():
+                checked = gt_check.check(sut_root)
+            else:   # mới có auth.yaml (docs bảo thêm trước `gt generate`): chưa sinh GT không phải lỗi, auth.yaml vẫn được kiểm
+                checked = gt_check.check_auth(sut_root)
+                report.add(NOTE, ".qc-agent/ground-truth", f"chưa sinh Ground-Truth (chưa có {gt_render.CATALOG_PATH}): chạy `qc-agent gt generate`")
         except gt_check.GTCheckError as error:
             report.add(ERROR, ".qc-agent/ground-truth", str(error))
         else:
@@ -350,6 +375,10 @@ def _check_workflow(report: Report, slug: str, project: dict, suites: dict, sut_
         if known_inputs is not None:
             for key in sorted(set(with_) - known_inputs):
                 report.add(ERROR, where, f"input `{key}` không có trong workflow tái sử dụng")
+        if path.relative_to(sut_root).as_posix() == t.LEGACY_WORKFLOW:
+            report.add(NOTE, where, f"tên cũ {t.LEGACY_WORKFLOW}: vẫn chạy, nhưng bản mới là {t.GATE_WORKFLOW} (có input `workers` cho chạy tay); đổi tên bằng `git mv`")
+        _check_sut_build(report, sut_root, where, with_)
+        _check_sut_db(report, sut_root, where, with_)
         mode = str(with_.get("mode", "pr"))
         if mode not in policy:
             report.add(ERROR, where, f"mode {mode!r} không có trong project (có: {', '.join(sorted(policy))})")
@@ -365,6 +394,54 @@ def _check_workflow(report: Report, slug: str, project: dict, suites: dict, sut_
             for variable in sorted(pr_env - provided):
                 hint = " (workflow chỉ cấp APP_UI_URL khi khai sut_ui_dockerfile)" if variable == "APP_UI_URL" else ""
                 report.add(ERROR, where, f"suite dùng ${{env.{variable}}} nhưng workflow không cấp biến này cho gate{hint}")
+
+
+def _check_sut_build(report: Report, sut_root: Path, where: str, with_: dict) -> None:
+    """`docker build -f <sut_dockerfile> <sut_context>` chạy từ gốc repo: Dockerfile phải tồn tại và mọi nguồn COPY/ADD đọc được phải tồn tại tính từ context
+    (build chắc chắn hỏng nếu không). Bỏ qua khi job dùng `sut_base_url` (SUT có sẵn, workflow không build), hoặc giá trị là biểu thức `${{ }}`."""
+    if str(with_.get("sut_base_url", "")).strip():
+        return
+    dockerfile = str(with_.get("sut_dockerfile", "Dockerfile"))
+    context = str(with_.get("sut_context", "."))
+    if "${{" in dockerfile or "${{" in context:
+        return
+    target = sut_root / dockerfile
+    if Path(dockerfile).is_absolute() or not _inside(sut_root, target):
+        report.add(ERROR, where, f"sut_dockerfile {dockerfile!r} phải nằm trong repo SUT (tương đối gốc repo, không thoát ra ngoài)")
+        return
+    if not target.is_file():
+        report.add(ERROR, where, f"sut_dockerfile {dockerfile!r} không tồn tại (đường dẫn tính từ gốc repo, như `docker build -f`): build SUT sẽ hỏng")
+        return
+    base = posixpath.normpath(context.replace("\\", "/"))
+    if Path(context).is_absolute() or not _inside(sut_root, sut_root / base) or not (sut_root / base).is_dir():
+        report.add(ERROR, where, f"sut_context {context!r} không phải thư mục trong repo SUT: build SUT sẽ hỏng")
+        return
+    analysis = dockerfile_copy.analyze(sut_root, dockerfile, [base])
+    missing = analysis.chosen_check.missing
+    if not missing:
+        return
+    others = [c for c in dockerfile_copy.analyze(sut_root, dockerfile).valid_contexts if c != base]
+    hint = (f"; context nên là `{others[0]}`" if len(others) == 1 else f"; context khiến mọi nguồn tồn tại: {', '.join(others)}" if others else "")
+    for item in missing:
+        source = item.source
+        report.add(ERROR, where, f"{dockerfile} dòng {source.line}: {source.instruction} '{source.raw}' không tồn tại tính từ sut_context {context!r} "
+                                 f"({item.repo_path}): build SUT sẽ hỏng{hint}")
+
+
+def _check_sut_db(report: Report, sut_root: Path, where: str, with_: dict) -> None:
+    """WARN (không ERROR: SUT có thể có chế độ không DB) khi mã SUT tham chiếu biến DB mà job không khai DB phụ và không dùng `sut_base_url`."""
+    if str(with_.get("sut_base_url", "")).strip() or str(with_.get("sut_db_image", "")).strip():
+        return
+    dockerfile, context = str(with_.get("sut_dockerfile", "Dockerfile")), str(with_.get("sut_context", "."))
+    if "${{" in dockerfile or "${{" in context or Path(dockerfile).is_absolute() or not (sut_root / dockerfile).is_file():
+        return   # Dockerfile/context sai đã được _check_sut_build báo ERROR
+    base = posixpath.normpath(context.replace("\\", "/"))
+    if Path(context).is_absolute() or not _inside(sut_root, sut_root / base) or not (sut_root / base).is_dir():
+        return
+    copy = dockerfile_copy.analyze(sut_root, dockerfile, [base])
+    refs = scan.find_db_refs(sut_root, dockerfile, copy, scan.Finding(base, "flag"))
+    if refs:
+        report.add(WARN, where, scan.db_warning(refs))
 
 
 def _format(report: Report) -> list[str]:

@@ -1,0 +1,2 @@
+apps/api/gen/** linguist-generated
+apps/web/src/api-client/types.ts linguist-generated=true

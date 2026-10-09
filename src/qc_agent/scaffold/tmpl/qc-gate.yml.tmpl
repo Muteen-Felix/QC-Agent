@@ -1,0 +1,34 @@
+# qc-agent:generated — gate tự động của repo này. Ghim @<commit SHA> (không @main) và image theo digest.
+# Xem docs/usage-ci.md trong repo qc-agent. Bật chặn merge: branch protection yêu cầu job `qc-agent / {{project}}` xanh.
+name: qc-gate
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: "vd semgrep,schemathesis — để trống = toàn bộ theo policy"
+        type: string
+        default: ""
+
+jobs:
+  qc:
+    permissions:               # quyền TỐI THIỂU; workflow tái sử dụng không xin thêm
+      contents: read
+      checks: write            # Check Run "qc-agent / {{project}}"
+      pull-requests: write     # comment dính trên PR
+      packages: read           # kéo image từ GHCR
+    uses: {{qc_repo}}/.github/workflows/qc-gate.reusable.yml@{{qc_ref}}
+    with:
+      project: {{project}}
+      image: {{image}}
+      workers: ${{ inputs.workers }}   # chạy tay: danh sách worker (rỗng = theo policy); PR: luôn rỗng
+{{with_block}}
+      # SUT cần database (tuỳ chọn, mặc định KHÔNG bật): bỏ comment và điền khi SUT không khởi động được chỉ bằng sut_env. Xem docs/usage-ci.md, mục "SUT cần database".
+      # sut_db_image: <image DB>@sha256:<DIGEST>                   # ghim digest; loại DB do SUT chọn
+      # sut_db_env: |                                              # KHÔNG đặt bí mật ở đây
+      #   POSTGRES_DB=app
+      # sut_db_ready_cmd: pg_isready -h 127.0.0.1 -U app           # exit 0 = DB sẵn sàng (hoặc dùng sut_db_port: "5432")
+      # Bí mật đặt ở secret của repo SUT (nhiều dòng KEY=VALUE): SUT_SECRET_ENV cho SUT (DATABASE_URL=...@db:5432/app), SUT_DB_SECRET_ENV chỉ cho container db.
+      # SUT đã chạy sẵn ở nơi khác thì khai sut_base_url thay cho cả build/chạy SUT lẫn DB.
+    secrets: inherit

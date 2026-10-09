@@ -90,7 +90,7 @@ def test_fresh_init_output_is_rejected_with_every_todo_located(tmp_path):
     sut, projects = generate(tmp_path, pins=False, finish_flow=False)
     report = check(tmp_path, sut, projects)
     text = messages(report)
-    assert ".qc-agent/midscene/explore.yaml:2" in text and ".github/workflows/qc.yml:16" in text and ".github/workflows/qc.yml:19" in text
+    assert ".qc-agent/midscene/explore.yaml:2" in text and ".github/workflows/qc-gate.yml:21" in text and ".github/workflows/qc-gate.yml:24" in text
     assert "ghim commit SHA 40 ký tự" in text and "ghim theo digest" in text
 
 
@@ -187,7 +187,7 @@ def test_referenced_files_may_not_escape_the_sut_root(tmp_path, bad):
 # ---------- qc.yml ----------
 
 def edit_workflow(sut, fn):
-    path = sut / ".github" / "workflows" / "qc.yml"
+    path = sut / ".github" / "workflows" / "qc-gate.yml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     fn(data["jobs"]["qc"])
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
@@ -231,7 +231,7 @@ def test_ui_suite_without_ui_container_in_the_workflow_is_an_error(tmp_path):
 
 def test_missing_workflow_is_only_a_warning(tmp_path):
     sut, projects = generate(tmp_path)
-    (sut / ".github" / "workflows" / "qc.yml").unlink()
+    (sut / ".github" / "workflows" / "qc-gate.yml").unlink()
     report = check(tmp_path, sut, projects)
     assert not by_level(report, v.ERROR) and any("không thấy job nào" in f.message for f in by_level(report, v.WARN))
 
@@ -259,7 +259,7 @@ def test_cli_validate_exit_codes_and_strict(tmp_path, capsys):
     sut, projects = generate(tmp_path)
     argv = ["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--workers-dir", str(ROOT / "workers")]
     assert cli_main(argv) == 0 and "OK: 0 lỗi, 0 cảnh báo, 2 ghi chú" in capsys.readouterr().out
-    (sut / ".github" / "workflows" / "qc.yml").unlink()
+    (sut / ".github" / "workflows" / "qc-gate.yml").unlink()
     assert cli_main(argv) == 0 and "1 cảnh báo" in capsys.readouterr().out
     assert cli_main(argv + ["--strict"]) == 3 and "FAIL" in capsys.readouterr().out  # --strict: cảnh báo thành lỗi
     fresh = tmp_path / "f" / "sut"
@@ -322,7 +322,7 @@ def unregistered_sut(tmp_path, monkeypatch):
     sut, projects = generate(tmp_path, ui=False)
     (projects / "vahan-rpa.yaml").unlink()
     (projects / "_default.yaml").write_text(_MAIN_DEFAULT, encoding="utf-8")
-    workflow = sut / ".github" / "workflows" / "qc.yml"
+    workflow = sut / ".github" / "workflows" / "qc-gate.yml"
     workflow.write_text(workflow.read_text(encoding="utf-8").replace("project: vahan-rpa", "project: newrepo"), encoding="utf-8")
     monkeypatch.delenv("QC_READ_TOKEN", raising=False)
     return sut, projects
@@ -607,3 +607,277 @@ def test_an_activated_integration_suite_runs_on_pr_only_when_the_policy_lists_it
     manual, _ = pj.build_plan(pj.load_project("vahan-rpa", projects), "manual", suites)
     assert {"t-020", "t-021", "t-022"} <= ids(manual)                   # manual có suites: "*"
 
+
+# ---------- S4-08: dấu VERIFY của Dockerfile/context chặn validate tới khi người xác nhận ----------
+
+API_DF = "FROM python:3.12\nCOPY . .\nEXPOSE 8000\n"
+SPA_DF = "FROM node:22 AS build\nFROM nginx:1.27\nCOPY --from=build /app/dist /usr/share/nginx/html\n"
+
+
+def generate_tree(tmp_path, files, **over):
+    sut = tmp_path / "sut"
+    for rel, text in files.items():
+        (sut / rel).parent.mkdir(parents=True, exist_ok=True)
+        (sut / rel).write_text(text, encoding="utf-8")
+    opts = dict(sut_root=sut, slug="vahan-rpa", openapi_source=str(VAHAN), qc_ref=SHA, image=IMAGE, qa_team="@o/qa", **over)
+    init_mod.apply(init_mod.build(init_mod.Options(**opts)))
+    return sut, policy_dir(tmp_path)
+
+
+@pytest.mark.parametrize("files, expected", [
+    ({"Dockerfile": API_DF, "web/Dockerfile": SPA_DF}, "sut_dockerfile"),
+    ({"web/Dockerfile": SPA_DF, "apps/api-server/Dockerfile": API_DF}, "sut_dockerfile"),
+    ({"web/Dockerfile": SPA_DF}, "sut_dockerfile"),
+    ({"apps/api-server/Dockerfile": API_DF}, "sut_context"),
+    ({"api/Dockerfile": "FROM x\nARG S=app\nCOPY ${S} ./app\n"}, "sut_context"),
+    ({"docker/prod.Dockerfile": API_DF}, "sut_context"),
+])
+def test_unconfirmed_dockerfile_or_context_blocks_validate_until_the_mark_is_removed(tmp_path, files, expected):
+    sut, projects = generate_tree(tmp_path, files)
+    report = check(tmp_path, sut, projects)
+    blocked = [f for f in by_level(report, v.ERROR) if "qc-agent:todo VERIFY" in f.message]
+    assert any(expected in f.message for f in blocked), messages(report)
+    workflow = sut / ".github" / "workflows" / "qc-gate.yml"
+    workflow.write_text(re.sub(r"  # qc-agent:todo VERIFY[^\n]*", "", workflow.read_text(encoding="utf-8")), encoding="utf-8")   # người đã xác nhận
+    after = check(tmp_path, sut, projects)
+    assert not [f for f in by_level(after, v.ERROR) if "qc-agent:todo VERIFY" in f.message], messages(after)
+
+
+def test_clear_single_service_trees_validate_without_any_verify(tmp_path):
+    files = {"apps/api-server/Dockerfile": "FROM x\nCOPY pyproject.toml ./\nEXPOSE 8000\n", "apps/api-server/pyproject.toml": ""}
+    sut, projects = generate_tree(tmp_path, files)
+    assert not [f for f in by_level(check(tmp_path, sut, projects), v.ERROR) if "VERIFY" in f.message]
+
+
+# ---------- S4-10: COPY/ADD không tồn tại tính từ sut_context, owner CODEOWNERS mẫu, ground-truth/ chỉ có auth.yaml ----------
+
+GT_EXPECTED = ROOT / "tests" / "fixtures" / "gt" / "noteboard" / "expected" / ".qc-agent" / "ground-truth"
+VAHAN_DF = "FROM x\nCOPY apps/api-server/pyproject.toml ./\nCOPY apps/api-server/app ./app\nEXPOSE 8000\n"
+VAHAN_FILES = {"apps/api-server/Dockerfile": VAHAN_DF, "apps/api-server/pyproject.toml": "", "apps/api-server/app/main.py": ""}
+
+
+def build_errors(tmp_path, sut, projects):
+    """Lỗi về build SUT (Dockerfile/COPY/context) trong kết quả validate."""
+    return [f.message for f in by_level(check(tmp_path, sut, projects), v.ERROR) if "sut_" in f.message and ("COPY" in f.message or "ADD" in f.message or "sut_dockerfile" in f.message
+                                                                                                          or "sut_context" in f.message)]
+
+
+def replace_in_workflow(sut, old, new):
+    path = sut / ".github" / "workflows" / "qc-gate.yml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text, text
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def test_copy_source_missing_from_a_wrong_sut_context_is_an_error_with_the_right_context(tmp_path):
+    """Đúng ca VAHAN: Dockerfile COPY apps/api-server/pyproject.toml mà sut_context là apps/api-server."""
+    sut, projects = generate_tree(tmp_path, VAHAN_FILES, sut_dockerfile="apps/api-server/Dockerfile", sut_context="apps/api-server")
+    errors = build_errors(tmp_path, sut, projects)
+    assert any("apps/api-server/pyproject.toml" in e and "COPY" in e and "context nên là `.`" in e for e in errors), errors
+    assert len(errors) == 2                                  # pyproject.toml và app/
+
+
+def test_copy_sources_that_exist_from_the_context_are_not_an_error(tmp_path):
+    sut, projects = generate_tree(tmp_path, VAHAN_FILES)     # init suy context "." từ COPY
+    assert build_errors(tmp_path, sut, projects) == []
+    sut2, projects2 = generate_tree(tmp_path / "b", VAHAN_FILES, sut_dockerfile="apps/api-server/Dockerfile", sut_context=".")
+    assert build_errors(tmp_path / "b", sut2, projects2) == []
+
+
+def test_a_job_with_sut_base_url_is_not_checked_for_the_dockerfile_or_copy(tmp_path):
+    """SUT có sẵn: workflow không build, nên Dockerfile/COPY sai không phải lỗi (tránh báo oan)."""
+    sut, projects = generate_tree(tmp_path, VAHAN_FILES, sut_dockerfile="apps/api-server/Dockerfile", sut_context="apps/api-server")
+    assert build_errors(tmp_path, sut, projects)
+    replace_in_workflow(sut, '      sut_context: "apps/api-server"', '      sut_base_url: "https://staging.example.com"\n      sut_context: "apps/api-server"')
+    assert build_errors(tmp_path, sut, projects) == []
+    replace_in_workflow(sut, '      sut_dockerfile: "apps/api-server/Dockerfile"', '      sut_dockerfile: "does/not/exist/Dockerfile"')
+    assert build_errors(tmp_path, sut, projects) == []       # Dockerfile không tồn tại cũng không báo khi có sut_base_url
+
+
+def test_expressions_and_unreadable_sources_do_not_raise_false_errors(tmp_path):
+    dockerfile = ("FROM x AS build\nARG SRC=app\nCOPY ${SRC} ./a\nCOPY --from=build /out /out\nADD https://example.com/x.tgz /tmp/\n"
+                  "COPY <<EOF /run.sh\necho hi\nEOF\nCOPY pyproject.toml ./\nEXPOSE 8000\n")
+    sut, projects = generate_tree(tmp_path, {"svc/Dockerfile": dockerfile, "svc/pyproject.toml": ""}, sut_dockerfile="svc/Dockerfile", sut_context="svc")
+    assert build_errors(tmp_path, sut, projects) == []
+    replace_in_workflow(sut, '      sut_context: "svc"', '      sut_context: "${{ vars.CTX }}"')
+    replace_in_workflow(sut, '      sut_dockerfile: "svc/Dockerfile"', '      sut_dockerfile: "${{ vars.DF }}"')
+    assert build_errors(tmp_path, sut, projects) == []
+
+
+def test_missing_dockerfile_or_context_directory_is_an_error(tmp_path):
+    sut, projects = generate_tree(tmp_path, VAHAN_FILES, sut_dockerfile="apps/api-server/Dockerfile", sut_context=".")
+    replace_in_workflow(sut, '"apps/api-server/Dockerfile"', '"apps/missing/Dockerfile"')
+    assert any("không tồn tại" in e and "apps/missing/Dockerfile" in e for e in build_errors(tmp_path, sut, projects))
+    replace_in_workflow(sut, '"apps/missing/Dockerfile"', '"apps/api-server/Dockerfile"')
+    replace_in_workflow(sut, '      sut_context: "."', '      sut_context: "nope"')
+    assert any("không phải thư mục" in e for e in build_errors(tmp_path, sut, projects))
+
+
+def test_default_dockerfile_is_checked_when_the_job_does_not_declare_it(tmp_path):
+    sut, projects = generate_tree(tmp_path, {"api/Dockerfile": "FROM x\nCOPY req.txt ./\nEXPOSE 8000\n", "api/req.txt": ""}, sut_dockerfile="api/Dockerfile", sut_context="api")
+    assert build_errors(tmp_path, sut, projects) == []
+    replace_in_workflow(sut, '      sut_dockerfile: "api/Dockerfile"\n', "")      # không khai => mặc định `Dockerfile` ở gốc, không có
+    assert any("'Dockerfile'" in e and "không tồn tại" in e for e in build_errors(tmp_path, sut, projects))
+
+
+def write_owners(sut, text):
+    (sut / ".github").mkdir(parents=True, exist_ok=True)
+    (sut / ".github" / "CODEOWNERS").write_text(text, encoding="utf-8")
+
+
+def placeholder_errors(tmp_path, sut, projects):
+    return [line for line in messages(check(tmp_path, sut, projects)).splitlines() if "owner mẫu" in line]
+
+
+@pytest.mark.parametrize("owner", ["@my-org/qa-team", "@org/team", "@org/qa-team", "@OWNER/qa-team", "@My-Org/QA-Team", "@qc-agent-todo/qa-team"])
+def test_a_sample_owner_copied_from_the_docs_on_the_locked_dir_is_an_error(tmp_path, owner):
+    sut, projects = generate(tmp_path, ui=False)
+    write_owners(sut, f"* @o/core\n/.qc-agent/ {owner}\n")
+    assert any(owner.lower() in line.lower() for line in placeholder_errors(tmp_path, sut, projects)), messages(check(tmp_path, sut, projects))
+
+
+def test_real_team_and_sample_owner_on_other_paths_are_not_errors(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    write_owners(sut, "/.qc-agent/ @acme/qa\n")
+    assert placeholder_errors(tmp_path, sut, projects) == []
+    write_owners(sut, "/docs/ @my-org/qa-team\n# /.qc-agent/ @org/team (chỉ là comment)\n/.qc-agent/ @acme/qa\n")
+    assert placeholder_errors(tmp_path, sut, projects) == []
+
+
+def test_init_with_the_docs_example_team_is_rejected_by_validate(tmp_path):
+    sut, projects = generate(tmp_path, ui=False, qa_team="@my-org/qa-team")
+    assert placeholder_errors(tmp_path, sut, projects)
+
+
+def test_ground_truth_with_only_auth_yaml_is_a_note_not_an_error(tmp_path, capsys):
+    sut, projects = generate(tmp_path, ui=False)
+    gt = sut / ".qc-agent" / "ground-truth"
+    gt.mkdir(parents=True)
+    (gt / "auth.yaml").write_text("version: 1\nlogin:\n  path: /api/login\n  json: {username: {env: QC_TEST_USERNAME}, password: {env: QC_TEST_PASSWORD}}\n"
+                                  "  token_path: $.token\n", encoding="utf-8")
+    report = check(tmp_path, sut, projects)
+    assert not [f for f in by_level(report, v.ERROR) if "ground-truth" in f.where or "test-cases" in f.message], messages(report)
+    assert any("gt generate" in f.message and f.where == ".qc-agent/ground-truth" for f in by_level(report, v.NOTE))
+    argv = ["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--mode", "pr"]
+    assert cli_main(argv) == 0, capsys.readouterr().out
+
+
+def test_a_broken_auth_yaml_is_still_checked_when_there_is_no_catalog_yet(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    gt = sut / ".qc-agent" / "ground-truth"
+    gt.mkdir(parents=True)
+    (gt / "auth.yaml").write_text("version: 2\n", encoding="utf-8")
+    assert any(f.where.endswith("auth.yaml") for f in by_level(check(tmp_path, sut, projects), v.ERROR))
+
+
+def test_ground_truth_with_a_draft_catalog_still_fails_as_before(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    shutil.copytree(GT_EXPECTED, sut / ".qc-agent" / "ground-truth")
+    report = check(tmp_path, sut, projects)
+    assert "còn draft" in messages(report)
+    assert not any("gt generate" in f.message for f in by_level(report, v.NOTE))
+
+
+def test_ground_truth_dir_without_codeowners_lock_is_still_required_when_it_only_has_auth_yaml(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    (sut / ".qc-agent" / "ground-truth").mkdir(parents=True)
+    write_owners(sut, "* @o/core\n")
+    assert any("thiếu quy tắc `/.qc-agent/" in line for line in owners_errors(tmp_path, sut, projects))
+
+
+def test_the_noteboard_reference_project_still_validates_clean_with_its_fake_team():
+    report = v.validate("noteboard", ROOT / "tests" / "fixtures" / "sut" / "noteboard", projects_dir=ROOT / "configs" / "projects",
+                        workers_dirs=[ROOT / "workers"])
+    assert not by_level(report, v.ERROR), messages(report)
+    assert not [f for f in report.findings if "owner mẫu" in f.message]
+
+
+# ---------- S4-11: dấu VERIFY của health path chặn validate ----------
+
+def _health_svc(route):
+    body = f'@app.get("{route}")\ndef health():\n    return {{}}\n' if route else ""
+    return f"from fastapi import FastAPI\napp = FastAPI()\n{body}"
+
+
+def test_unconfirmed_health_path_blocks_validate_until_the_mark_is_removed(tmp_path):
+    files = {"Dockerfile": "FROM x\nCOPY . .\nEXPOSE 8000\n", "apps/a/main.py": _health_svc("/health"), "apps/b/main.py": _health_svc("/api/health")}
+    sut, projects = generate_tree(tmp_path, files)
+    report = check(tmp_path, sut, projects)
+    blocked = [f for f in by_level(report, v.ERROR) if "qc-agent:todo VERIFY" in f.message and "sut_health_path" in f.message]
+    assert blocked and "TẠM" in blocked[0].message, messages(report)
+    workflow = sut / ".github" / "workflows" / "qc-gate.yml"
+    workflow.write_text(re.sub(r"  # qc-agent:todo VERIFY[^\n]*", "", workflow.read_text(encoding="utf-8")), encoding="utf-8")   # người đã đặt path thật
+    after = check(tmp_path, sut, projects)
+    assert not [f for f in by_level(after, v.ERROR) if "qc-agent:todo VERIFY" in f.message], messages(after)
+
+
+def test_proven_health_scope_validates_without_a_health_verify(tmp_path):
+    files = {"Dockerfile": "FROM x\nCOPY apps/a/ ./a\nEXPOSE 8000\n", "apps/a/main.py": _health_svc("/health"), "apps/b/main.py": _health_svc("/api/health")}
+    sut, projects = generate_tree(tmp_path, files)
+    assert not [f for f in by_level(check(tmp_path, sut, projects), v.ERROR) if "sut_health_path" in f.message]
+
+
+# ---------- SUT cần database (S4-09): WARN, không ERROR ----------
+
+def db_sut(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    (sut / "app").mkdir(exist_ok=True)
+    (sut / "app" / "main.py").write_text("import os\nURL = os.environ['DATABASE_URL']\n", encoding="utf-8")
+    return sut, projects
+
+
+def test_database_url_in_the_code_without_a_db_service_is_a_warning_not_an_error(tmp_path):
+    sut, projects = db_sut(tmp_path)
+    report = check(tmp_path, sut, projects)
+    assert not by_level(report, v.ERROR), messages(report)
+    warn = messages(report, v.WARN)
+    assert "DATABASE_URL (app/main.py)" in warn and "sut_db_image" in warn and "sut_base_url" in warn
+
+
+@pytest.mark.parametrize("declare", [{"sut_db_image": "postgres@sha256:" + "b" * 64, "sut_db_ready_cmd": "pg_isready"}, {"sut_base_url": "http://sut.internal:8000"}])
+def test_declaring_a_db_service_or_a_base_url_silences_the_database_warning(tmp_path, declare):
+    sut, projects = db_sut(tmp_path)
+    edit_workflow(sut, lambda job: job["with"].update(declare))
+    report = check(tmp_path, sut, projects)
+    assert "DATABASE_URL" not in messages(report, v.WARN) and not by_level(report, v.ERROR), messages(report)
+
+
+def test_code_without_database_variables_gets_no_database_warning(tmp_path):
+    sut, projects = generate(tmp_path, ui=False)
+    assert "DATABASE_URL" not in messages(check(tmp_path, sut, projects), v.WARN)
+
+
+def test_strict_turns_the_database_warning_into_a_failure_but_the_default_does_not(tmp_path, capsys):
+    sut, projects = db_sut(tmp_path)
+    args = ["validate", "--project", "vahan-rpa", "--sut-root", str(sut), "--projects-dir", str(projects), "--workers-dir", str(ROOT / "workers")]
+    assert cli_main(args) == 0
+    assert cli_main([*args, "--strict"]) == 3
+    assert "DATABASE_URL" in capsys.readouterr().out
+
+
+# ---------- S4-01: nhận cả qc-gate.yml lẫn tên cũ qc.yml ----------
+
+def edit_workflow_at(path, fn):
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    fn(data["jobs"]["qc"])
+    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+
+def test_both_caller_names_validate_and_only_the_old_one_gets_a_rename_note(tmp_path):
+    sut, projects = generate(tmp_path)
+    first = check(tmp_path, sut, projects)
+    assert not by_level(first, v.ERROR) and "tên cũ" not in messages(first, v.NOTE)
+    workflows = sut / ".github" / "workflows"
+    (workflows / "qc-gate.yml").rename(workflows / "qc.yml")
+    report = check(tmp_path, sut, projects)
+    assert not by_level(report, v.ERROR) and not by_level(report, v.WARN), messages(report) + messages(report, v.WARN)
+    assert "tên cũ .github/workflows/qc.yml" in messages(report, v.NOTE) and "git mv" in messages(report, v.NOTE)
+
+
+def test_the_old_name_is_still_checked_for_pins_and_inputs(tmp_path):
+    sut, projects = generate(tmp_path)
+    workflows = sut / ".github" / "workflows"
+    (workflows / "qc-gate.yml").rename(workflows / "qc.yml")
+    edit_workflow_at(workflows / "qc.yml", lambda job: job["with"].update(image="ghcr.io/muteen-felix/qc-agent:latest", typo_input="x"))
+    text = messages(check(tmp_path, sut, projects))
+    assert "ghim theo digest" in text and "typo_input" in text and "qc.yml" in text

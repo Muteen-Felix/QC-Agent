@@ -38,6 +38,7 @@ import jsonschema
 
 from qc_agent.core import egress
 from qc_agent.llm import client
+from qc_agent.llm.prices import PRICES, estimate_cost  # noqa: F401  (bảng giá DUY NHẤT nằm ở llm/prices.py; re-export để giữ tên cũ)
 from qc_agent.logging_setup import event
 
 log = logging.getLogger("qc_agent.llm")
@@ -49,13 +50,6 @@ MAX_RESULT_CHARS = 200_000          # chốt chặn cuối cho một tool_result
 _TOOL_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _PURPOSE = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 _monotonic = time.monotonic         # test thay thế để kiểm ngân sách thời gian mà không ngủ thật
-
-# USD / 1 triệu token (đầu vào, đầu ra, đọc cache); ghi cache = 1,25 × đầu vào. Giá cached 2026-09-25 từ tài liệu Claude API; model lạ thì không ước tính được cost.
-# Khoá dài hơn xếp trước để `claude-sonnet-5-5` không bị bắt bởi `claude-sonnet-5`.
-PRICES = {"claude-opus-5-5": (4.0, 20.0, 0.20), "claude-opus-5": (5.0, 25.0, 0.50), "claude-sonnet-5-5": (2.0, 10.0, 0.20),
-          "claude-sonnet-5": (2.0, 10.0, 0.20), "claude-haiku-4-5": (1.0, 5.0, 0.10)}
-_PRICE_KEYS = sorted(PRICES, key=len, reverse=True)
-
 
 @dataclass(frozen=True)
 class ToolOutcome:
@@ -95,16 +89,7 @@ class AgentRun:
     tool_calls: dict[str, int] = field(default_factory=dict)
     nudges: int = 0
     cost_usd_est: float | None = None
-
-
-def estimate_cost(model: str, usage: client.Usage) -> float | None:
-    key = next((k for k in _PRICE_KEYS if model.startswith(k)), None)
-    if key is None:
-        return None
-    price_in, price_out, price_read = PRICES[key]
-    total = (usage.input_tokens * price_in + usage.output_tokens * price_out + usage.cache_creation_input_tokens * price_in * 1.25
-             + usage.cache_read_input_tokens * price_read)
-    return total / 1_000_000
+    unknown_calls: int = 0                   # request cuối đã gửi mà không có response (timeout, đứt kết nối): chi phí CHƯA XÁC ĐỊNH, `usage` chưa gồm nó (S4-03)
 
 
 def _add(a: client.Usage, b: client.Usage) -> client.Usage:
@@ -201,7 +186,7 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
     def fail(error: client.LLMError) -> client.LLMError:
         """Đính số liệu dở dang (lượt, token, chi phí đã tốn) vào lỗi: không có nó thì người gọi chỉ thấy 0 dù các lượt trước đã bị tính tiền."""
         error.partial = AgentRun(stop="error", turns=turns, usage=usage, model=last_model, duration_s=_monotonic() - started,
-                                 tool_calls=dict(sorted(calls.items())), nudges=nudges, cost_usd_est=cost())
+                                 tool_calls=dict(sorted(calls.items())), nudges=nudges, cost_usd_est=cost(), unknown_calls=error.unknown_calls)
         return error
 
     with httpx.Client(transport=transport, timeout=timeout_s) as http:
@@ -237,10 +222,8 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
             began = _monotonic()
             try:
                 response = http.post(f"{base_url}/v1/messages", headers=headers, json=body)
-            except httpx.TimeoutException:
-                error = client.LLMError("timeout", f"quá {timeout_s:g}s")
-            except httpx.HTTPError as caught:
-                error = client.LLMError("unavailable", f"lỗi mạng ({type(caught).__name__})")   # không kèm str(caught): có thể chứa URL
+            except httpx.HTTPError as caught:   # gồm TimeoutException; chi phí chưa xác định nếu request đã có thể tới server (client._transport_error)
+                error = client._transport_error(caught, timeout_s)
             else:
                 error = None
             elapsed = _monotonic() - began
@@ -256,7 +239,7 @@ def run_agent(*, purpose: str, model: str, system: str, first_user: str, tools: 
                 payload = None
             if not isinstance(payload, dict):
                 client._log_call(logging.WARNING, purpose=purpose, model=model, stop_reason=None, usage=client.Usage(), duration_s=elapsed, kind="bad_output")
-                raise fail(client.LLMError("bad_output", "response không phải object JSON"))
+                raise fail(client.LLMError("bad_output", "response không phải object JSON", sent=True, unknown_calls=1))
             turn_usage = client._usage(payload.get("usage"))
             usage = _add(usage, turn_usage)
             last_model = payload["model"] if isinstance(payload.get("model"), str) else last_model

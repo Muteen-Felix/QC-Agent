@@ -244,3 +244,43 @@ def test_main_prints_json_and_always_exits_zero(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(ci, "report_run", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     assert ci.main(["--run-dir", "x", "--project", "demo", "--mode", "pr"]) == 0  # lỗi bất ngờ cũng không đổi verdict của job
     assert json.loads(capsys.readouterr().out) == {"error": "RuntimeError"}
+
+
+# ---- S4-03: dòng chi phí trong summary / Check Run / comment ----
+
+def run_with_usage(tmp_path, llm):
+    from qc_agent.core import report as core_report
+    from tests.test_report import usage_llm, with_selection
+    ctx = with_selection(usage_llm(**llm))
+    run_dir = tmp_path / "r-usage"
+    core_report.write(ctx, run_dir)
+    (run_dir / "results").mkdir(exist_ok=True)
+    return run_dir, json.loads((run_dir / "report.json").read_text(encoding="utf-8"))["llm_usage"]["line"]
+
+
+def test_summary_check_run_and_comment_carry_the_same_single_cost_line_with_cache(tmp_path):
+    run_dir, line = run_with_usage(tmp_path, {})
+    with FakeGitHub() as gh:
+        result = ci.report_run(run_dir, project="demo", mode="pr", exit_code=0, env=env_for(tmp_path, gh))
+    assert result["comment"] == "created" and len(gh.check_runs) == 1
+    expected = github.clean_md(line, 400)                          # đúng chuỗi của report, chỉ khác ở bước làm sạch Markdown (thoát ngoặc, ...)
+    check_summary, comment = gh.check_runs[0]["output"]["summary"], gh.comments[0]["body"]
+    assert expected in check_summary and expected in comment
+    for text in (check_summary, comment):
+        assert "4 196 in" in text and "4 096 từ cache" in text and "50 out" in text and text.count("~$") == 1   # MỘT con số tiền
+    assert "~$0.02" in check_summary
+
+
+def test_a_report_without_llm_usage_has_no_cost_line_and_does_not_break(tmp_path):
+    text = github.render_summary(run_with(tmp_path), project="noteboard", mode="pr")
+    assert "wallclock" not in text and "LLM:" not in text
+
+
+def test_the_cost_line_is_sanitized_because_task_ids_come_from_the_sut_repo(tmp_path):
+    run = run_with(tmp_path)
+    run["report"]["llm_usage"] = {"line": "wallclock 1s · LLM: 0 in (0 từ cache) / 0 out · worker: 9 token (tasks: <img src=x onerror=alert(1)> @everyone [x](http://evil.example)) · ~$0.00"}
+    text = github.render_summary(run, project="noteboard", mode="pr")
+    assert "<img" not in text and "@everyone" not in text and "[x](" not in text and "wallclock 1s" in text
+    for bad in (None, 3, ["x"]):
+        run["report"]["llm_usage"] = {"line": bad}
+        assert "wallclock" not in github.render_summary(run, project="noteboard", mode="pr")      # không phải chuỗi: bỏ qua, không lỗi

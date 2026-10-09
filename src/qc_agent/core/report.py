@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from qc_agent import costing
 from qc_agent.core.verdict import GateVerdict
 
 
@@ -49,10 +50,11 @@ def render(ctx: RunContext) -> tuple[str, dict]:
         (result for result in ctx.results.values() if result["verdict"]["gating"]),
         key=lambda result: result["task_id"],
     )
+    usage = _llm_usage(ctx)
     lines = [
         f"# QC Gate Report — run {ctx.run_id}",
         f"plan: {ctx.plan_path} ({ctx.plan_id}) · SUT: {ctx.sut_id} · {ctx.generated_at}",
-        _cost_line(ctx),
+        usage["line"],
         "",
     ]
     if ctx.gate.banner:
@@ -136,6 +138,7 @@ def render(ctx: RunContext) -> tuple[str, dict]:
             },
         },
     }
+    report_json["llm_usage"] = usage   # `line` là chuỗi DUY NHẤT của report.md, Check Run và comment (một con số tiền)
     if ctx.selection is not None:
         report_json["selection"] = {key: ctx.selection.get(key) for key in
                                     ("trigger_type", "source", "full_set", "fallback_reason", "floor", "workers", "suites", "floor_enforced_by_core")}
@@ -153,10 +156,14 @@ def write(ctx: RunContext, run_dir) -> tuple[str, dict]:
     (run_dir / "report.md").write_text(md, encoding="utf-8", newline="\n")
     text = json.dumps(report_json, ensure_ascii=False, indent=2) + "\n"
     (run_dir / "report.json").write_text(text, encoding="utf-8", newline="\n")
+    if report_json["llm_usage"]["calls"]:   # mảng JSON, mỗi lời gọi LLM đã gửi một dòng, không có nội dung (ngữ nghĩa `null` ở qc_agent/costing.py); vắng mặt = không ghi nhận lời gọi nào
+        (run_dir / "llm_usage.json").write_text(json.dumps(report_json["llm_usage"]["calls"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     return md, report_json
 
 
-def _cost_line(ctx: RunContext) -> str:
+def _llm_usage(ctx: RunContext) -> dict:
+    """Khối `llm_usage` của report.json: dòng của Diff Agent (từ `selection.json`, đã có `est_usd`: `core` không tính giá, không import `qc_agent.llm`), tổng, và MỘT dòng chi phí
+    cộng thêm phần worker (contract chỉ cho `cost.tokens/usd` tổng, không tách in/out nên hiện riêng)."""
     token_tasks = []
     tokens = 0
     cost = 0.0
@@ -171,8 +178,14 @@ def _cost_line(ctx: RunContext) -> str:
             cost += usd
     minutes, seconds = divmod(int(round(ctx.wallclock_s)), 60)
     elapsed = f"{minutes}m{seconds:02d}s" if minutes else f"{seconds}s"
-    task_text = ", ".join(token_tasks) if token_tasks else "—"
-    return f"wallclock {elapsed} · LLM tokens: {tokens} (tasks: {task_text}) · cost ${cost:.2f}"
+    rows = costing.selection_rows(ctx.selection)
+    summary = costing.summarize(rows)
+    line = costing.cost_line(elapsed=elapsed, summary=summary, worker_tokens=tokens, worker_tasks=token_tasks, worker_usd=cost)
+    return {"calls": rows, "summary": summary, "line": line}
+
+
+def _cost_line(ctx: RunContext) -> str:
+    return _llm_usage(ctx)["line"]
 
 
 def _deterministic_section(ctx: RunContext, gating: list) -> list[str]:

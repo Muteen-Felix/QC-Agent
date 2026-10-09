@@ -1,0 +1,440 @@
+{
+  "datasets": {
+    "monorepo-poly": {
+      "dataset": "monorepo-poly",
+      "split": "tune",
+      "token_evidence": "estimate",
+      "model": "claude-haiku-4-5-20251001",
+      "prompt_version": "diff-select/1",
+      "labels_status": "unreviewed",
+      "cost_target": {
+        "median_reduction": null,
+        "reason": "Đo 2026-10-07 (eval_cost --ceiling --split all, estimate): trần chặt 1-B_min/A = 7,7% ở median (P90 12,1%) trên 20 ca LLM vì đa số diff chỉ chạm 1-2 file nhỏ; 40% ở median không khả thi. Diff lớn còn dư địa (mp-010, 45 file: trần 58,7%) nhưng không đại diện cho median (S4-04, phương án A)."
+      },
+      "prefix_tokens": 907,
+      "pruner": {
+        "sha": "78f6f90498d6e2a0d22bc079ef0214d78ec4689f",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "baseline_pruner": {
+        "sha": "2f4c2dec4a1a4c5e37037520bf7dbd555719755c",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "policy_sha": "4826e6a014a77b490a47ad3863c9ffd7f66880938910efd0bfd88634701ee11f",
+      "module_map_sha": "5e3bf6f778a0d7f7ef5460df0d2066371322c7f0d6926a2fbc9eaf36cfca5580",
+      "cases_detail": [
+        {
+          "name": "mp-001",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1024,
+            "P": 907,
+            "B_min": 928,
+            "B1": 1003,
+            "B0": 1078
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-002",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1036,
+            "P": 907,
+            "B_min": 928,
+            "B1": 1005,
+            "B0": 1081
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-003",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 988,
+            "P": 907,
+            "B_min": 929,
+            "B1": 929,
+            "B0": 955
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-004",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 962,
+            "P": 907,
+            "B_min": 942,
+            "B1": 942,
+            "B0": 1090
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-008",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1020,
+            "P": 907,
+            "B_min": 928,
+            "B1": 990,
+            "B0": 1064
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-010",
+          "split": "tune",
+          "route": "llm",
+          "files": 45,
+          "tokens": {
+            "A": 7792,
+            "P": 907,
+            "B_min": 2032,
+            "B1": 6247,
+            "B0": 10372
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-011",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1043,
+            "P": 907,
+            "B_min": 934,
+            "B1": 934,
+            "B0": 960
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-013",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1030,
+            "P": 907,
+            "B_min": 930,
+            "B1": 930,
+            "B0": 956
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-014",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1122,
+            "P": 907,
+            "B_min": 952,
+            "B1": 981,
+            "B0": 1086
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-015",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1145,
+            "P": 907,
+            "B_min": 953,
+            "B1": 1084,
+            "B0": 1253
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-017",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1015,
+            "P": 907,
+            "B_min": 929,
+            "B1": 973,
+            "B0": 1054
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-018",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 2,
+          "tokens": {
+            "A": 1061,
+            "P": 907,
+            "B_min": 944,
+            "B1": 1014,
+            "B0": 1147
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-019",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 971,
+            "P": 907,
+            "B_min": 926,
+            "B1": 926,
+            "B0": 952
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-020",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1083,
+            "P": 907,
+            "B_min": 949,
+            "B1": 999,
+            "B0": 1097
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-021",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 1001,
+            "P": 907,
+            "B_min": 926,
+            "B1": 956,
+            "B0": 1025
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-022",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1005,
+            "P": 907,
+            "B_min": 929,
+            "B1": 959,
+            "B0": 1040
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-023",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 1002,
+            "P": 907,
+            "B_min": 928,
+            "B1": 963,
+            "B0": 1038
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-024",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 48604,
+            "P": 907,
+            "B_min": 929,
+            "B1": 3334,
+            "B0": 3340
+          },
+          "token_cap_at": [],
+          "truncated": 1,
+          "dropped_hunks": 0,
+          "baseline_truncated": 1,
+          "baseline_dropped_hunks": 0
+        }
+      ],
+      "cases": 18,
+      "llm_cases": 14,
+      "excluded": {
+        "full_set": [
+          "mp-019",
+          "mp-021",
+          "mp-023"
+        ],
+        "floor_only": [
+          "mp-018"
+        ],
+        "token_cap": []
+      },
+      "target": null,
+      "tokens": {
+        "A": {
+          "median": 1033.0,
+          "p90": 7792
+        },
+        "P": {
+          "median": 907.0,
+          "p90": 907
+        },
+        "B_min": {
+          "median": 929.5,
+          "p90": 953
+        },
+        "B0": {
+          "median": 1079.5,
+          "p90": 3340
+        },
+        "B1": {
+          "median": 985.5,
+          "p90": 3334
+        }
+      },
+      "ceiling": {
+        "loose": {
+          "median": 0.12196742512276493,
+          "p90": 0.8835985626283368
+        },
+        "tight": {
+          "median": 0.10066724144394046,
+          "p90": 0.7392197125256674
+        }
+      },
+      "reduction_b0": {
+        "median": -0.03662475798348164,
+        "p90": 0.07957813998082452
+      },
+      "reduction_b1": {
+        "median": 0.056495854180294514,
+        "p90": 0.19828028747433268
+      },
+      "delta_points": 9.3,
+      "increased_vs_b0": [],
+      "above_raw": {
+        "b0": [
+          "mp-001",
+          "mp-002",
+          "mp-004",
+          "mp-008",
+          "mp-010",
+          "mp-015",
+          "mp-017",
+          "mp-020",
+          "mp-022"
+        ],
+        "b1": []
+      },
+      "b_min_ge_a": [],
+      "cut": {
+        "b0": 1,
+        "b1": 1
+      },
+      "margin_points": -29.9,
+      "ceiling_ok": false,
+      "target_met": null
+    }
+  },
+  "aggregate": null
+}

@@ -24,10 +24,10 @@ from qc_agent.scaffold import templates as t
 
 SYSTEM_ERROR = 3
 MAX_SUGGEST_LINES = 40
-WORKFLOW = ".github/workflows/qc.yml"
+WORKFLOW = t.GATE_WORKFLOW
 EXPLORE_FLOW = ".qc-agent/midscene/explore.yaml"
 SCAN_DIRS = (".qc-agent",)
-SCAN_FILES = (WORKFLOW,)
+SCAN_FILES = t.CALLERS   # qc-gate.yml, rồi tên cũ qc.yml: repo nào có file nào thì file đó được so health path
 SUFFIXES = (".yaml", ".yml", ".js", ".mjs")
 
 _BEGIN = re.compile(r"^(?P<indent>\s*)(?P<comment>#|//)\s*" + re.escape(t.REFINE_BEGIN) + r"\s+(?P<name>[a-z0-9_]+)\s*$")
@@ -158,7 +158,7 @@ def refine(root, openapi_source: str, *, ui_urls: list[str] | None = None, sugge
             old = [line.rstrip("\r\n") for line in lines[region.start:region.end + 1]]
             if old != replacement:
                 edits.append((region.start, region.end, replacement))
-        if rel == WORKFLOW:
+        if rel in t.CALLERS:
             fix = _health_fix(lines, api_paths)
             if fix:
                 edits.append((fix[0], fix[0], [fix[1]]))

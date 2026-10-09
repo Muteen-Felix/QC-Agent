@@ -1,0 +1,8 @@
+diff --git a/apps/api/db/queries.py b/apps/api/db/queries.py
+index b7f47ce..9141b9b 100644
+--- a/apps/api/db/queries.py
++++ b/apps/api/db/queries.py
+@@ -1,2 +1,2 @@
+ def find_item(conn, item_id: int):
+-    return conn.execute("SELECT id, name FROM items WHERE id = ?", (item_id,)).fetchone()
++    return conn.execute("SELECT id, name FROM items WHERE id = " + str(item_id)).fetchone()

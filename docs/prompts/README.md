@@ -42,9 +42,14 @@ flowchart LR
     C6 --> C7
   end
   subgraph S4["Sprint 4 · E2E + chi phí"]
-    D1[S4-01 workflow cuối] --> D2[S4-02 cache] --> D3[S4-03 prompt cache + trần token] --> D4[S4-04 tinh chỉnh pruner]
+    D9[S4-09 DB phụ tuỳ chọn] --> D1[S4-01 workflow cuối] --> D2[S4-02 cache] --> D3[S4-03 prompt cache + trần token] --> D4[S4-04 tinh chỉnh pruner]
+    D5b[S4-05b Select thành công trong container] --> D5
     D3 --> D5[S4-05 harness local] --> D6[S4-06 E2E sandbox]
     D5 --> D7[S4-07 runbook + log + đóng gói]
+    D9 -. SUT cần DB .-> D6
+    D8[S4-08 scanner init monorepo] --> D10[S4-10 validate bắt lỗi cấu hình]
+    D8 --> D11[S4-11 health path monorepo]
+    D10 -. nên nối tiếp .-> D11
   end
   S1 --> S2 --> S3 --> S4
 ```
@@ -53,6 +58,7 @@ Chạy song song được, nếu có hai người hoặc hai worktree:
 - **S1**: S1-03 chạy song song với S1-01/S1-02.
 - **S2**: S2-03 chạy song song với S2-02; S2-06 chạy song song với S2-04/05.
 - **S3**: S3-05 và S3-06 chạy song song sau S3-03.
+- **S4**: S4-05b làm ngay (không phụ thuộc S4-01…03); nhánh onboarding S4-08 → S4-10 → S4-11 độc lập với phần còn lại. S4-05b và S4-05 cùng sửa `tools/run_reusable_locally.py` nên phải nối tiếp. **Khuyến nghị làm tuần tự S4-08 → S4-10 → S4-11 trên một worktree** vì S4-10 và S4-11 cùng sửa `docs/user-guide-sprint-1.md` và `tests/test_scaffold_validate.py`; chỉ song song nếu tách worktree và chủ động xử lý merge (S4-11 chỉ bắt buộc sau S4-08).
 
 ## Danh mục
 
@@ -82,13 +88,18 @@ Chạy song song được, nếu có hai người hoặc hai worktree:
 | [S3-05](sprint-3/S3-05-pr-review-checkrun.md) inline review + Check Run | S3.6, S3.7 | — |
 | [S3-06](sprint-3/S3-06-jira.md) đồng bộ Jira | S3.8 | — |
 | [S3-07](sprint-3/S3-07-wiring-e2e.md) nối dây CI, web, E2E harness | phần "File sửa" còn lại của S3 | — |
+| [S4-09](sprint-4/S4-09-sut-with-database.md) dịch vụ DB phụ tuỳ chọn | S4.9 | loại DB/secret của SUT pilot (nếu có) |
 | [S4-01](sprint-4/S4-01-workflows-final.md) workflow cuối + caller | S4.1 | — |
 | [S4-02](sprint-4/S4-02-select-gt-cache.md) cache Select + GT | S4.2 | — |
 | [S4-03](sprint-4/S4-03-prompt-cache-token-cap.md) prompt caching, trần token, chi phí | S4.3 | tôi quyết nếu prefix < ngưỡng cache |
 | [S4-04](sprint-4/S4-04-pruner-tuning.md) tinh chỉnh pruner + `eval_cost` | S4.4 | API key |
+| [S4-05b](sprint-4/S4-05b-select-success-container.md) Select thành công trong container | S4.5b | Docker |
 | [S4-05](sprint-4/S4-05-local-harness.md) harness trọn chuỗi | S4.5 | Docker |
-| [S4-06](sprint-4/S4-06-e2e-sandbox.md) E2E trên repo sandbox | S4.6 | repo sandbox, Jira sandbox, API key |
+| [S4-06](sprint-4/S4-06-e2e-sandbox.md) E2E trên repo sandbox | S4.6 (+ kiểm tay DoD S1) | repo sandbox public/gói trả phí, Jira sandbox, API key, xác nhận câu hỏi #3 |
 | [S4-07](sprint-4/S4-07-runbook-logs-packaging.md) runbook, log, đóng gói | S4.7 + file đóng gói | — |
+| [S4-08](sprint-4/S4-08-init-scanner-monorepo.md) scanner `init` cho monorepo (tìm thấy ≠ xác nhận, context từ `COPY`) | S4.8 | — |
+| [S4-10](sprint-4/S4-10-validate-config-errors.md) `validate` bắt lỗi cấu hình | S4.10 | — |
+| [S4-11](sprint-4/S4-11-health-path-monorepo.md) chọn health path đúng service | S4.11 | — |
 | [dod-verify](dod-verify.md) nghiệm thu một sprint | DoD từng sprint | tuỳ sprint |
 
 ## Hiệu chỉnh so với plan (đã áp vào các prompt)
@@ -145,6 +156,16 @@ Tìm ra khi đối chiếu plan với code và với API thật (tài liệu Cla
     - **Golden do dev gán** (`labeled_by: "dev — CẦN QA DUYỆT"`, plan §3.4 đòi QA gán): công cụ in nhắc mỗi lần chạy.
     - **Số đo ở chế độ `fake` chỉ kiểm đường ống**: response giả do dev soạn tay nên coverage 100% và TC xanh 100% không nói gì về chất lượng LLM. Đo thật (median 3 lần) để dành cho phiên `dod-verify` và **cần bạn đồng ý** (tốn tiền, gửi PRD ra ngoài).
     - **Noteboard fixture giờ có `.github/CODEOWNERS`** (vùng do `init` sinh, team giả `@Muteen-Felix/qa-team`): vì `qc-agent validate` đòi CODEOWNERS khi repo có Ground-Truth.
+17. **Code đã có những thứ prompt S4 viết như việc mới** (kiểm 2026-10-06, áp vào S4-02/03/07):
+    - Provider **Gemini** trong `llm/client.py` (chọn theo tiền tố `gemini-*`, retry/fallback riêng); `.env.example` đặt mẫu Gemini. `cache_control` và `count_tokens` chỉ áp cho Claude; `est_usd` của Gemini là `null`.
+    - **GT agent** (`llm/agent_loop.py`, `groundtruth/agent.py`, `--agent`) đã gắn `cache_control` và có ngân sách riêng (`QC_GT_AGENT_MAX_*`), nên trần `QC_LLM_MAX_INPUT_TOKENS` của S4-03 không áp cho agent.
+    - **Bảng giá** đã có ở `agent_loop.PRICES`; S4-03 chuyển nó sang `llm/prices.py`, không tạo bảng thứ hai. `core/report.py: _cost_line` đã có, S4-03 mở rộng thay vì thêm dòng.
+18. **`schemas/selection.json` đã có** `source: cache` và `fallback_reason: token_cap`; thêm `cache_hit` vào khối `llm` (`additionalProperties: false`) là sửa schema dữ liệu, không phải contract.
+19. **Cache GT chỉ áp cho bộ sinh một lời gọi** (đề xuất, chốt ở S4-02): agent đọc mã nguồn nên cache theo PRD sẽ trả kết quả cũ khi code đổi.
+20. **Đo token của pruner tách FULL SET** (S4-04), cùng công thức `eval_selector` đã sửa 2026-10-06: diff đi FULL SET không gọi LLM nên không tính vào median giảm token. Baseline recall là số đo thật `eval/selector-real.json` (97,1%), không chỉ ngưỡng 90%.
+21. **S4.9 chọn phương án (b): dịch vụ DB phụ tuỳ chọn trong reusable workflow** (quyết định của Felix, 2026-10-06), khác đề xuất (a)-trước ban đầu. DB là tuỳ chọn: SUT không cần DB giữ đường chạy cũ; không mặc định PostgreSQL; bí mật qua secret, không qua `sut_env`. Vì thêm input cho workflow nên S4-09 làm **trước** S4-01. `docs/implementation-plan.md` không sửa trong đợt cập nhật prompt này.
+22. **Thứ tự Jira → Report trong `qc-gate.reusable.yml` là có chủ ý** (S4-01): Report dựng Check Run nên phải sau Jira để hiện cảnh báo Jira 401/503.
+23. **S4-08 rộng hơn plan S4.8** (rà soát 2026-10-06; `docs/implementation-plan.md` S4.8 giữ nguyên): (a) sửa `init.py` làm mất `qc-agent:todo VERIFY` khi giá trị trùng mặc định của workflow (`sut_dockerfile`, `sut_context`), bằng một helper dùng chung; (b) context suy từ nguồn `COPY`/`ADD` theo từng context ứng viên, mơ hồ hoặc không phân tích được thì VERIFY, không suy từ vị trí Dockerfile; (c) hàm kiểm `COPY` trả cấu trúc (nguồn được phân loại) để S4-10 và S4-11 dùng chung; (d) luật ưu tiên Dockerfile chỉ là gợi ý, một ứng viên có dấu hiệu là web/service khác cũng phải VERIFY. **Health path không nằm ở S4-08**: đã tách thành task S4.11 của plan (cùng lỗi gốc: quét toàn repo, không biết service nào đã chọn).
 
 ## Cần bạn quyết (prompt sẽ dừng lại hỏi đúng chỗ)
 
@@ -182,8 +203,10 @@ S1-00 ghi rủi ro này vào `architecture.md`.
 
 | Thứ cần chuẩn bị | Bước dùng tới |
 |---|---|
-| Repo sandbox GitHub | S1-07 (kiểm tay, có thể dời), S4-06 |
+| Repo sandbox GitHub (**public hoặc gói trả phí**: GitHub Free + private không có branch protection) | S1-07 (kiểm tay, đã dời sang S4-06 kịch bản B), S4-06 |
 | Jira sandbox + `user_map` | S3-06/07 dùng fake Jira; S4-06 dùng Jira thật |
 | `ANTHROPIC_API_KEY` có trần ngân sách | S1-08, S2-07, S4-03/04/06 (chỉ các lượt đo thật) |
 | QA gán nhãn golden set | S1-08 (`noteboard-golden.yaml`), S2-07 (`labels.yaml`) |
 | Approval của nhóm core cho contract 2.0.0 | S3-01 |
+| Xác nhận bằng văn bản câu hỏi #3 (được gửi PRD/diff/mã nguồn qua LLM ngoài) | mọi lượt LLM thật, nhất là S4-06 |
+| Loại DB + secret của SUT pilot cần DB | S4-09, S4-06 (nếu dùng SUT đó) |

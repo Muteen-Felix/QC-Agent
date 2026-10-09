@@ -551,3 +551,353 @@ def test_gt_the_provider_switch_is_a_case_on_the_gemini_prefix_only():
     run = gt_step("generate", "Generate Ground-Truth")["run"]
     assert 'case "$model" in gemini-*) key_var=GEMINI_API_KEY ;; *) key_var=ANTHROPIC_API_KEY ;; esac' in run
     assert "${{" not in run and "${!key_var:-}" in run
+
+
+# ==================== DB phụ tuỳ chọn cho SUT (S4-09) ====================
+
+DB_INPUTS = ("sut_db_image", "sut_db_env", "sut_db_ready_cmd", "sut_db_port")
+DB_SECRETS = ("SUT_SECRET_ENV", "SUT_DB_SECRET_ENV")
+MARKER = "MARKER-s3cr3t-9f2c41"
+
+
+def test_db_inputs_and_secrets_are_declared_and_optional():
+    call = DATA[True]["workflow_call"]
+    for name in DB_INPUTS:
+        assert call["inputs"][name]["type"] == "string" and call["inputs"][name]["default"] == "" and not call["inputs"][name].get("required"), name   # rỗng = không DB
+    for name in DB_SECRETS:
+        assert call["secrets"][name] == {"required": False}, name
+    start = step("Start SUT")
+    assert start["env"]["SUT_DB_IMAGE"] == "${{ inputs.sut_db_image }}" and start["env"]["ALLOW_UNPINNED"] == "${{ inputs.allow_unpinned_image }}"
+    assert start["env"]["SUT_SECRET_ENV"] == "${{ secrets.SUT_SECRET_ENV }}" and start["env"]["SUT_DB_SECRET_ENV"] == "${{ secrets.SUT_DB_SECRET_ENV }}"
+    assert [s.get("name") for s in STEPS if "secrets.SUT_SECRET_ENV" in json.dumps(s) or "secrets.SUT_DB_SECRET_ENV" in json.dumps(s)] == ["Start SUT"]   # bí mật chỉ nằm ở một step
+
+
+def test_db_image_must_be_pinned_by_digest_like_the_qc_agent_image():
+    run = step("Start SUT")["run"]
+    assert "*@sha256:*) ;;" in run and '"$ALLOW_UNPINNED" != "true"' in run and "sut_db_image phải ghim theo digest" in run
+    assert run.index("sut_db_image phải ghim theo digest") < run.index("docker run -d --name db")      # kiểm trước khi chạy/pull
+    assert DATA[True]["workflow_call"]["inputs"]["allow_unpinned_image"]["default"] is False
+
+
+def test_start_sut_never_traces_and_never_passes_a_secret_on_the_command_line():
+    run = step("Start SUT")["run"]
+    assert not re.search(r"set\s+-\w*x", run) and "xtrace" not in run
+    assert "--env-file" in run and "::add-mask::" in run and "umask 077" in run and "chmod 600" in run
+    for command in re.findall(r"docker (?:run|exec)[^\n]*", run):
+        assert "SECRET" not in command.replace("--env-file", "").replace("db_secret", "").replace("sut_secret", ""), command   # secret chỉ vào qua --env-file
+    assert not re.search(r'-e\s+"?\$\{?SUT(_DB)?_SECRET_ENV', run) and 'echo "$SUT' not in run
+
+
+def test_db_starts_before_the_sut_and_the_cleanup_removes_it_with_the_env_files():
+    run = step("Start SUT")["run"]
+    assert run.index("docker run -d --name db") < run.index('docker build -f "$SUT_DOCKERFILE"') < run.index("docker run -d --name sut")
+    db_line = re.search(r"docker run -d --name db[^\n]*", run).group(0)
+    assert "--network qc-net" in db_line and "-p " not in db_line                                  # không publish cổng DB ra runner
+    clean = step("Clean up SUT")["run"]
+    assert "docker rm -f sut ui db" in clean and "sut-secret.env" in clean and "db-secret.env" in clean
+
+
+# ---- chạy THẬT bước "Start SUT" với `docker`/`sleep` giả (bash, không cần Docker) ----
+
+START_ENV = {key: "" for key in step("Start SUT")["env"]}
+
+
+@pytest.fixture
+def start(tmp_path):
+    """Chạy `run:` của "Start SUT". `docker` giả ghi mỗi lệnh (đối số nối bằng dấu cách) ra file; `sleep` giả để vòng chờ không tốn thời gian."""
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir()
+    (bindir / "docker").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$DOCKER_LOG"\n'
+                                   'if [ "$1" = inspect ]; then if [ "${!#}" = sut ]; then echo "${FAKE_SUT_RUNNING:-true}"; else echo "${FAKE_DB_RUNNING:-true}"; fi; fi\n'
+                                   '[ "$1" = run ] && [[ " $* " == *" --rm "* ]] && exit "${FAKE_PROBE_RC:-0}"\n'
+                                   '[ "$1" = exec ] && exit "${FAKE_DB_EXEC_RC:-0}"\nexit 0\n', encoding="utf-8", newline="\n")
+    (bindir / "sleep").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n")
+    for name in ("docker", "sleep"):
+        (bindir / name).chmod(0o755)
+    script = tmp_path / "start.sh"
+    script.write_text(step("Start SUT")["run"], encoding="utf-8", newline="\n")
+
+    def run(**env):
+        log, output, runner_temp = tmp_path / "docker.log", tmp_path / "output.txt", tmp_path / "rt"
+        log.write_text("", encoding="utf-8")
+        output.write_text("", encoding="utf-8")
+        runner_temp.mkdir(exist_ok=True)
+        full = {**os.environ, **START_ENV, "IMAGE": "qc-agent:dev", "SUT_DOCKERFILE": "Dockerfile", "SUT_CONTEXT": ".", "SUT_PORT": "8000", "SUT_HEALTH_PATH": "/",
+                "ALLOW_UNPINNED": "false", "GITHUB_OUTPUT": output.as_posix(), "RUNNER_TEMP": runner_temp.as_posix(), "DOCKER_LOG": log.as_posix(),
+                "PATH": str(bindir) + os.pathsep + os.environ["PATH"], **env}
+        done = subprocess.run([BASH, script.as_posix()], cwd=tmp_path, env=full, capture_output=True, text=True, encoding="utf-8", timeout=120)
+        lines = [line for line in log.read_text(encoding="utf-8").splitlines() if line]
+        return done, lines, runner_temp
+    return run
+
+
+PINNED_DB = "postgres@sha256:" + "b" * 64
+
+
+def leaks(done, calls):
+    """Mọi nơi chuỗi đánh dấu có thể lọt ra: lệnh docker, stderr, và stdout ngoài các dòng `::add-mask::` (runner của GitHub nuốt các dòng đó)."""
+    visible = [line for line in done.stdout.splitlines() if not line.startswith("::add-mask::")]
+    return MARKER in "\n".join(calls) or MARKER in "\n".join(visible) or MARKER in done.stderr
+
+
+@needs_bash
+def test_without_db_and_secrets_the_sut_command_is_exactly_what_it_was(start):
+    done, calls, _ = start(SUT_ENV="QC_BUGS=none\nA=b")
+    assert done.returncode == 0, done.stderr
+    assert "run -d --name sut --network qc-net -e QC_BUGS=none -e A=b qc-sut" in calls
+    assert not any(c.startswith("run -d --name db") for c in calls) and not any("--env-file" in c for c in calls)
+
+
+@needs_bash
+def test_base_url_skips_both_the_db_and_the_sut(start):
+    done, calls, _ = start(SUT_BASE_URL="http://x:1", SUT_DB_IMAGE=PINNED_DB, SUT_DB_READY_CMD="true", SUT_SECRET_ENV=f"K={MARKER}")
+    assert done.returncode == 0 and calls == ["network create qc-net"] and "sut_db_image bị bỏ qua" in done.stdout
+    assert not leaks(done, calls) and "::add-mask::" not in done.stdout                            # không đọc secret thì không có gì để che
+
+
+@needs_bash
+def test_db_runs_first_then_the_sut_and_secrets_arrive_only_through_env_files(start):
+    done, calls, runner_temp = start(SUT_DB_IMAGE=PINNED_DB, SUT_DB_ENV="POSTGRES_DB=app", SUT_DB_READY_CMD="pg_isready -h 127.0.0.1",
+                                     SUT_DB_SECRET_ENV=f"POSTGRES_PASSWORD={MARKER}-db\n", SUT_SECRET_ENV=f"DATABASE_URL=postgresql://a:{MARKER}-url@db:5432/app\r\nTOKEN={MARKER}-tok")
+    assert done.returncode == 0, done.stdout + done.stderr
+    kinds = [next(k for k in ("run -d --name db", "build", "run -d --name sut") if c.startswith(k)) for c in calls if c.startswith(("run -d", "build"))]
+    assert kinds == ["run -d --name db", "build", "run -d --name sut"]
+    db_run = next(c for c in calls if c.startswith("run -d --name db"))
+    assert db_run.endswith(f"-e POSTGRES_DB=app --env-file {runner_temp.as_posix()}/db-secret.env {PINNED_DB}")
+    assert next(c for c in calls if c.startswith("run -d --name sut")) == f"run -d --name sut --network qc-net --env-file {runner_temp.as_posix()}/sut-secret.env qc-sut"
+    assert "exec db sh -c pg_isready -h 127.0.0.1" in calls
+    assert not leaks(done, calls) and f"::add-mask::{MARKER}-tok" in done.stdout and f"::add-mask::{MARKER}-db" in done.stdout   # được yêu cầu che, không lọt ra chỗ khác
+    assert (runner_temp / "sut-secret.env").read_text(encoding="utf-8").splitlines() == [f"DATABASE_URL=postgresql://a:{MARKER}-url@db:5432/app", f"TOKEN={MARKER}-tok"]
+    assert (runner_temp / "db-secret.env").read_text(encoding="utf-8") == f"POSTGRES_PASSWORD={MARKER}-db\n"
+    if os.name != "nt":
+        assert oct((runner_temp / "sut-secret.env").stat().st_mode & 0o777) == "0o600"
+
+
+@needs_bash
+def test_a_secret_without_a_db_still_reaches_the_sut_by_env_file(start):
+    done, calls, runner_temp = start(SUT_SECRET_ENV=f"SECRET_KEY={MARKER}")
+    assert done.returncode == 0 and f"run -d --name sut --network qc-net --env-file {runner_temp.as_posix()}/sut-secret.env qc-sut" in calls
+    assert not any(c.startswith("run -d --name db") for c in calls) and not (runner_temp / "db-secret.env").exists()
+    assert not leaks(done, calls)
+
+
+@needs_bash
+@pytest.mark.parametrize("env, message", [
+    ({"SUT_DB_IMAGE": "postgres:17", "SUT_DB_READY_CMD": "true"}, "phải ghim theo digest"),
+    ({"SUT_DB_IMAGE": PINNED_DB}, "sut_db_ready_cmd hoặc sut_db_port"),
+    ({"SUT_DB_IMAGE": "--privileged", "SUT_DB_READY_CMD": "true"}, "sut_db_image không hợp lệ"),
+    ({"SUT_DB_IMAGE": PINNED_DB, "SUT_DB_PORT": "5432; id"}, "sut_db_port không hợp lệ"),
+])
+def test_invalid_db_inputs_stop_before_any_container_starts(start, env, message):
+    done, calls, _ = start(**env)
+    assert done.returncode == 1 and message in done.stdout and calls == ["network create qc-net"]
+
+
+@needs_bash
+def test_an_unpinned_db_image_is_allowed_only_with_allow_unpinned_image(start):
+    done, calls, _ = start(SUT_DB_IMAGE="postgres:17", SUT_DB_READY_CMD="true", ALLOW_UNPINNED="true")
+    assert done.returncode == 0 and "::warning::sut_db_image không ghim theo digest" in done.stdout and any(c.endswith(" postgres:17") for c in calls)
+
+
+@needs_bash
+@pytest.mark.parametrize("secret_name, text", [("SUT_SECRET_ENV", f"GOOD=1\nnot a pair {MARKER}"), ("SUT_DB_SECRET_ENV", f"{MARKER}"), ("SUT_SECRET_ENV", f"1BAD={MARKER}")])
+def test_a_malformed_secret_line_fails_without_printing_it(start, secret_name, text):
+    done, calls, _ = start(**{"SUT_DB_IMAGE": PINNED_DB, "SUT_DB_READY_CMD": "true", secret_name: text})
+    assert done.returncode == 1 and f"{secret_name} dòng" in done.stdout
+    assert not leaks(done, calls) and not any(c.startswith("run -d --name sut") for c in calls)
+
+
+@needs_bash
+@pytest.mark.parametrize("env", [{"FAKE_DB_EXEC_RC": "1"}, {"FAKE_DB_RUNNING": "false"}])
+def test_a_db_that_never_gets_ready_or_exits_turns_the_step_red_with_its_logs_only(start, env):
+    done, calls, _ = start(SUT_DB_IMAGE=PINNED_DB, SUT_DB_READY_CMD="pg_isready", SUT_DB_SECRET_ENV=f"POSTGRES_PASSWORD={MARKER}", **env)
+    assert done.returncode == 1 and "::error::db không sẵn sàng sau 120s" in done.stdout
+    assert "logs db" in calls and not any(c.startswith("build") for c in calls)                  # SUT không được dựng khi DB hỏng
+    assert not leaks(done, calls)
+
+
+@needs_bash
+def test_the_port_probe_is_used_when_only_sut_db_port_is_given(start):
+    done, calls, _ = start(SUT_DB_IMAGE=PINNED_DB, SUT_DB_PORT="5432")
+    assert done.returncode == 0 and not any(c.startswith("exec db") for c in calls)
+    joined = " ".join(calls)                                                                      # mã thăm dò nhiều dòng nên một lệnh trải trên nhiều dòng log
+    assert "run --rm --network qc-net --entrypoint python qc-agent:dev -c import socket, sys" in joined and ".close() db 5432" in joined
+
+
+@needs_bash
+def test_a_sut_container_that_already_died_fails_right_away_with_its_logs_instead_of_waiting_out_the_loop(start):
+    done, calls, _ = start(FAKE_PROBE_RC="1", FAKE_SUT_RUNNING="false")
+    assert done.returncode == 1 and "::error::sut đã thoát trước khi sẵn sàng" in done.stdout and "sau 120s" not in done.stdout
+    assert "logs sut" in calls and sum(c.startswith("run --rm") for c in calls) == 1              # thăm dò đúng một lần rồi dừng
+
+
+@needs_bash
+def test_a_sut_that_is_alive_but_never_answers_still_waits_the_full_loop_then_reports_the_timeout(start):
+    done, calls, _ = start(FAKE_PROBE_RC="1")
+    assert done.returncode == 1 and "::error::sut không sẵn sàng sau 120s" in done.stdout
+    assert sum(c.startswith("run --rm") for c in calls) == 60 and "logs sut" in calls
+
+
+@needs_bash
+def test_a_sut_that_answers_on_the_first_probe_is_not_affected(start):
+    done, calls, _ = start()
+    assert done.returncode == 0 and sum(c.startswith("run --rm") for c in calls) == 1 and not any(c.startswith("inspect") for c in calls)
+
+
+# ==================== S4-01: bản cuối của hai reusable workflow ====================
+
+ORDER = ["Log in to GHCR", "Pull qc-agent image", "Fetch policy", "Start SUT", "Refine (onboarding suggestions)", "Post refine review", "Upload refine patch",
+         "Restore Select cache", "Select (PR)", "Save Select cache", "Run qc-agent gate", "PR review", "Jira (Low)", "Report (Check Run, PR comment, history, webhook)",
+         "Upload run artifacts", "Clean up SUT", "Enforce gate result"]
+
+
+def test_gate_steps_run_in_the_final_order_with_jira_before_the_report():
+    names = [n for n in NAMES if not n.startswith("actions/checkout@")]
+    assert names == ORDER
+    assert NAMES[0].startswith("actions/checkout@") and "fetch-depth: 0" in TEXT
+    assert NAMES.index("Jira (Low)") < NAMES.index("Report (Check Run, PR comment, history, webhook)")   # cảnh báo Jira phải hiện trong Check Run
+
+
+def test_every_action_in_both_reusable_workflows_is_pinned_to_a_40_char_sha_including_actions_cache():
+    gate_uses = [s["uses"] for s in STEPS if "uses" in s]
+    gt_uses = [s["uses"] for job in GT_JOBS.values() for s in job["steps"] if "uses" in s]
+    assert any(u.startswith("actions/cache/restore@") for u in gate_uses) and any(u.startswith("actions/cache/save@") for u in gate_uses)
+    for used in gate_uses + gt_uses:
+        assert USES.fullmatch(used), used
+
+
+# ==================== S4-02: cache Select và cache GT ====================
+
+def test_select_cache_is_restored_before_select_and_saved_right_after_even_when_the_gate_fails_later():
+    restore, save, select = step("Restore Select cache"), step("Save Select cache"), step("Select (PR)")
+    assert NAMES.index("Restore Select cache") + 1 == NAMES.index("Select (PR)") and NAMES.index("Select (PR)") + 1 == NAMES.index("Save Select cache")
+    assert NAMES.index("Save Select cache") < NAMES.index("Run qc-agent gate") < NAMES.index("Enforce gate result")   # gate BLOCKED làm job đỏ nhưng cache đã lưu
+    assert restore["uses"].startswith("actions/cache/restore@") and save["uses"].startswith("actions/cache/save@")
+    assert restore["uses"].split("@")[1] == save["uses"].split("@")[1]                                              # cùng một commit đã ghim
+    for item in (restore, save):
+        assert item["continue-on-error"] is True and item["with"]["path"] == "~/.cache/qc-agent/select"          # best-effort: lỗi cache không làm hỏng job
+        assert "github.event_name == 'pull_request'" in item["if"] and "secrets." not in repr(item) and "${{ inputs.project }}" in item["with"]["key"]
+    assert restore["with"]["key"] == save["with"]["key"] and "${{ github.run_id }}" in save["with"]["key"]            # khoá có run_id: mỗi lần chạy đều lưu được entry mới
+    assert "always()" in save["if"] and "steps.select.outputs.ok == 'true'" in save["if"] and "cache-hit" not in save["if"]
+    assert all(line.strip().startswith("qc-select-${{ inputs.project }}-") for line in restore["with"]["restore-keys"].strip().splitlines())
+    run = select["run"]
+    assert '-v "$HOME/.cache/qc-agent/select:/cache"' in run and "QC_SELECT_CACHE_DIR=/cache" in run and 'mkdir -p runs "$HOME/.cache/qc-agent/select"' in run
+
+
+def test_refine_looks_for_its_markers_in_both_caller_names():
+    run = step("Refine (onboarding suggestions)")["run"]
+    assert ".github/workflows/qc-gate.yml" in run and ".github/workflows/qc.yml" in run
+
+
+def test_no_run_script_in_either_workflow_contains_an_input_or_secret_expression():
+    steps = list(STEPS) + [s for job in GT_JOBS.values() for s in job["steps"]]
+    for item in steps:
+        assert not re.search(r"\$\{\{\s*(inputs|secrets)\.", item.get("run", "")), item.get("name")
+
+
+def test_manual_dispatch_with_workers_goes_the_manual_path_and_without_it_the_full_set():
+    gate = step("Run qc-agent gate")
+    assert gate["env"]["WORKERS"] == "${{ inputs.workers }}" and '--trigger manual --workers "$WORKERS"' in gate["run"]
+    assert DATA[True]["workflow_call"]["inputs"]["workers"]["default"] == ""
+
+
+def test_gt_cache_is_restored_before_generate_and_saved_after_it_and_never_used_by_the_agent():
+    names = [s.get("name") or s.get("uses") for s in gt_steps("generate")]
+    assert names.index("Resolve PRD") < names.index("Restore GT cache") < names.index("Generate Ground-Truth") < names.index("Save GT cache") < names.index("Commit and push to the bot branch")
+    restore, save, generate = gt_step("generate", "Restore GT cache"), gt_step("generate", "Save GT cache"), gt_step("generate", "Generate Ground-Truth")
+    assert restore["uses"].startswith("actions/cache/restore@") and save["uses"].startswith("actions/cache/save@")
+    for item in (restore, save):
+        assert "!inputs.agent" in item["if"] and item["continue-on-error"] is True and item["with"]["path"] == "~/.cache/qc-agent/gt"
+        assert "steps.resolve.outputs.prd_sha256" in item["with"]["key"] and "${{ github.run_id }}" in item["with"]["key"] and "secrets." not in repr(item)
+    assert "steps.generate.conclusion == 'success'" in save["if"] and generate["id"] == "generate"
+    run = generate["run"]
+    assert 'if [ "$AGENT" != "true" ]; then' in run and "QC_GT_CACHE_DIR=/gtcache" in run and '"${cache_mounts[@]}"' in run     # agent: không mount, không đặt env
+    assert "S4-02 chốt khoá" not in GT_TEXT
+
+
+def test_gt_resolve_step_exports_a_validated_prd_sha256_for_the_cache_key():
+    resolve = gt_step("generate", "Resolve PRD")["run"]
+    assert '["prd_sha256"]' in resolve and "^[0-9a-f]{64}$" in resolve and 'echo "prd_sha256=$sha" >> "$GITHUB_OUTPUT"' in resolve
+
+
+# ---- step Refine: chạy THẬT lệnh dò marker (bash, docker giả) với repo chỉ có một trong hai tên caller ----
+
+REFINE_STEP = "Refine (onboarding suggestions)"
+MARKER_LINE = "# qc-agent:todo REFINE exclude_path\n"
+
+
+@pytest.fixture
+def refine_run(tmp_path):
+    """Chạy `run:` của step Refine trong một workspace tự dựng. `docker` giả ghi lệnh ra file (không có patch nên step kết thúc bằng 'không có gì để đề xuất').
+    `grep_rc` != None thay grep bằng bản giả trả đúng mã đó (mô phỏng lỗi thật của grep)."""
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir()
+    (bindir / "docker").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$DOCKER_LOG"\nexit 0\n', encoding="utf-8", newline="\n")
+    (bindir / "docker").chmod(0o755)
+    script = tmp_path / "refine.sh"
+    script.write_text(step(REFINE_STEP)["run"], encoding="utf-8", newline="\n")
+
+    def run(files, *, grep_rc=None):
+        workspace = tmp_path / "ws"
+        shutil.rmtree(workspace, ignore_errors=True)
+        for rel, text in files.items():
+            (workspace / rel).parent.mkdir(parents=True, exist_ok=True)
+            (workspace / rel).write_text(text, encoding="utf-8", newline="\n")
+        workspace.mkdir(exist_ok=True)
+        log, output, runner_temp = tmp_path / "docker.log", tmp_path / "output.txt", tmp_path / "rt"
+        log.write_text("", encoding="utf-8")
+        output.write_text("", encoding="utf-8")
+        runner_temp.mkdir(exist_ok=True)
+        if grep_rc is not None:
+            (bindir / "grep").write_text(f"#!/usr/bin/env bash\nexit {grep_rc}\n", encoding="utf-8", newline="\n")
+            (bindir / "grep").chmod(0o755)
+        else:
+            (bindir / "grep").unlink(missing_ok=True)
+        env = {**os.environ, **{key: "" for key in step(REFINE_STEP)["env"]}, "IMAGE": "qc-agent:dev", "BASE_URL": "http://sut:8000", "GITHUB_OUTPUT": output.as_posix(),
+               "RUNNER_TEMP": runner_temp.as_posix(), "DOCKER_LOG": log.as_posix(), "PATH": str(bindir) + os.pathsep + os.environ["PATH"]}
+        # đúng cách runner của Actions chạy `run:` (shell: bash): có -e, nên một lệnh trả mã khác 0 mà không được xử lý sẽ làm step thoát ngay
+        done = subprocess.run([BASH, "--noprofile", "--norc", "-eo", "pipefail", script.as_posix()], cwd=workspace, env=env, capture_output=True, text=True, encoding="utf-8", timeout=120)
+        return done, [line for line in log.read_text(encoding="utf-8").splitlines() if line]
+    return run
+
+
+def refine_started(calls):
+    return any(call.startswith("run --rm --network qc-net") and " init --refine " in call for call in calls)
+
+
+@needs_bash
+@pytest.mark.parametrize("caller", [".github/workflows/qc-gate.yml", ".github/workflows/qc.yml"])
+def test_refine_keeps_running_when_the_marker_is_in_the_only_caller_file_of_the_repo(refine_run, caller):
+    done, calls = refine_run({caller: MARKER_LINE + "name: x\n", ".qc-agent/suites/api-contract.yaml": "tasks: []\n"})     # chỉ MỘT trong hai tên có mặt
+    assert done.returncode == 0 and "không còn marker" not in done.stdout and refine_started(calls), done.stdout + done.stderr
+
+
+@needs_bash
+def test_refine_keeps_running_when_the_marker_is_only_under_dot_qc_agent_and_no_caller_file_exists(refine_run):
+    done, calls = refine_run({".qc-agent/suites/api-contract.yaml": MARKER_LINE})
+    assert done.returncode == 0 and refine_started(calls), done.stdout + done.stderr
+
+
+@needs_bash
+@pytest.mark.parametrize("files", [
+    {".github/workflows/qc-gate.yml": "name: x\n", ".qc-agent/suites/api-contract.yaml": "tasks: []\n"},
+    {".github/workflows/qc.yml": "name: x\n", ".qc-agent/suites/api-contract.yaml": "tasks: []\n"},
+    {"README.md": "x\n"},                                                                                                 # không có .qc-agent lẫn caller
+])
+def test_refine_is_skipped_only_when_no_marker_exists_in_the_paths_that_exist(refine_run, files):
+    done, calls = refine_run(files)
+    assert done.returncode == 0 and "refine: không còn marker REFINE/SUGGESTED, bỏ qua" in done.stdout and not calls
+
+
+@needs_bash
+@pytest.mark.parametrize("rc", [2, 127])
+def test_a_real_grep_error_fails_the_step_instead_of_pretending_there_is_no_marker(refine_run, rc):
+    done, calls = refine_run({".github/workflows/qc-gate.yml": MARKER_LINE, ".qc-agent/suites/api-contract.yaml": MARKER_LINE}, grep_rc=rc)
+    assert done.returncode == 1 and f"::error::refine: grep lỗi (mã {rc})" in done.stdout
+    assert "không còn marker" not in done.stdout and not calls                                                          # không chạy docker, không báo "bỏ qua"
+
+
+def test_the_refine_marker_search_never_passes_a_path_that_may_be_missing_straight_to_grep():
+    run = step(REFINE_STEP)["run"]
+    assert 'if [ -e "$path" ]; then targets+=("$path"); fi' in run and '"${targets[@]}"' in run
+    assert "grep -rlE" in run and ".qc-agent .github/workflows/qc-gate.yml .github/workflows/qc.yml >" not in run     # không còn dạng liệt kê cứng

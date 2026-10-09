@@ -1,0 +1,495 @@
+diff --git a/src/lib/util01.ts b/src/helpers/util01.ts
+similarity index 74%
+rename from src/lib/util01.ts
+rename to src/helpers/util01.ts
+index 2e0f2fa..c299604 100644
+--- a/src/lib/util01.ts
++++ b/src/helpers/util01.ts
+@@ -1,2 +1,2 @@
+-// helper 01
++// helper 01 (moved)
+ export const util01 = (value: number): number => value + 1;
+diff --git a/src/lib/util02.ts b/src/helpers/util02.ts
+similarity index 74%
+rename from src/lib/util02.ts
+rename to src/helpers/util02.ts
+index df74209..42e31dd 100644
+--- a/src/lib/util02.ts
++++ b/src/helpers/util02.ts
+@@ -1,2 +1,2 @@
+-// helper 02
++// helper 02 (moved)
+ export const util02 = (value: number): number => value + 2;
+diff --git a/src/lib/util03.ts b/src/helpers/util03.ts
+similarity index 74%
+rename from src/lib/util03.ts
+rename to src/helpers/util03.ts
+index de77e0d..116c27c 100644
+--- a/src/lib/util03.ts
++++ b/src/helpers/util03.ts
+@@ -1,2 +1,2 @@
+-// helper 03
++// helper 03 (moved)
+ export const util03 = (value: number): number => value + 3;
+diff --git a/src/lib/util04.ts b/src/helpers/util04.ts
+similarity index 74%
+rename from src/lib/util04.ts
+rename to src/helpers/util04.ts
+index a22a056..95c4883 100644
+--- a/src/lib/util04.ts
++++ b/src/helpers/util04.ts
+@@ -1,2 +1,2 @@
+-// helper 04
++// helper 04 (moved)
+ export const util04 = (value: number): number => value + 4;
+diff --git a/src/lib/util05.ts b/src/helpers/util05.ts
+similarity index 74%
+rename from src/lib/util05.ts
+rename to src/helpers/util05.ts
+index cf4d75b..a2aecf0 100644
+--- a/src/lib/util05.ts
++++ b/src/helpers/util05.ts
+@@ -1,2 +1,2 @@
+-// helper 05
++// helper 05 (moved)
+ export const util05 = (value: number): number => value + 5;
+diff --git a/src/lib/util06.ts b/src/helpers/util06.ts
+similarity index 74%
+rename from src/lib/util06.ts
+rename to src/helpers/util06.ts
+index fc821c6..989cb37 100644
+--- a/src/lib/util06.ts
++++ b/src/helpers/util06.ts
+@@ -1,2 +1,2 @@
+-// helper 06
++// helper 06 (moved)
+ export const util06 = (value: number): number => value + 6;
+diff --git a/src/lib/util07.ts b/src/helpers/util07.ts
+similarity index 74%
+rename from src/lib/util07.ts
+rename to src/helpers/util07.ts
+index 697cb3c..f0da000 100644
+--- a/src/lib/util07.ts
++++ b/src/helpers/util07.ts
+@@ -1,2 +1,2 @@
+-// helper 07
++// helper 07 (moved)
+ export const util07 = (value: number): number => value + 7;
+diff --git a/src/lib/util08.ts b/src/helpers/util08.ts
+similarity index 74%
+rename from src/lib/util08.ts
+rename to src/helpers/util08.ts
+index 61f0833..f59dddd 100644
+--- a/src/lib/util08.ts
++++ b/src/helpers/util08.ts
+@@ -1,2 +1,2 @@
+-// helper 08
++// helper 08 (moved)
+ export const util08 = (value: number): number => value + 8;
+diff --git a/src/lib/util09.ts b/src/helpers/util09.ts
+similarity index 74%
+rename from src/lib/util09.ts
+rename to src/helpers/util09.ts
+index bf0f868..977caec 100644
+--- a/src/lib/util09.ts
++++ b/src/helpers/util09.ts
+@@ -1,2 +1,2 @@
+-// helper 09
++// helper 09 (moved)
+ export const util09 = (value: number): number => value + 9;
+diff --git a/src/lib/util10.ts b/src/helpers/util10.ts
+similarity index 74%
+rename from src/lib/util10.ts
+rename to src/helpers/util10.ts
+index a53c0d8..631381a 100644
+--- a/src/lib/util10.ts
++++ b/src/helpers/util10.ts
+@@ -1,2 +1,2 @@
+-// helper 10
++// helper 10 (moved)
+ export const util10 = (value: number): number => value + 10;
+diff --git a/src/lib/util11.ts b/src/helpers/util11.ts
+similarity index 74%
+rename from src/lib/util11.ts
+rename to src/helpers/util11.ts
+index d37472d..58f82aa 100644
+--- a/src/lib/util11.ts
++++ b/src/helpers/util11.ts
+@@ -1,2 +1,2 @@
+-// helper 11
++// helper 11 (moved)
+ export const util11 = (value: number): number => value + 11;
+diff --git a/src/lib/util12.ts b/src/helpers/util12.ts
+similarity index 74%
+rename from src/lib/util12.ts
+rename to src/helpers/util12.ts
+index d7e1d2c..9843514 100644
+--- a/src/lib/util12.ts
++++ b/src/helpers/util12.ts
+@@ -1,2 +1,2 @@
+-// helper 12
++// helper 12 (moved)
+ export const util12 = (value: number): number => value + 12;
+diff --git a/src/lib/util13.ts b/src/helpers/util13.ts
+similarity index 74%
+rename from src/lib/util13.ts
+rename to src/helpers/util13.ts
+index 1981783..0e70373 100644
+--- a/src/lib/util13.ts
++++ b/src/helpers/util13.ts
+@@ -1,2 +1,2 @@
+-// helper 13
++// helper 13 (moved)
+ export const util13 = (value: number): number => value + 13;
+diff --git a/src/lib/util14.ts b/src/helpers/util14.ts
+similarity index 74%
+rename from src/lib/util14.ts
+rename to src/helpers/util14.ts
+index a42a347..ed3d621 100644
+--- a/src/lib/util14.ts
++++ b/src/helpers/util14.ts
+@@ -1,2 +1,2 @@
+-// helper 14
++// helper 14 (moved)
+ export const util14 = (value: number): number => value + 14;
+diff --git a/src/lib/util15.ts b/src/helpers/util15.ts
+similarity index 74%
+rename from src/lib/util15.ts
+rename to src/helpers/util15.ts
+index 3c35240..1d3d9c7 100644
+--- a/src/lib/util15.ts
++++ b/src/helpers/util15.ts
+@@ -1,2 +1,2 @@
+-// helper 15
++// helper 15 (moved)
+ export const util15 = (value: number): number => value + 15;
+diff --git a/src/lib/util16.ts b/src/helpers/util16.ts
+similarity index 74%
+rename from src/lib/util16.ts
+rename to src/helpers/util16.ts
+index 995b191..7ed54c2 100644
+--- a/src/lib/util16.ts
++++ b/src/helpers/util16.ts
+@@ -1,2 +1,2 @@
+-// helper 16
++// helper 16 (moved)
+ export const util16 = (value: number): number => value + 16;
+diff --git a/src/lib/util17.ts b/src/helpers/util17.ts
+similarity index 74%
+rename from src/lib/util17.ts
+rename to src/helpers/util17.ts
+index 2037735..22ac4bc 100644
+--- a/src/lib/util17.ts
++++ b/src/helpers/util17.ts
+@@ -1,2 +1,2 @@
+-// helper 17
++// helper 17 (moved)
+ export const util17 = (value: number): number => value + 17;
+diff --git a/src/lib/util18.ts b/src/helpers/util18.ts
+similarity index 74%
+rename from src/lib/util18.ts
+rename to src/helpers/util18.ts
+index e1449d2..2870bc3 100644
+--- a/src/lib/util18.ts
++++ b/src/helpers/util18.ts
+@@ -1,2 +1,2 @@
+-// helper 18
++// helper 18 (moved)
+ export const util18 = (value: number): number => value + 18;
+diff --git a/src/lib/util19.ts b/src/helpers/util19.ts
+similarity index 74%
+rename from src/lib/util19.ts
+rename to src/helpers/util19.ts
+index f2f8e93..15eff97 100644
+--- a/src/lib/util19.ts
++++ b/src/helpers/util19.ts
+@@ -1,2 +1,2 @@
+-// helper 19
++// helper 19 (moved)
+ export const util19 = (value: number): number => value + 19;
+diff --git a/src/lib/util20.ts b/src/helpers/util20.ts
+similarity index 74%
+rename from src/lib/util20.ts
+rename to src/helpers/util20.ts
+index c1f6271..4fa20b9 100644
+--- a/src/lib/util20.ts
++++ b/src/helpers/util20.ts
+@@ -1,2 +1,2 @@
+-// helper 20
++// helper 20 (moved)
+ export const util20 = (value: number): number => value + 20;
+diff --git a/src/lib/util21.ts b/src/helpers/util21.ts
+similarity index 74%
+rename from src/lib/util21.ts
+rename to src/helpers/util21.ts
+index 5fd26a6..cbcb5fe 100644
+--- a/src/lib/util21.ts
++++ b/src/helpers/util21.ts
+@@ -1,2 +1,2 @@
+-// helper 21
++// helper 21 (moved)
+ export const util21 = (value: number): number => value + 21;
+diff --git a/src/lib/util22.ts b/src/helpers/util22.ts
+similarity index 74%
+rename from src/lib/util22.ts
+rename to src/helpers/util22.ts
+index 16ebbb1..99a6457 100644
+--- a/src/lib/util22.ts
++++ b/src/helpers/util22.ts
+@@ -1,2 +1,2 @@
+-// helper 22
++// helper 22 (moved)
+ export const util22 = (value: number): number => value + 22;
+diff --git a/src/lib/util23.ts b/src/helpers/util23.ts
+similarity index 74%
+rename from src/lib/util23.ts
+rename to src/helpers/util23.ts
+index 075cb87..301c242 100644
+--- a/src/lib/util23.ts
++++ b/src/helpers/util23.ts
+@@ -1,2 +1,2 @@
+-// helper 23
++// helper 23 (moved)
+ export const util23 = (value: number): number => value + 23;
+diff --git a/src/lib/util24.ts b/src/helpers/util24.ts
+similarity index 74%
+rename from src/lib/util24.ts
+rename to src/helpers/util24.ts
+index cadaccb..295ecf5 100644
+--- a/src/lib/util24.ts
++++ b/src/helpers/util24.ts
+@@ -1,2 +1,2 @@
+-// helper 24
++// helper 24 (moved)
+ export const util24 = (value: number): number => value + 24;
+diff --git a/src/lib/util25.ts b/src/helpers/util25.ts
+similarity index 74%
+rename from src/lib/util25.ts
+rename to src/helpers/util25.ts
+index 470ea12..1e5a92f 100644
+--- a/src/lib/util25.ts
++++ b/src/helpers/util25.ts
+@@ -1,2 +1,2 @@
+-// helper 25
++// helper 25 (moved)
+ export const util25 = (value: number): number => value + 25;
+diff --git a/src/lib/util26.ts b/src/helpers/util26.ts
+similarity index 74%
+rename from src/lib/util26.ts
+rename to src/helpers/util26.ts
+index 2e09136..00980d5 100644
+--- a/src/lib/util26.ts
++++ b/src/helpers/util26.ts
+@@ -1,2 +1,2 @@
+-// helper 26
++// helper 26 (moved)
+ export const util26 = (value: number): number => value + 26;
+diff --git a/src/lib/util27.ts b/src/helpers/util27.ts
+similarity index 74%
+rename from src/lib/util27.ts
+rename to src/helpers/util27.ts
+index 31834e1..a49df45 100644
+--- a/src/lib/util27.ts
++++ b/src/helpers/util27.ts
+@@ -1,2 +1,2 @@
+-// helper 27
++// helper 27 (moved)
+ export const util27 = (value: number): number => value + 27;
+diff --git a/src/lib/util28.ts b/src/helpers/util28.ts
+similarity index 74%
+rename from src/lib/util28.ts
+rename to src/helpers/util28.ts
+index 9849c3c..366a61b 100644
+--- a/src/lib/util28.ts
++++ b/src/helpers/util28.ts
+@@ -1,2 +1,2 @@
+-// helper 28
++// helper 28 (moved)
+ export const util28 = (value: number): number => value + 28;
+diff --git a/src/lib/util29.ts b/src/helpers/util29.ts
+similarity index 74%
+rename from src/lib/util29.ts
+rename to src/helpers/util29.ts
+index 7e7a931..b367615 100644
+--- a/src/lib/util29.ts
++++ b/src/helpers/util29.ts
+@@ -1,2 +1,2 @@
+-// helper 29
++// helper 29 (moved)
+ export const util29 = (value: number): number => value + 29;
+diff --git a/src/lib/util30.ts b/src/helpers/util30.ts
+similarity index 74%
+rename from src/lib/util30.ts
+rename to src/helpers/util30.ts
+index a8efc42..de22ef9 100644
+--- a/src/lib/util30.ts
++++ b/src/helpers/util30.ts
+@@ -1,2 +1,2 @@
+-// helper 30
++// helper 30 (moved)
+ export const util30 = (value: number): number => value + 30;
+diff --git a/src/lib/util31.ts b/src/helpers/util31.ts
+similarity index 74%
+rename from src/lib/util31.ts
+rename to src/helpers/util31.ts
+index 8b6b7d4..8d897d1 100644
+--- a/src/lib/util31.ts
++++ b/src/helpers/util31.ts
+@@ -1,2 +1,2 @@
+-// helper 31
++// helper 31 (moved)
+ export const util31 = (value: number): number => value + 31;
+diff --git a/src/lib/util32.ts b/src/helpers/util32.ts
+similarity index 74%
+rename from src/lib/util32.ts
+rename to src/helpers/util32.ts
+index 3e50b5d..288c06e 100644
+--- a/src/lib/util32.ts
++++ b/src/helpers/util32.ts
+@@ -1,2 +1,2 @@
+-// helper 32
++// helper 32 (moved)
+ export const util32 = (value: number): number => value + 32;
+diff --git a/src/lib/util33.ts b/src/helpers/util33.ts
+similarity index 74%
+rename from src/lib/util33.ts
+rename to src/helpers/util33.ts
+index 32976cf..79b5d75 100644
+--- a/src/lib/util33.ts
++++ b/src/helpers/util33.ts
+@@ -1,2 +1,2 @@
+-// helper 33
++// helper 33 (moved)
+ export const util33 = (value: number): number => value + 33;
+diff --git a/src/lib/util34.ts b/src/helpers/util34.ts
+similarity index 74%
+rename from src/lib/util34.ts
+rename to src/helpers/util34.ts
+index c8402d7..a2a2133 100644
+--- a/src/lib/util34.ts
++++ b/src/helpers/util34.ts
+@@ -1,2 +1,2 @@
+-// helper 34
++// helper 34 (moved)
+ export const util34 = (value: number): number => value + 34;
+diff --git a/src/lib/util35.ts b/src/helpers/util35.ts
+similarity index 74%
+rename from src/lib/util35.ts
+rename to src/helpers/util35.ts
+index d12f30c..817f7c2 100644
+--- a/src/lib/util35.ts
++++ b/src/helpers/util35.ts
+@@ -1,2 +1,2 @@
+-// helper 35
++// helper 35 (moved)
+ export const util35 = (value: number): number => value + 35;
+diff --git a/src/lib/util36.ts b/src/helpers/util36.ts
+similarity index 74%
+rename from src/lib/util36.ts
+rename to src/helpers/util36.ts
+index 17ad23b..c45a02a 100644
+--- a/src/lib/util36.ts
++++ b/src/helpers/util36.ts
+@@ -1,2 +1,2 @@
+-// helper 36
++// helper 36 (moved)
+ export const util36 = (value: number): number => value + 36;
+diff --git a/src/lib/util37.ts b/src/helpers/util37.ts
+similarity index 74%
+rename from src/lib/util37.ts
+rename to src/helpers/util37.ts
+index 7d7438b..24323fb 100644
+--- a/src/lib/util37.ts
++++ b/src/helpers/util37.ts
+@@ -1,2 +1,2 @@
+-// helper 37
++// helper 37 (moved)
+ export const util37 = (value: number): number => value + 37;
+diff --git a/src/lib/util38.ts b/src/helpers/util38.ts
+similarity index 74%
+rename from src/lib/util38.ts
+rename to src/helpers/util38.ts
+index 6495d11..ca6d2a5 100644
+--- a/src/lib/util38.ts
++++ b/src/helpers/util38.ts
+@@ -1,2 +1,2 @@
+-// helper 38
++// helper 38 (moved)
+ export const util38 = (value: number): number => value + 38;
+diff --git a/src/lib/util39.ts b/src/helpers/util39.ts
+similarity index 74%
+rename from src/lib/util39.ts
+rename to src/helpers/util39.ts
+index 65b2b85..dd5e6fb 100644
+--- a/src/lib/util39.ts
++++ b/src/helpers/util39.ts
+@@ -1,2 +1,2 @@
+-// helper 39
++// helper 39 (moved)
+ export const util39 = (value: number): number => value + 39;
+diff --git a/src/lib/util40.ts b/src/helpers/util40.ts
+similarity index 74%
+rename from src/lib/util40.ts
+rename to src/helpers/util40.ts
+index d0f17ea..1552f5c 100644
+--- a/src/lib/util40.ts
++++ b/src/helpers/util40.ts
+@@ -1,2 +1,2 @@
+-// helper 40
++// helper 40 (moved)
+ export const util40 = (value: number): number => value + 40;
+diff --git a/src/lib/util41.ts b/src/helpers/util41.ts
+similarity index 74%
+rename from src/lib/util41.ts
+rename to src/helpers/util41.ts
+index ff4660c..ebb787c 100644
+--- a/src/lib/util41.ts
++++ b/src/helpers/util41.ts
+@@ -1,2 +1,2 @@
+-// helper 41
++// helper 41 (moved)
+ export const util41 = (value: number): number => value + 41;
+diff --git a/src/lib/util42.ts b/src/helpers/util42.ts
+similarity index 74%
+rename from src/lib/util42.ts
+rename to src/helpers/util42.ts
+index 020c6ac..75d2c86 100644
+--- a/src/lib/util42.ts
++++ b/src/helpers/util42.ts
+@@ -1,2 +1,2 @@
+-// helper 42
++// helper 42 (moved)
+ export const util42 = (value: number): number => value + 42;
+diff --git a/src/lib/util43.ts b/src/helpers/util43.ts
+similarity index 74%
+rename from src/lib/util43.ts
+rename to src/helpers/util43.ts
+index 27aaec1..d201b2e 100644
+--- a/src/lib/util43.ts
++++ b/src/helpers/util43.ts
+@@ -1,2 +1,2 @@
+-// helper 43
++// helper 43 (moved)
+ export const util43 = (value: number): number => value + 43;
+diff --git a/src/lib/util44.ts b/src/helpers/util44.ts
+similarity index 74%
+rename from src/lib/util44.ts
+rename to src/helpers/util44.ts
+index 726793b..a48507c 100644
+--- a/src/lib/util44.ts
++++ b/src/helpers/util44.ts
+@@ -1,2 +1,2 @@
+-// helper 44
++// helper 44 (moved)
+ export const util44 = (value: number): number => value + 44;
+diff --git a/src/lib/util45.ts b/src/helpers/util45.ts
+similarity index 74%
+rename from src/lib/util45.ts
+rename to src/helpers/util45.ts
+index a4fd0cd..ed4ebc3 100644
+--- a/src/lib/util45.ts
++++ b/src/helpers/util45.ts
+@@ -1,2 +1,2 @@
+-// helper 45
++// helper 45 (moved)
+ export const util45 = (value: number): number => value + 45;

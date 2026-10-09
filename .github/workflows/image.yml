@@ -68,11 +68,29 @@ jobs:
           docker run --rm --entrypoint sh "$IMG" -c 'id -un && k6 version && st --version && npx @midscene/cli --version && node --version'
       - name: Digest (dùng để ghim ở repo SUT)
         if: github.event_name != 'pull_request'
+        env:
+          REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
         run: |
+          # Hai workflow gọi của repo SUT (`qc-agent init` sinh cả hai) đều có một dòng `image:`; dòng `sut_db_image:` không khớp mẫu `^ *image:` nên không bị đụng.
+          gate=.github/workflows/qc-gate.yml
+          gt=.github/workflows/qc-groundtruth.yml
           {
             echo "### Image published"
             echo ""
             echo '```'
-            echo "${{ env.IMAGE }}@${{ steps.build.outputs.digest }}"
+            echo "$REF"
             echo '```'
+            echo ""
+            echo "Ghim theo **digest** (không theo tag) ở repo SUT: sửa dòng \`image:\` trong **cả hai** workflow gọi:"
+            echo ""
+            echo "- \`$gate\`"
+            echo "- \`$gt\`"
+            echo ""
+            echo "Lệnh (chạy ở gốc repo SUT):"
+            echo ""
+            echo '```'
+            echo "sed -i 's|^\( *image: \).*|\1${REF}|' $gate $gt"
+            echo '```'
+            echo ""
+            echo "Repo chưa có workflow: \`qc-agent init --image ${REF}\` (xem docs/usage-ci.md)."
           } >> "$GITHUB_STEP_SUMMARY"

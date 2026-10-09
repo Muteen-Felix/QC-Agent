@@ -1,0 +1,1697 @@
+{
+  "datasets": {
+    "monorepo-poly": {
+      "dataset": "monorepo-poly",
+      "split": "all",
+      "token_evidence": "estimate",
+      "model": "claude-haiku-4-5-20251001",
+      "prompt_version": "diff-select/1",
+      "labels_status": "unreviewed",
+      "cost_target": {
+        "median_reduction": null,
+        "reason": "chưa đo: cổng trần khả thi (eval_cost --ceiling --dataset monorepo-poly) chạy sau khi dataset được commit; mục tiêu sẽ được ghi theo số đo"
+      },
+      "prefix_tokens": 907,
+      "pruner": {
+        "sha": "2f4c2dec4a1a4c5e37037520bf7dbd555719755c",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "baseline_pruner": null,
+      "policy_sha": "4826e6a014a77b490a47ad3863c9ffd7f66880938910efd0bfd88634701ee11f",
+      "module_map_sha": "5e3bf6f778a0d7f7ef5460df0d2066371322c7f0d6926a2fbc9eaf36cfca5580",
+      "cases_detail": [
+        {
+          "name": "mp-001",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1024,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1078,
+            "B0": 1078
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-002",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1036,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1081,
+            "B0": 1081
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-003",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 988,
+            "P": 907,
+            "B_min": 955,
+            "B1": 955,
+            "B0": 955
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-004",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 962,
+            "P": 907,
+            "B_min": 962,
+            "B1": 1090,
+            "B0": 1090
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-005",
+          "split": "holdout",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1125,
+            "P": 907,
+            "B_min": 1012,
+            "B1": 1187,
+            "B0": 1187
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-006",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1044,
+            "P": 907,
+            "B_min": 958,
+            "B1": 1098,
+            "B0": 1098
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-007",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 994,
+            "P": 907,
+            "B_min": 958,
+            "B1": 958,
+            "B0": 958
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-008",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1020,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1064,
+            "B0": 1064
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-009",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1035,
+            "P": 907,
+            "B_min": 953,
+            "B1": 1084,
+            "B0": 1084
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-010",
+          "split": "tune",
+          "route": "llm",
+          "files": 45,
+          "tokens": {
+            "A": 7792,
+            "P": 907,
+            "B_min": 3217,
+            "B1": 10372,
+            "B0": 10372
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-011",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1043,
+            "P": 907,
+            "B_min": 960,
+            "B1": 960,
+            "B0": 960
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-012",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1000,
+            "P": 907,
+            "B_min": 957,
+            "B1": 1046,
+            "B0": 1046
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-013",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1030,
+            "P": 907,
+            "B_min": 956,
+            "B1": 956,
+            "B0": 956
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-014",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1122,
+            "P": 907,
+            "B_min": 1005,
+            "B1": 1086,
+            "B0": 1086
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-015",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1145,
+            "P": 907,
+            "B_min": 1006,
+            "B1": 1253,
+            "B0": 1253
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-016",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1043,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1087,
+            "B0": 1087
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-017",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1015,
+            "P": 907,
+            "B_min": 955,
+            "B1": 1054,
+            "B0": 1054
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-018",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 2,
+          "tokens": {
+            "A": 1061,
+            "P": 907,
+            "B_min": 997,
+            "B1": 1147,
+            "B0": 1147
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-019",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 971,
+            "P": 907,
+            "B_min": 952,
+            "B1": 952,
+            "B0": 952
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-020",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1083,
+            "P": 907,
+            "B_min": 1001,
+            "B1": 1097,
+            "B0": 1097
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-021",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 1001,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1025,
+            "B0": 1025
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-022",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1005,
+            "P": 907,
+            "B_min": 955,
+            "B1": 1040,
+            "B0": 1040
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-023",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 1002,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1038,
+            "B0": 1038
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "mp-024",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 48604,
+            "P": 907,
+            "B_min": 955,
+            "B1": 3340,
+            "B0": 3340
+          },
+          "token_cap_at": [],
+          "truncated": 1,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        }
+      ],
+      "cases": 24,
+      "llm_cases": 20,
+      "excluded": {
+        "full_set": [
+          "mp-019",
+          "mp-021",
+          "mp-023"
+        ],
+        "floor_only": [
+          "mp-018"
+        ],
+        "token_cap": []
+      },
+      "target": null,
+      "tokens": {
+        "A": {
+          "median": 1035.5,
+          "p90": 1145
+        },
+        "P": {
+          "median": 907.0,
+          "p90": 907
+        },
+        "B_min": {
+          "median": 956.5,
+          "p90": 1006
+        },
+        "B0": {
+          "median": 1082.5,
+          "p90": 1253
+        },
+        "B1": {
+          "median": 1082.5,
+          "p90": 1253
+        }
+      },
+      "ceiling": {
+        "loose": {
+          "median": 0.12409443605095782,
+          "p90": 0.20786026200873364
+        },
+        "tight": {
+          "median": 0.07743309197602827,
+          "p90": 0.12139737991266375
+        }
+      },
+      "reduction_b0": {
+        "median": -0.04266162840975318,
+        "p90": 0.07184466019417479
+      },
+      "reduction_b1": {
+        "median": -0.04266162840975318,
+        "p90": 0.07184466019417479
+      },
+      "delta_points": 0.0,
+      "increased_vs_b0": [],
+      "above_raw": {
+        "b0": [
+          "mp-001",
+          "mp-002",
+          "mp-004",
+          "mp-005",
+          "mp-006",
+          "mp-008",
+          "mp-009",
+          "mp-010",
+          "mp-012",
+          "mp-015",
+          "mp-016",
+          "mp-017",
+          "mp-020",
+          "mp-022"
+        ],
+        "b1": [
+          "mp-001",
+          "mp-002",
+          "mp-004",
+          "mp-005",
+          "mp-006",
+          "mp-008",
+          "mp-009",
+          "mp-010",
+          "mp-012",
+          "mp-015",
+          "mp-016",
+          "mp-017",
+          "mp-020",
+          "mp-022"
+        ]
+      },
+      "b_min_ge_a": [
+        "mp-004"
+      ],
+      "cut": {
+        "b0": 0,
+        "b1": 1
+      },
+      "margin_points": -32.3,
+      "ceiling_ok": false,
+      "target_met": null
+    },
+    "node-api": {
+      "dataset": "node-api",
+      "split": "all",
+      "token_evidence": "estimate",
+      "model": "claude-haiku-4-5-20251001",
+      "prompt_version": "diff-select/1",
+      "labels_status": "unreviewed",
+      "cost_target": {
+        "median_reduction": null,
+        "reason": "chưa đo: cổng trần khả thi (eval_cost --ceiling --dataset node-api) chạy sau khi dataset được commit; mục tiêu sẽ được ghi theo số đo"
+      },
+      "prefix_tokens": 853,
+      "pruner": {
+        "sha": "2f4c2dec4a1a4c5e37037520bf7dbd555719755c",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "baseline_pruner": null,
+      "policy_sha": "4826e6a014a77b490a47ad3863c9ffd7f66880938910efd0bfd88634701ee11f",
+      "module_map_sha": "6731ab127eac544b4ccdab025288f357c0ec910e23aee3ab0bf67382fdfbd339",
+      "cases_detail": [
+        {
+          "name": "nd-001",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1095,
+            "P": 853,
+            "B_min": 942,
+            "B1": 1192,
+            "B0": 1192
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-002",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 986,
+            "P": 853,
+            "B_min": 898,
+            "B1": 1034,
+            "B0": 1034
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-003",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1063,
+            "P": 853,
+            "B_min": 943,
+            "B1": 1069,
+            "B0": 1069
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-004",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 899,
+            "P": 853,
+            "B_min": 904,
+            "B1": 977,
+            "B0": 977
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-005",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1043,
+            "P": 853,
+            "B_min": 902,
+            "B1": 1048,
+            "B0": 1048
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-006",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1001,
+            "P": 853,
+            "B_min": 899,
+            "B1": 1025,
+            "B0": 1025
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-007",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 930,
+            "P": 853,
+            "B_min": 902,
+            "B1": 981,
+            "B0": 981
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-008",
+          "split": "tune",
+          "route": "llm",
+          "files": 45,
+          "tokens": {
+            "A": 5859,
+            "P": 853,
+            "B_min": 3162,
+            "B1": 6894,
+            "B0": 6894
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-009",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 935,
+            "P": 853,
+            "B_min": 898,
+            "B1": 898,
+            "B0": 898
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-010",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1046,
+            "P": 853,
+            "B_min": 944,
+            "B1": 1013,
+            "B0": 1013
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-011",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 980,
+            "P": 853,
+            "B_min": 898,
+            "B1": 1028,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-012",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 959,
+            "P": 853,
+            "B_min": 898,
+            "B1": 1008,
+            "B0": 1008
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-013",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 2,
+          "tokens": {
+            "A": 1000,
+            "P": 853,
+            "B_min": 938,
+            "B1": 1080,
+            "B0": 1080
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-014",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 961,
+            "P": 853,
+            "B_min": 899,
+            "B1": 899,
+            "B0": 899
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-015",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 950,
+            "P": 853,
+            "B_min": 896,
+            "B1": 992,
+            "B0": 992
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-016",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 920,
+            "P": 853,
+            "B_min": 895,
+            "B1": 953,
+            "B0": 953
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-017",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 1057,
+            "P": 853,
+            "B_min": 902,
+            "B1": 902,
+            "B0": 902
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 1,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "nd-018",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 42541,
+            "P": 853,
+            "B_min": 896,
+            "B1": 3049,
+            "B0": 3049
+          },
+          "token_cap_at": [],
+          "truncated": 1,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        }
+      ],
+      "cases": 18,
+      "llm_cases": 13,
+      "excluded": {
+        "full_set": [
+          "nd-014",
+          "nd-015",
+          "nd-016",
+          "nd-017"
+        ],
+        "floor_only": [
+          "nd-013"
+        ],
+        "token_cap": []
+      },
+      "target": null,
+      "tokens": {
+        "A": {
+          "median": 1001,
+          "p90": 5859
+        },
+        "P": {
+          "median": 853,
+          "p90": 853
+        },
+        "B_min": {
+          "median": 902,
+          "p90": 944
+        },
+        "B0": {
+          "median": 1028,
+          "p90": 3049
+        },
+        "B1": {
+          "median": 1028,
+          "p90": 3049
+        }
+      },
+      "ceiling": {
+        "loose": {
+          "median": 0.14785214785214784,
+          "p90": 0.8544120157023383
+        },
+        "tight": {
+          "median": 0.09751434034416828,
+          "p90": 0.46031746031746035
+        }
+      },
+      "reduction_b0": {
+        "median": -0.04868154158215021,
+        "p90": 0.039572192513368964
+      },
+      "reduction_b1": {
+        "median": -0.04868154158215021,
+        "p90": 0.039572192513368964
+      },
+      "delta_points": 0.0,
+      "increased_vs_b0": [],
+      "above_raw": {
+        "b0": [
+          "nd-001",
+          "nd-002",
+          "nd-003",
+          "nd-004",
+          "nd-005",
+          "nd-006",
+          "nd-007",
+          "nd-008",
+          "nd-011",
+          "nd-012"
+        ],
+        "b1": [
+          "nd-001",
+          "nd-002",
+          "nd-003",
+          "nd-004",
+          "nd-005",
+          "nd-006",
+          "nd-007",
+          "nd-008",
+          "nd-011",
+          "nd-012"
+        ]
+      },
+      "b_min_ge_a": [
+        "nd-004"
+      ],
+      "cut": {
+        "b0": 0,
+        "b1": 2
+      },
+      "margin_points": -30.2,
+      "ceiling_ok": false,
+      "target_met": null
+    },
+    "noteboard": {
+      "dataset": "noteboard",
+      "split": "all",
+      "token_evidence": "estimate",
+      "model": "claude-haiku-4-5-20251001",
+      "prompt_version": "diff-select/1",
+      "labels_status": "reviewed",
+      "cost_target": {
+        "median_reduction": null,
+        "reason": "Đo 2026-10-07 (eval_cost --ceiling, estimate): trần chặt 1-B_min/A = 2,5% ở median (P90 2,6%) trên 20 ca LLM vì diff chỉ chiếm 7,3% request; 40% không khả thi (S4-04, phương án A)."
+      },
+      "prefix_tokens": 907,
+      "pruner": {
+        "sha": "2f4c2dec4a1a4c5e37037520bf7dbd555719755c",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "baseline_pruner": null,
+      "policy_sha": "b928a6ad0312b910058683866de6171140e7e695e716f21388479df49eb325e1",
+      "module_map_sha": "e9cc6fe452a9dfc5d641eff0be0d37615e7b54c417995d33246a83e04ef86c67",
+      "cases_detail": [
+        {
+          "name": "diff-001",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1028,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-002",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1028,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-003",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1028,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-004",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1028,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-005",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1028,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-006",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 979,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1028,
+            "B0": 1028
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-007",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 970,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1017,
+            "B0": 1017
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-008",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 970,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1017,
+            "B0": 1017
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-009",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 970,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1017,
+            "B0": 1017
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-010",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 971,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1018,
+            "B0": 1018
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-011",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 1,
+          "tokens": {
+            "A": 964,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1011,
+            "B0": 1011
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-012",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 1,
+          "tokens": {
+            "A": 964,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1011,
+            "B0": 1011
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-013",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 1,
+          "tokens": {
+            "A": 964,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1011,
+            "B0": 1011
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-014",
+          "split": "tune",
+          "route": "floor_only",
+          "files": 1,
+          "tokens": {
+            "A": 964,
+            "P": 907,
+            "B_min": 952,
+            "B1": 1011,
+            "B0": 1011
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-015",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 968,
+            "P": 907,
+            "B_min": 953,
+            "B1": 1016,
+            "B0": 1016
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-016",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 972,
+            "P": 907,
+            "B_min": 955,
+            "B1": 1021,
+            "B0": 1021
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-017",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 972,
+            "P": 907,
+            "B_min": 955,
+            "B1": 1021,
+            "B0": 1021
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-018",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 962,
+            "P": 907,
+            "B_min": 953,
+            "B1": 953,
+            "B0": 953
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-019",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 959,
+            "P": 907,
+            "B_min": 952,
+            "B1": 952,
+            "B0": 952
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-020",
+          "split": "tune",
+          "route": "full_set",
+          "files": 1,
+          "tokens": {
+            "A": 952,
+            "P": 907,
+            "B_min": 950,
+            "B1": 950,
+            "B0": 950
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-021",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 975,
+            "P": 907,
+            "B_min": 953,
+            "B1": 1023,
+            "B0": 1023
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-022",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 975,
+            "P": 907,
+            "B_min": 953,
+            "B1": 1023,
+            "B0": 1023
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-023",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 975,
+            "P": 907,
+            "B_min": 953,
+            "B1": 1023,
+            "B0": 1023
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-024",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 975,
+            "P": 907,
+            "B_min": 953,
+            "B1": 1023,
+            "B0": 1023
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-025",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1023,
+            "P": 907,
+            "B_min": 997,
+            "B1": 1115,
+            "B0": 1115
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-026",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1023,
+            "P": 907,
+            "B_min": 997,
+            "B1": 1115,
+            "B0": 1115
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-027",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1023,
+            "P": 907,
+            "B_min": 997,
+            "B1": 1115,
+            "B0": 1115
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-028",
+          "split": "tune",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1023,
+            "P": 907,
+            "B_min": 997,
+            "B1": 1115,
+            "B0": 1115
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-029",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 978,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1027,
+            "B0": 1027
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        },
+        {
+          "name": "diff-030",
+          "split": "tune",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 978,
+            "P": 907,
+            "B_min": 954,
+            "B1": 1027,
+            "B0": 1027
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": null,
+          "baseline_dropped_hunks": null
+        }
+      ],
+      "cases": 30,
+      "llm_cases": 20,
+      "excluded": {
+        "full_set": [
+          "diff-015",
+          "diff-016",
+          "diff-017",
+          "diff-018",
+          "diff-019",
+          "diff-020"
+        ],
+        "floor_only": [
+          "diff-011",
+          "diff-012",
+          "diff-013",
+          "diff-014"
+        ],
+        "token_cap": []
+      },
+      "target": null,
+      "tokens": {
+        "A": {
+          "median": 978.5,
+          "p90": 1023
+        },
+        "P": {
+          "median": 907.0,
+          "p90": 907
+        },
+        "B_min": {
+          "median": 954.0,
+          "p90": 997
+        },
+        "B0": {
+          "median": 1027.5,
+          "p90": 1115
+        },
+        "B1": {
+          "median": 1027.5,
+          "p90": 1115
+        }
+      },
+      "ceiling": {
+        "loose": {
+          "median": 0.07307078505465492,
+          "p90": 0.1133919843597263
+        },
+        "tight": {
+          "median": 0.024977661035448462,
+          "p90": 0.025536261491317713
+        }
+      },
+      "reduction_b0": {
+        "median": -0.050051072522982576,
+        "p90": -0.04845360824742273
+      },
+      "reduction_b1": {
+        "median": -0.050051072522982576,
+        "p90": -0.04845360824742273
+      },
+      "delta_points": 0.0,
+      "increased_vs_b0": [],
+      "above_raw": {
+        "b0": [
+          "diff-001",
+          "diff-002",
+          "diff-003",
+          "diff-004",
+          "diff-005",
+          "diff-006",
+          "diff-007",
+          "diff-008",
+          "diff-009",
+          "diff-010",
+          "diff-021",
+          "diff-022",
+          "diff-023",
+          "diff-024",
+          "diff-025",
+          "diff-026",
+          "diff-027",
+          "diff-028",
+          "diff-029",
+          "diff-030"
+        ],
+        "b1": [
+          "diff-001",
+          "diff-002",
+          "diff-003",
+          "diff-004",
+          "diff-005",
+          "diff-006",
+          "diff-007",
+          "diff-008",
+          "diff-009",
+          "diff-010",
+          "diff-021",
+          "diff-022",
+          "diff-023",
+          "diff-024",
+          "diff-025",
+          "diff-026",
+          "diff-027",
+          "diff-028",
+          "diff-029",
+          "diff-030"
+        ]
+      },
+      "b_min_ge_a": [],
+      "cut": {
+        "b0": 0,
+        "b1": 0
+      },
+      "margin_points": -37.5,
+      "ceiling_ok": false,
+      "target_met": null
+    }
+  },
+  "aggregate": {
+    "datasets": [
+      "monorepo-poly",
+      "node-api",
+      "noteboard"
+    ],
+    "llm_cases": 53,
+    "median_of_dataset_medians_b1": -0.04868154158215021,
+    "note": "tổng hợp, không thay kết luận từng dataset"
+  }
+}

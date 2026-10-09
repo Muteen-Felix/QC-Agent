@@ -171,6 +171,13 @@ def _auth(sut_root: Path, result: CheckResult) -> None:
                                 + " vào container; biến sau sẽ thiếu trên CI: " + ", ".join(extra)))
 
 
+def check_auth(sut_root: Path) -> CheckResult:
+    """Chỉ kiểm auth.yaml: dùng khi `ground-truth/` mới có auth.yaml, chưa có test-cases.yaml (chưa chạy `gt generate`)."""
+    result = CheckResult()
+    _auth(Path(sut_root), result)
+    return result
+
+
 def check(sut_root: Path) -> CheckResult:
     """Chạy toàn bộ cổng HITL trên `<sut_root>/.qc-agent/ground-truth/`. Ném `GTCheckError` khi không phán được (exit 3)."""
     sut_root = Path(sut_root)

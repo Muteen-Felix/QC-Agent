@@ -1,0 +1,15 @@
+# Dataset noteboard = golden set S2-07, giữ nguyên làm baseline lịch sử. Manifest chỉ TRỎ vào các file cũ: không di chuyển, không sửa nhãn.
+name: noteboard
+sut: ../../sut/noteboard
+patches: ../../diffs
+injection_patches: ../../diffs/injection
+labels: ../../diffs/labels.yaml
+project: {slug: noteboard}
+labels_status: reviewed
+reviewed_note: "Nhãn S2-07 (labeled_by trong labels.yaml); baseline eval/selector-real.json đã đo trên đúng các nhãn này. S4-04 không xác nhận lại."
+cost_target:
+  median_reduction: null
+  reason: "Đo 2026-10-07 (eval_cost --ceiling, estimate): trần chặt 1-B_min/A = 2,5% ở median (P90 2,6%) trên 20 ca LLM vì diff chỉ chiếm 7,3% request; chưa đạt 40% theo ước lượng (định dạng payload trước S4-04; sau tinh chỉnh trần 5,2%); count_tokens còn PENDING (S4-04, phương án A)."
+splits:
+  tune: []        # toàn bộ 30 diff + 10 injection là tập tune lịch sử (pruner S2 được phát triển trên chúng)
+  holdout: []

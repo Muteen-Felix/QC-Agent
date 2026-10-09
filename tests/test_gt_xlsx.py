@@ -7,6 +7,7 @@ import io
 import json
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -134,6 +135,28 @@ def test_workbook_structure_and_hidden_meta():
     assert rows["TC-AC-1.1-aaaa01"][1:4] == ["US-1", "AC-1.1", "tạo ghi chú"] and rows["TC-AC-1.2-aaaa02"][2] == "AC-1.2, AC-1.1"
     assert rows["TC-AC-1.2-aaaa02"][14] == 2 or rows["TC-AC-1.2-aaaa02"][14] == "2"
     assert "POST /notes -> 201 | GET /notes/{note_id} -> 200,404" == rows["TC-AC-1.2-aaaa02"][15]
+
+
+def test_render_is_byte_identical_across_seconds():
+    """openpyxl đặt `modified` và timestamp zip = giờ hiện tại lúc save; DOS time của zip có độ phân giải 2 giây nên phải ngủ qua ranh giới đó."""
+    first = export(facts=FACTS)
+    time.sleep(2.1)
+    assert export(facts=FACTS) == first
+
+
+def test_zip_members_have_fixed_timestamps_and_core_modified():
+    with zipfile.ZipFile(io.BytesIO(export(facts=FACTS))) as archive:
+        assert {item.date_time for item in archive.infolist()} == {(2000, 1, 1, 0, 0, 0)}
+        core = archive.read("docProps/core.xml")
+    assert b"2000-01-01T00:00:00Z</dcterms:modified>" in core and b"2000-01-01T00:00:00" in core.split(b"dcterms:created")[1]
+
+
+def test_deterministic_xlsx_still_round_trips(tmp_path):
+    catalog = mini()
+    path = tmp_path / "t.xlsx"
+    path.write_bytes(export(catalog, FACTS))
+    theirs, base, findings = xlsx.read_xlsx(path)
+    assert not findings and xlsx.strip_rows(theirs) == xlsx.projection(catalog) and base == xlsx.projection(catalog)
 
 
 def test_every_cell_is_text_so_formulas_and_excel_coercion_cannot_happen():

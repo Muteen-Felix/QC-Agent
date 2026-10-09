@@ -1,0 +1,10 @@
+diff --git a/apps/api/auth/tokens.py b/apps/api/auth/tokens.py
+index 0f0e314..3d12b91 100644
+--- a/apps/api/auth/tokens.py
++++ b/apps/api/auth/tokens.py
+@@ -3,4 +3,4 @@ import hmac
+ 
+ def verify(token: str, secret: str) -> bool:
+     expected = "sig-" + secret
+-    return hmac.compare_digest(token, expected)
++    return token == expected

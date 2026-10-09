@@ -32,13 +32,14 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+from qc_agent.llm.prices import PRICES  # noqa: E402  (bảng giá duy nhất)
 
 THRESHOLDS = {"ac_coverage": 0.9, "green_rate": 0.9, "mutants_killed_min": 9, "mutants_total": 10}
 MUTANTS = tuple(f"BUG-{n}" for n in range(4, 14))
 BUG1 = "BUG-1"
 DEFAULT_FAKE = ROOT / "tests" / "fixtures" / "llm" / "gt_noteboard_response.json"
 DEFAULT_OPENAPI = ROOT / "tests" / "fixtures" / "openapi" / "noteboard.json"
-PRICES_PER_MTOK = {"claude-sonnet-5": (2.0, 10.0)}   # (vào, ra) USD/MTok; model khác thì truyền --price-in/--price-out
+PRICES_PER_MTOK = {model: (price[0], price[1]) for model, price in PRICES.items()}   # (vào, ra) USD/MTok, SUY RA từ llm/prices.py (bảng duy nhất); model khác thì truyền --price-in/--price-out
 GT_DIR = ".qc-agent/ground-truth"
 _TC_NAME = re.compile(r"\[(TC-[^\]]+)\]")
 
@@ -260,6 +261,7 @@ def estimate_for(prd_path: Path, openapi_source: str | None, runs: int, model: s
 
 
 def main(argv: list[str]) -> int:
+    os.environ["QC_GT_CACHE_DIR"] = "none"   # đo model: cache sẽ làm các lượt lặp trả cùng một kết quả và sai số liệu/chi phí (S4-02)
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")

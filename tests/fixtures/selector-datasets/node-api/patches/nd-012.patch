@@ -1,0 +1,8 @@
+diff --git a/test/orders.spec.ts b/test/orders.spec.ts
+index cae4157..52e0a24 100644
+--- a/test/orders.spec.ts
++++ b/test/orders.spec.ts
+@@ -1 +1,2 @@
+-test("orders placeholder", () => expect(1 + 1).toBe(2));
++test("orders placeholder", () => expect(1 + 1).toBe(2);
++test("orders second", () => expect(2 + 2).toBe(4));

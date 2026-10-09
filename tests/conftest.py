@@ -7,6 +7,8 @@ import pytest
 
 os.environ.setdefault("DEEPEVAL_DISABLE_DOTENV", "1")   # import deepeval không được nạp .env của máy dev
 ROOT = Path(__file__).resolve().parent.parent
+# Dataset đo pruner (S4-04) chứa mã SUT giả, kể cả file `test_*.py` của chính SUT đó: chúng là DỮ LIỆU, không phải test của qc-agent (import `routes` thất bại làm `pytest -q` dừng ở bước thu thập).
+collect_ignore_glob = ["fixtures/selector-datasets/*"]
 SUT = ROOT / "tests" / "fixtures" / "sut" / "noteboard"
 sys.path.insert(0, str(SUT))  # `import toyapp` (SUT tham chiếu) trong test
 
@@ -21,6 +23,14 @@ def _utf8_children(monkeypatch):
 @pytest.fixture(autouse=True)
 def _fixture_workers(monkeypatch):
     monkeypatch.setenv("QC_WORKERS_PATH", os.pathsep.join([str(ROOT / "workers"), str(ROOT / "tests" / "fixtures" / "workers")]))
+
+
+@pytest.fixture(autouse=True)
+def _no_llm_cache(monkeypatch):
+    """Cache LLM (S4-02) mặc định ghi vào ~/.cache của máy dev: test lặp cùng đầu vào giả sẽ chép kết quả của test khác hoặc của lần chạy hôm qua. Tắt mặc định;
+    test cache tự bật bằng thư mục tạm (monkeypatch.setenv lại QC_SELECT_CACHE_DIR / QC_GT_CACHE_DIR)."""
+    monkeypatch.setenv("QC_SELECT_CACHE_DIR", "none")
+    monkeypatch.setenv("QC_GT_CACHE_DIR", "none")
 
 
 @pytest.fixture(autouse=True)

@@ -15,8 +15,12 @@
   QC_SCHEMAS_DIR   thư mục chứa task_spec.json / result.json / capabilities.json (mặc định như trên)
   QC_GT_MODEL / QC_SELECTOR_MODEL  model cho GT generator (mặc định claude-sonnet-5) và Diff Agent (claude-haiku-4-5-20251001); `gemini-*` chọn provider Gemini
   QC_LLM_TIMEOUT_S timeout một lời gọi LLM, giây (mặc định 120)
+  QC_LLM_MAX_INPUT_TOKENS  trần token đầu vào ƯỚC LƯỢNG (ceil(byte UTF-8 / 3), KHÔNG phải trần cứng của API) cho MỘT lời gọi của Select và GT một lời gọi (mặc định 100000);
+                   vượt trần: Select chạy FULL SET (fallback_reason=token_cap), GT exit 3. GT agent không áp (có ngân sách riêng QC_GT_AGENT_MAX_*).
   QC_LLM_MAX_RETRIES / QC_LLM_MIN_INTERVAL_S / QC_LLM_FALLBACK_MODELS  CHỈ Gemini: số lần thử lại khi 429/5xx (5), giãn cách tối thiểu giữa hai request (0 = tắt),
                    model dự phòng cách nhau dấu phẩy. QC_GEMINI_THINKING_LEVEL (tuỳ chọn: minimal|low|medium|high) đặt mức thinking của Gemini 3.
+  QC_SELECT_CACHE_DIR / QC_GT_CACHE_DIR  cache kết quả LLM của Select / GT một-lời-gọi (mặc định ~/.cache/qc-agent/{select,gt}); `none` (hoặc rỗng) = TẮT cache.
+                   Dùng `none` thay vì rỗng khi đặt từ PowerShell (biến rỗng bị coi là xoá biến). Xem llm/filecache.py.
   ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL / GEMINI_API_KEY / GEMINI_BASE_URL  KHÔNG nằm ở đây: llm/client.py đọc bằng os.environ lúc gọi (repr của pydantic có thể lộ khoá)
 
 Chạy từ source (thư mục có pyproject.toml + schemas/): gốc repo là project root.
@@ -35,6 +39,11 @@ _SOURCE_ROOT = _PKG.parent.parent  # src/qc_agent/settings.py -> gốc repo (ch�
 
 def _is_source_checkout() -> bool:
     return (_SOURCE_ROOT / "pyproject.toml").is_file() and (_SOURCE_ROOT / "schemas").is_dir()
+
+
+def _cache_dir(value: str) -> Path | None:
+    value = value.strip()
+    return None if value.lower() in ("", "none", "off") else Path(value).expanduser()
 
 
 class Settings(BaseSettings):
@@ -57,6 +66,7 @@ class Settings(BaseSettings):
     gt_model: str = "claude-sonnet-5"
     selector_model: str = "claude-haiku-4-5-20251001"
     llm_timeout_s: float = 120.0
+    llm_max_input_tokens: int = 100_000
     llm_max_retries: int = 5
     llm_min_interval_s: float = 0.0
     llm_fallback_models: str = ""
@@ -72,6 +82,8 @@ class Settings(BaseSettings):
     gt_agent_timeout_s: float = 600.0
     gt_agent_fallbacks: bool = True
     gt_xlsx: bool = True   # `gt generate|regen` ghi thêm test-cases.xlsx cho QA (xlsx.py); QC_GT_XLSX=false hoặc --no-xlsx để tắt
+    select_cache_dir: str = "~/.cache/qc-agent/select"
+    gt_cache_dir: str = "~/.cache/qc-agent/gt"
 
     @property
     def project_root(self) -> Path:
@@ -94,6 +106,14 @@ class Settings(BaseSettings):
         if self.web_dir:
             return self.web_dir
         return _SOURCE_ROOT / "web" if _is_source_checkout() else _PKG / "web"
+
+    @property
+    def resolved_select_cache_dir(self) -> Path | None:
+        return _cache_dir(self.select_cache_dir)
+
+    @property
+    def resolved_gt_cache_dir(self) -> Path | None:
+        return _cache_dir(self.gt_cache_dir)
 
     @property
     def workers_dirs(self) -> list[Path]:

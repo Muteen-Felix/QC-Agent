@@ -1,0 +1,14 @@
+diff --git a/apps/api/routes/orders.py b/apps/api/routes/orders.py
+new file mode 100644
+index 0000000..77186d6
+--- /dev/null
++++ b/apps/api/routes/orders.py
+@@ -0,0 +1,8 @@
++from fastapi import APIRouter
++
++router = APIRouter(prefix="/orders")
++
++
++@router.get("/{order_id}")
++def get_order(order_id: int):
++    return {"id": order_id, "sku": "SKU-1"}

@@ -1,0 +1,10 @@
+diff --git a/src/routes/users.ts b/src/routes/users.ts
+index db7f048..0c16872 100644
+--- a/src/routes/users.ts
++++ b/src/routes/users.ts
+@@ -1,4 +1,4 @@
+ import { Router } from "express";
+ 
+ export const users = Router();
+-users.get("/:id", (req, res) => res.json({ id: req.params.id, active: true }));
++users.get("/:id", (req, res) => res.json({ id: req.params.id, active: true, role: "member" }));

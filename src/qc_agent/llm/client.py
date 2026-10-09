@@ -29,12 +29,13 @@ Sự thật về API đã kiểm với tài liệu Claude API (2026-09), lệch 
 from __future__ import annotations
 
 import copy
+import json
 import logging
 import os
 import random
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
@@ -81,13 +82,24 @@ _DATA = frozenset({"enum", "const", "default", "examples", "required"})         
 
 
 class LLMError(RuntimeError):
-    """`.kind` ∈ KINDS. Message chỉ chứa mã/định danh ngắn: KHÔNG có body response, URL, prompt hay khoá."""
+    """`.kind` ∈ KINDS. Message chỉ chứa mã/định danh ngắn: KHÔNG có body response, URL, prompt hay khoá.
 
-    def __init__(self, kind: str, detail: str = ""):
+    Để báo cáo chi phí không bỏ sót (S4-03), lỗi mang theo những gì client biết về chi phí của lời gọi đã hỏng:
+      - `usage`: token của response bị TỪ CHỐI (sai schema, `refused`, `max_tokens`); `None` khi không có response hoặc response không có usage.
+      - `sent`: request đã rời máy chưa (`False` cho thiếu khoá, egress bị chặn, không kết nối được; `True` khi đã gửi, kể cả khi API trả lỗi HTTP).
+      - `unknown_calls`: số request đã gửi mà KHÔNG có response (timeout đọc, đứt kết nối giữa chừng): server có thể đã tính phí, nên chi phí là CHƯA XÁC ĐỊNH,
+        không phải 0. Lỗi HTTP có body lỗi của API (4xx/429/5xx) không tính vào đây: [Assumption, chưa kiểm chứng] API không tính phí request trả lỗi.
+    """
+
+    def __init__(self, kind: str, detail: str = "", *, usage: "Usage | None" = None, sent: bool = False, unknown_calls: int = 0):
         if kind not in KINDS:
             raise ValueError(f"LLMError.kind phải thuộc {KINDS}, nhận {kind!r}")
         super().__init__(f"{kind}: {detail}" if detail else kind)
         self.kind = kind
+        self.usage = usage
+        self.sent = sent or usage is not None or unknown_calls > 0
+        self.unknown_calls = unknown_calls
+        self.duration_s: float | None = None   # thời gian client đã chờ lời gọi hỏng (đo phía client), nếu biết
 
 
 @dataclass(frozen=True)
@@ -111,6 +123,7 @@ class ToolCall:
     stop_reason: str
     duration_s: float
     fallback_from: str | None = None   # Gemini: model được yêu cầu ban đầu, khi `model` là model dự phòng đã trả lời
+    unknown_calls: int = 0             # Gemini: request ĐÃ GỬI TRƯỚC lần thành công này mà không có response (retry sau lỗi mạng, model dự phòng): chi phí chưa xác định, KHÔNG nằm trong `usage`
 
 
 def wire_schema(schema: dict) -> dict:
@@ -156,6 +169,25 @@ def _usage(raw) -> Usage:
     return Usage(number("input_tokens"), number("output_tokens"), number("cache_creation_input_tokens"), number("cache_read_input_tokens"))
 
 
+def _never_sent(error: httpx.HTTPError) -> bool:
+    """Lỗi xảy ra TRƯỚC khi request tới server (không kết nối được, hết chờ kết nối/hồ chứa): chắc chắn không bị tính phí."""
+    return isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
+
+
+def _transport_error(error: httpx.HTTPError, timeout: float) -> LLMError:
+    """Timeout/lỗi mạng. Nếu request đã có thể tới server mà không có response thì chi phí CHƯA XÁC ĐỊNH (`unknown_calls=1`), không phải 0."""
+    sent = not _never_sent(error)
+    if isinstance(error, httpx.TimeoutException):
+        return LLMError("timeout", f"quá {timeout:g}s", sent=sent, unknown_calls=int(sent))
+    return LLMError("unavailable", f"lỗi mạng ({type(error).__name__})", sent=sent, unknown_calls=int(sent))   # không kèm str(error): có thể chứa URL
+
+
+def _rejected_usage(payload) -> Usage | None:
+    """Usage của một response bị từ chối; None nếu response không có khối usage (khi đó chi phí chưa xác định)."""
+    raw = payload.get("usage") if isinstance(payload, dict) else None
+    return _usage(raw) if isinstance(raw, dict) else None
+
+
 def _http_error(response: httpx.Response) -> LLMError:
     kind = "unavailable" if response.status_code == 429 or response.status_code >= 500 else "bad_request"
     detail = f"HTTP {response.status_code}"
@@ -166,7 +198,7 @@ def _http_error(response: httpx.Response) -> LLMError:
         error_type = None
     if error_type in _ERROR_TYPES:
         detail += f" {error_type}"
-    return LLMError(kind, detail)
+    return LLMError(kind, detail, sent=True)
 
 
 def _validation_path(error: jsonschema.ValidationError) -> str:
@@ -365,10 +397,12 @@ def _call_gemini(*, purpose: str, model: str, system: str, user: str, tool_name:
     if cfg.gemini_thinking_level.strip():
         body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": cfg.gemini_thinking_level.strip()}
     headers = {"x-goog-api-key": key, "content-type": "application/json"}
-    sent = 0   # số request đã rời máy (đánh số dòng egress: attempt)
+    sent = 0     # đánh số dòng egress (attempt); tăng TRƯỚC khi hỏi policy nên không đếm được request đã rời máy
+    posted = 0   # số request thật sự đã gửi đi (qua egress)
+    unknown = 0  # trong đó số request không có response (timeout đọc, đứt kết nối) hoặc response không có usage: chi phí chưa xác định (LLMError.unknown_calls)
 
     def one_model(name: str) -> ToolCall:
-        nonlocal sent
+        nonlocal sent, posted, unknown
         url = f"{base_url}/v1beta/models/{name}:generateContent"
         for retry in range(max_retries + 1):
             sent += 1
@@ -379,14 +413,26 @@ def _call_gemini(*, purpose: str, model: str, system: str, user: str, tool_name:
             started = _monotonic()
             network = None
             response = None
+            posted += 1
             try:
                 with httpx.Client(transport=transport, timeout=timeout) as client:
                     response = client.post(url, headers=headers, json=body)
-            except httpx.TimeoutException:
-                _log_call(logging.WARNING, purpose=purpose, model=name, stop_reason=None, usage=Usage(), duration_s=_monotonic() - started, kind="timeout")
-                raise LLMError("timeout", f"quá {timeout:g}s") from None   # đã chờ cả timeout: không retry
+            except httpx.TimeoutException as caught:
+                if _never_sent(caught):
+                    posted -= 1
+                else:
+                    unknown += 1
+                waited = _monotonic() - started
+                _log_call(logging.WARNING, purpose=purpose, model=name, stop_reason=None, usage=Usage(), duration_s=waited, kind="timeout")
+                timed_out = LLMError("timeout", f"quá {timeout:g}s")   # đã chờ cả timeout: không retry
+                timed_out.duration_s = waited
+                raise timed_out from None
             except httpx.HTTPError as caught:
                 network = f"lỗi mạng ({type(caught).__name__})"   # không kèm str(caught): có thể chứa URL
+                if _never_sent(caught):
+                    posted -= 1
+                else:
+                    unknown += 1
             duration = _monotonic() - started
 
             if response is not None and response.is_success:
@@ -402,6 +448,12 @@ def _call_gemini(*, purpose: str, model: str, system: str, user: str, tool_name:
                     reason = candidates[0].get("finishReason") if isinstance(candidates, list) and candidates and isinstance(candidates[0], dict) else None
                     _log_call(logging.WARNING, purpose=purpose, model=name, stop_reason=reason.lower() if isinstance(reason, str) else None,
                               usage=_gemini_usage(seen.get("usageMetadata")), duration_s=duration, kind=bad.kind)
+                    bad.duration_s = duration
+                    meta = seen.get("usageMetadata")
+                    if isinstance(meta, dict):
+                        bad.usage = _gemini_usage(meta)   # token của response bị từ chối (đã bị tính phí)
+                    else:
+                        unknown += 1                       # có response nhưng không có usage: chưa biết đã tốn bao nhiêu
                     raise
                 _log_call(logging.INFO, purpose=purpose, model=name, stop_reason=call.stop_reason, usage=call.usage, duration_s=duration, kind=None)
                 return call
@@ -424,16 +476,108 @@ def _call_gemini(*, purpose: str, model: str, system: str, user: str, tool_name:
         raise AssertionError("unreachable")   # vòng lặp luôn return/raise
 
     last: LLMError | None = None
-    for name in models:
-        try:
-            call = one_model(name)
-        except _ModelUnavailable as unavailable:
-            last = unavailable
-            event(log, "llm.fallback", logging.WARNING, purpose=purpose, model=name, kind=unavailable.kind)
-            continue
-        return call if name == model else ToolCall(call.data, call.usage, call.model, call.stop_reason, call.duration_s, fallback_from=model)
-    assert last is not None
-    raise LLMError(last.kind, _detail(last) + (f" (đã thử {len(models)} model)" if len(models) > 1 else ""))
+    try:
+        for name in models:
+            try:
+                call = one_model(name)
+            except _ModelUnavailable as unavailable:
+                last = unavailable
+                event(log, "llm.fallback", logging.WARNING, purpose=purpose, model=name, kind=unavailable.kind)
+                continue
+            return replace(call, unknown_calls=unknown, fallback_from=None if name == model else model)   # `unknown` gom qua mọi lần thử và mọi model
+        assert last is not None
+        raise LLMError(last.kind, _detail(last) + (f" (đã thử {len(models)} model)" if len(models) > 1 else ""))
+    except LLMError as error:
+        error.sent = error.sent or posted > 0   # mọi lỗi thoát ra đều biết đã có request nào rời máy chưa và bao nhiêu cái chưa biết chi phí
+        error.unknown_calls = unknown
+        raise
+
+
+def _canonical(node):
+    """Sắp khoá của MỌI dict (giữ nguyên thứ tự mảng) để `tools` giống từng byte giữa các lời gọi: một byte lệch trong tiền tố (tools -> system -> messages) là mất cache."""
+    if isinstance(node, dict):
+        return {key: _canonical(node[key]) for key in sorted(node)}
+    if isinstance(node, list):
+        return [_canonical(item) for item in node]
+    return node
+
+
+def _claude_body(model: str, system: str, user: str, tool_name: str, tool_description: str, wire: dict) -> dict:
+    """Phần body dùng chung cho `messages` và `count_tokens` (chưa có `max_tokens`/`temperature`). `system` là block tĩnh cuối cùng của tiền tố nên gắn
+    `cache_control` (TTL 5 phút); tiền tố ngắn hơn ngưỡng của model thì API im lặng không cache (không lỗi, không tốn thêm)."""
+    body: dict = {
+        "model": model,
+        "messages": [{"role": "user", "content": [{"type": "text", "text": user}]}],
+        "tools": [{"name": tool_name, "description": tool_description, "input_schema": _canonical(wire), "strict": True}],
+        "tool_choice": {"type": "tool", "name": tool_name},
+    }
+    if system and system.strip():
+        body["system"] = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+    return body
+
+
+def estimate_input_tokens(*parts) -> int:
+    """Ước lượng TẤT ĐỊNH số token đầu vào: `ceil(số byte UTF-8 / 3)`, không gọi API và không gửi thêm dữ liệu; dùng chung cho mọi provider.
+
+    Chỉ là ƯỚC LƯỢNG GẦN ĐÚNG, KHÔNG phải trần tuyệt đối: với ASCII bằng `ký tự / 3`; với CJK (3 byte/ký tự) cho ≈ 1 token/ký tự, và tiếng Việt có dấu, emoji cho số
+    lớn hơn `ký tự / 3`. Vẫn có thể thấp hơn thực tế ở ký tự hiếm. Số token thật chỉ biết sau lời gọi (`usage`). `parts` là chuỗi hoặc dict (schema, được canonical hoá)."""
+    total = 0
+    for part in parts:
+        text = part if isinstance(part, str) else json.dumps(_canonical(part), ensure_ascii=False, separators=(",", ":"))
+        total += len(text.encode("utf-8"))
+    return -(-total // 3)
+
+
+def count_tokens(*, purpose: str, model: str, system: str, user: str, tool_name: str, tool_description: str, input_schema: dict,
+                 egress_dir: Path, data_categories: list[str], timeout_s: float | None = None,
+                 policy: egress.EgressPolicy | None = None, transport: httpx.BaseTransport | None = None) -> int:
+    """`POST /v1/messages/count_tokens` với cùng body của `call_tool` (không có `max_tokens`): số token đầu vào THẬT của một lời gọi (chỉ Claude).
+
+    Endpoint này GỬI NỘI DUNG RA NGOÀI nên đi đúng đường egress của một lời gọi LLM: ghi egress TRƯỚC khi gửi, policy khác `allow` thì KHÔNG có request nào.
+    Model `gemini-*` là lỗi lập trình (`ValueError`, không gọi gì). Lỗi dùng chung phân loại của `call_tool` (`LLMError`, kèm `sent`/`unknown_calls`)."""
+    if not _PURPOSE.fullmatch(purpose or ""):
+        raise ValueError("purpose phải khớp [a-z0-9][a-z0-9_-]{0,39}")
+    if not _TOOL_NAME.fullmatch(tool_name or ""):
+        raise ValueError("tool_name phải khớp [A-Za-z0-9_-]{1,64}")
+    if not model or not user or not user.strip():
+        raise ValueError("model và user không được rỗng")
+    if provider_of(model) == "gemini":
+        raise ValueError("count_tokens chỉ hỗ trợ model Claude")
+    try:
+        jsonschema.Draft202012Validator.check_schema(input_schema)
+    except jsonschema.SchemaError as error:
+        raise ValueError(f"input_schema không hợp lệ theo JSON Schema 2020-12 ({error.validator})") from None
+    wire = wire_schema(input_schema)
+    timeout = timeout_s if timeout_s is not None else settings.get().llm_timeout_s
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not key:
+        raise LLMError("missing_key", "chưa đặt ANTHROPIC_API_KEY")
+    base_url = (os.environ.get("ANTHROPIC_BASE_URL", "").strip() or DEFAULT_BASE_URL).rstrip("/")
+    if urlsplit(base_url).scheme not in ("http", "https"):
+        raise LLMError("bad_request", "ANTHROPIC_BASE_URL phải là http(s)")
+    worker = SimpleNamespace(name=f"qc-agent-{purpose}", data_egress=list(data_categories))
+    spec = {"task_id": purpose, "capability": f"llm.{purpose}", "target": {"base_url": base_url}}
+    egress_dir = Path(egress_dir)
+    egress_dir.mkdir(parents=True, exist_ok=True)
+    decision = egress.record(policy or egress.LogOnlyPolicy(), egress_dir, spec, worker, 1)
+    if decision.action != "allow":
+        raise LLMError("egress_denied", f"chính sách egress: {decision.action}")
+    body = _claude_body(model, system, user, tool_name, tool_description, wire)
+    headers = {"x-api-key": key, "anthropic-version": API_VERSION, "content-type": "application/json"}
+    try:
+        with httpx.Client(transport=transport, timeout=timeout) as client:
+            response = client.post(f"{base_url}/v1/messages/count_tokens", headers=headers, json=body)
+    except httpx.HTTPError as caught:
+        raise _transport_error(caught, timeout) from None
+    if not response.is_success:
+        raise _http_error(response)
+    try:
+        count = response.json().get("input_tokens")
+    except (ValueError, AttributeError):
+        count = None
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        raise LLMError("bad_output", "response không có input_tokens hợp lệ", sent=True)
+    return count
 
 
 def call_tool(*, purpose: str, model: str, system: str, user: str,
@@ -489,15 +633,8 @@ def call_tool(*, purpose: str, model: str, system: str, user: str,
     if decision.action != "allow":
         raise LLMError("egress_denied", f"chính sách egress: {decision.action}")
 
-    body: dict = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": [{"type": "text", "text": user}]}],
-        "tools": [{"name": tool_name, "description": tool_description, "input_schema": wire, "strict": True}],
-        "tool_choice": {"type": "tool", "name": tool_name},
-    }
-    if system and system.strip():
-        body["system"] = [{"type": "text", "text": system}]
+    body = _claude_body(model, system, user, tool_name, tool_description, wire)
+    body["max_tokens"] = max_tokens
     if model.startswith(_SAMPLING_OK):
         body["temperature"] = 0
     headers = {"x-api-key": key, "anthropic-version": API_VERSION, "content-type": "application/json"}
@@ -506,16 +643,15 @@ def call_tool(*, purpose: str, model: str, system: str, user: str,
     try:
         with httpx.Client(transport=transport, timeout=timeout) as client:
             response = client.post(f"{base_url}/v1/messages", headers=headers, json=body)
-    except httpx.TimeoutException:
-        error = LLMError("timeout", f"quá {timeout:g}s")
-    except httpx.HTTPError as caught:
-        error = LLMError("unavailable", f"lỗi mạng ({type(caught).__name__})")  # không kèm str(caught): có thể chứa URL
+    except httpx.HTTPError as caught:   # gồm cả TimeoutException; chi phí chưa xác định nếu request đã có thể tới server (xem LLMError)
+        error = _transport_error(caught, timeout)
     else:
         error = None
     duration = time.monotonic() - started
     if error is None and not response.is_success:
         error = _http_error(response)
     if error is not None:
+        error.duration_s = duration
         _log_call(logging.WARNING, purpose=purpose, model=model, stop_reason=None, usage=Usage(), duration_s=duration, kind=error.kind)
         raise error
 
@@ -530,6 +666,9 @@ def call_tool(*, purpose: str, model: str, system: str, user: str,
         reason = seen.get("stop_reason")
         _log_call(logging.WARNING, purpose=purpose, model=model, stop_reason=reason if isinstance(reason, str) else None,
                   usage=_usage(seen.get("usage")), duration_s=duration, kind=bad.kind)
+        bad.usage = _rejected_usage(payload)   # response bị từ chối vẫn đã bị tính phí: caller phải đưa vào báo cáo chi phí
+        bad.sent, bad.duration_s = True, duration
+        bad.unknown_calls = 0 if bad.usage is not None else 1   # response không có usage (hoặc không phải JSON): chưa biết đã tốn bao nhiêu
         raise
     _log_call(logging.INFO, purpose=purpose, model=call.model, stop_reason=call.stop_reason, usage=call.usage, duration_s=duration, kind=None)
     return call

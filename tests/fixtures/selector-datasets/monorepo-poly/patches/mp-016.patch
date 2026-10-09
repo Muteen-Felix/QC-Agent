@@ -1,0 +1,10 @@
+diff --git a/apps/api/routes/users.py b/apps/api/routes/users.py
+index 424a52e..baee34a 100644
+--- a/apps/api/routes/users.py
++++ b/apps/api/routes/users.py
+@@ -5,4 +5,4 @@ router = APIRouter(prefix="/users")
+ 
+ @router.get("/{user_id}")
+ def get_user(user_id: int):
+-    return {"id": user_id, "active": True}
++    return {"id": user_id, "active": True, "message": "Người dùng đang hoạt động ✔"}

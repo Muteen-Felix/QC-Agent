@@ -47,7 +47,7 @@ def git_apply(sut: Path, patch: str) -> None:
 
 def test_refine_fills_exclude_k6_and_health_from_the_real_vahan_openapi(phase1):
     result = refine.refine(phase1, str(VAHAN))
-    assert sorted(result.changed) == [".github/workflows/qc.yml", ".qc-agent/perf/smoke.js", ".qc-agent/suites/api-contract.yaml"]
+    assert sorted(result.changed) == [".github/workflows/qc-gate.yml", ".qc-agent/perf/smoke.js", ".qc-agent/suites/api-contract.yaml"]
     assert f'- "{UPLOAD}"' in result.patch and '+const PATHS = ["/", "/api/health", "/api/runners"];' in result.patch
     assert '-      sut_health_path: "/health"' in result.patch and '+      sut_health_path: "/api/health"' in result.patch
     assert any("đề xuất /api/health" in n for n in result.notes)
@@ -85,7 +85,7 @@ def test_suggestions_point_at_the_marker_lines_and_stay_small(phase1):
     sug = by_path[".qc-agent/suites/api-contract.yaml"]
     assert "qc-agent:begin refine" in contract_lines[sug["start_line"] - 1] and "qc-agent:end" in contract_lines[sug["end_line"] - 1]
     assert f'"{UPLOAD}"' in sug["replacement"] and sug["replacement"].splitlines()[0].strip().startswith("# qc-agent:begin refine exclude_path")
-    health = by_path[".github/workflows/qc.yml"]
+    health = by_path[".github/workflows/qc-gate.yml"]
     assert health["start_line"] == health["end_line"] and health["replacement"].strip() == 'sut_health_path: "/api/health"'
     assert all(s["end_line"] - s["start_line"] + 1 <= refine.MAX_SUGGEST_LINES for s in result.suggestions)
 
@@ -108,16 +108,16 @@ def test_refine_never_writes_into_the_repo(phase1, tmp_path):
 
 
 def test_health_already_correct_or_ambiguous_gets_no_proposal(phase1):
-    workflow = phase1 / ".github" / "workflows" / "qc.yml"
+    workflow = phase1 / ".github" / "workflows" / "qc-gate.yml"
     text = workflow.read_text(encoding="utf-8").replace('sut_health_path: "/health"', 'sut_health_path: "/api/health"')
     workflow.write_text(text, encoding="utf-8")
-    assert ".github/workflows/qc.yml" not in refine.refine(phase1, str(VAHAN)).changed
+    assert ".github/workflows/qc-gate.yml" not in refine.refine(phase1, str(VAHAN)).changed
     spec = json.loads(VAHAN.read_text(encoding="utf-8"))
     spec["paths"]["/v2/health"] = spec["paths"]["/api/health"]
     both = phase1.parent / "both.json"
     both.write_text(json.dumps(spec), encoding="utf-8")
     workflow.write_text(text.replace('sut_health_path: "/api/health"', 'sut_health_path: "/health"'), encoding="utf-8")
-    assert ".github/workflows/qc.yml" not in refine.refine(phase1, str(both)).changed      # hai ứng viên: không đoán
+    assert ".github/workflows/qc-gate.yml" not in refine.refine(phase1, str(both)).changed      # hai ứng viên: không đoán
 
 
 def test_no_get_paths_keeps_the_temporary_k6_list(tmp_path, phase1):
@@ -208,3 +208,19 @@ def test_an_unreadable_file_is_reported_not_treated_as_empty(phase1, monkeypatch
     monkeypatch.setattr(refine, "_read_lines", lambda path: None if path.name == "api-contract.yaml" else real(path))
     result = refine.refine(phase1, str(VAHAN))
     assert any("không đọc được .qc-agent/suites/api-contract.yaml" in n for n in result.notes) and ".qc-agent/suites/api-contract.yaml" not in result.changed
+
+
+# ---------- S4-01: refine tìm caller theo cả hai tên ----------
+
+def test_refine_finds_a_repo_that_only_has_qc_gate_yml(phase1):
+    assert (phase1 / ".github" / "workflows" / "qc-gate.yml").is_file() and not (phase1 / ".github" / "workflows" / "qc.yml").exists()
+    result = refine.refine(phase1, str(VAHAN))
+    assert ".github/workflows/qc-gate.yml" in result.changed and '+      sut_health_path: "/api/health"' in result.patch
+
+
+def test_refine_still_finds_a_repo_that_kept_the_old_name_qc_yml(phase1):
+    workflows = phase1 / ".github" / "workflows"
+    (workflows / "qc-gate.yml").rename(workflows / "qc.yml")
+    result = refine.refine(phase1, str(VAHAN))
+    assert ".github/workflows/qc.yml" in result.changed and '+      sut_health_path: "/api/health"' in result.patch
+    assert any("đề xuất /api/health" in n for n in result.notes)

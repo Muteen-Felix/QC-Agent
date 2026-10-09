@@ -1,0 +1,214 @@
+{
+  "datasets": {
+    "monorepo-poly": {
+      "dataset": "monorepo-poly",
+      "split": "holdout",
+      "token_evidence": "estimate",
+      "model": "claude-haiku-4-5-20251001",
+      "prompt_version": "diff-select/1",
+      "labels_status": "unreviewed",
+      "cost_target": {
+        "median_reduction": null,
+        "reason": "Đo 2026-10-07 (eval_cost --ceiling --split all, estimate): trần chặt 1-B_min/A = 7,7% ở median (P90 12,1%) trên 20 ca LLM vì đa số diff chỉ chạm 1-2 file nhỏ; 40% ở median không khả thi. Diff lớn còn dư địa (mp-010, 45 file: trần 58,7%) nhưng không đại diện cho median (S4-04, phương án A)."
+      },
+      "prefix_tokens": 907,
+      "pruner": {
+        "sha": "78f6f90498d6e2a0d22bc079ef0214d78ec4689f",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "baseline_pruner": {
+        "sha": "2f4c2dec4a1a4c5e37037520bf7dbd555719755c",
+        "uncommitted_changes": false,
+        "params": {
+          "per_file_tokens": 1500,
+          "total_tokens": 12000
+        }
+      },
+      "policy_sha": "4826e6a014a77b490a47ad3863c9ffd7f66880938910efd0bfd88634701ee11f",
+      "module_map_sha": "5e3bf6f778a0d7f7ef5460df0d2066371322c7f0d6926a2fbc9eaf36cfca5580",
+      "cases_detail": [
+        {
+          "name": "mp-005",
+          "split": "holdout",
+          "route": "llm",
+          "files": 2,
+          "tokens": {
+            "A": 1125,
+            "P": 907,
+            "B_min": 965,
+            "B1": 1045,
+            "B0": 1187
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-006",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1044,
+            "P": 907,
+            "B_min": 932,
+            "B1": 1007,
+            "B0": 1098
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-007",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 994,
+            "P": 907,
+            "B_min": 932,
+            "B1": 932,
+            "B0": 958
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-009",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1035,
+            "P": 907,
+            "B_min": 927,
+            "B1": 1012,
+            "B0": 1084
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-012",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1000,
+            "P": 907,
+            "B_min": 931,
+            "B1": 960,
+            "B0": 1046
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        },
+        {
+          "name": "mp-016",
+          "split": "holdout",
+          "route": "llm",
+          "files": 1,
+          "tokens": {
+            "A": 1043,
+            "P": 907,
+            "B_min": 928,
+            "B1": 1011,
+            "B0": 1087
+          },
+          "token_cap_at": [],
+          "truncated": 0,
+          "dropped_hunks": 0,
+          "baseline_truncated": 0,
+          "baseline_dropped_hunks": 0
+        }
+      ],
+      "cases": 6,
+      "llm_cases": 6,
+      "excluded": {
+        "full_set": [],
+        "floor_only": [],
+        "token_cap": []
+      },
+      "target": null,
+      "tokens": {
+        "A": {
+          "median": 1039.0,
+          "p90": 1125
+        },
+        "P": {
+          "median": 907.0,
+          "p90": 907
+        },
+        "B_min": {
+          "median": 931.5,
+          "p90": 965
+        },
+        "B0": {
+          "median": 1085.5,
+          "p90": 1187
+        },
+        "B1": {
+          "median": 1009.0,
+          "p90": 1045
+        }
+      },
+      "ceiling": {
+        "loose": {
+          "median": 0.12703229721029546,
+          "p90": 0.19377777777777783
+        },
+        "tight": {
+          "median": 0.10581375978677326,
+          "p90": 0.14222222222222225
+        }
+      },
+      "reduction_b0": {
+        "median": -0.04667149758454103,
+        "p90": 0.03621730382293764
+      },
+      "reduction_b1": {
+        "median": 0.03772030651340996,
+        "p90": 0.07111111111111112
+      },
+      "delta_points": 8.4,
+      "increased_vs_b0": [],
+      "above_raw": {
+        "b0": [
+          "mp-005",
+          "mp-006",
+          "mp-009",
+          "mp-012",
+          "mp-016"
+        ],
+        "b1": []
+      },
+      "b_min_ge_a": [],
+      "cut": {
+        "b0": 0,
+        "b1": 0
+      },
+      "margin_points": -29.4,
+      "ceiling_ok": false,
+      "target_met": null
+    }
+  },
+  "aggregate": null
+}

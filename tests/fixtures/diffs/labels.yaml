@@ -1,4 +1,4 @@
-labeled_by: "dev — CẦN QA DUYỆT"
+labeled_by: "nmduc"
 # expect_workers: minimum required workers in the final selection, beyond the always-run floor.
 # Floor workers semgrep and gitleaks are implicit; extra workers are allowed.
 # Dockerfile/lockfile changes require all PR suites (full_set).

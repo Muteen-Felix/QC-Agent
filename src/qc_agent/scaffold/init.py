@@ -28,7 +28,7 @@ K6_SCRIPT = ".qc-agent/perf/smoke.js"
 EXPLORE_FLOW = ".qc-agent/midscene/explore.yaml"
 CANARY_FLOW = ".qc-agent/midscene/canary.yaml"
 UI_DOCKERFILE = ".qc-agent/Dockerfile.ui"
-WORKFLOW = ".github/workflows/qc.yml"
+WORKFLOW = t.GATE_WORKFLOW
 GT_WORKFLOW = ".github/workflows/qc-groundtruth.yml"
 CODEOWNERS_CANDIDATES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")   # thứ tự ưu tiên của GitHub
 DEFAULT_SUT_MOUNT = "/sut"   # `docker run -v "$PWD:/sut" <image> init` chạy nguyên văn
@@ -96,6 +96,16 @@ def _verify(finding) -> str | None:
     return t.todo_mark("VERIFY", finding.verify) if finding is not None and finding.verify else None
 
 
+def _declare(marks: dict[str, str], key: str, value, default, finding=None):
+    """Giá trị input của caller. Finding có `verify` thì LUÔN khai (kể cả khi bằng mặc định của workflow) và gắn dấu để `validate` chặn;
+    không có `verify` thì chỉ khai khi khác mặc định. Trả None = không khai."""
+    mark = _verify(finding)
+    if mark:
+        marks[key] = mark
+        return value
+    return value if value is not None and value != default else None
+
+
 def build(opts: Options) -> Plan:
     root = Path(opts.sut_root)
     if not root.is_dir():
@@ -109,11 +119,14 @@ def build(opts: Options) -> Plan:
             if opts.openapi_source:
                 plan.warnings.append("--no-api: bỏ qua --openapi")
         try:
-            found = scan.scan(root, scan.Overrides(dockerfile=opts.sut_dockerfile, port=opts.sut_port, health_path=opts.sut_health_path),
+            found = scan.scan(root, scan.Overrides(dockerfile=opts.sut_dockerfile, context=opts.sut_context, port=opts.sut_port, health_path=opts.sut_health_path),
                               api=not opts.no_api)
         except scan.ScanError as error:
             raise InitError(str(error)) from None
         plan.notes.extend(found.notes)
+        plan.warnings.extend(found.warnings)
+        if found.db_refs:
+            plan.warnings.append(scan.db_warning(found.db_refs))
 
         def add(rel: str, content: str) -> None:
             plan.files.append(Planned(root / rel, rel, content))
@@ -165,18 +178,14 @@ def build(opts: Options) -> Plan:
         elif not sut_env and ui_dockerfile and not opts.no_api:
             plan.notes.append("không thấy biến CORS trong mã API: nếu API chặn origin http://ui:<cổng UI> thì thêm --sut-env KEY=VALUE")
 
-        dockerfile, context = None, None
+        dockerfile, context = None, opts.sut_context
         if found.dockerfile is not None:
-            dockerfile = found.dockerfile.value if found.dockerfile.value != "Dockerfile" else None
-            context = found.context if found.context != "." else None
-            if dockerfile and _verify(found.dockerfile):
-                marks["sut_dockerfile"] = _verify(found.dockerfile)
+            dockerfile = _declare(marks, "sut_dockerfile", found.dockerfile.value, "Dockerfile", found.dockerfile)
+            context = opts.sut_context or _declare(marks, "sut_context", found.context, ".", found.context_finding)   # flag đặt "." vẫn được khai
         port = found.port.value if not opts.no_api and (found.port.value != scan.DEFAULT_PORT or found.port.verify) else None
         if port and _verify(found.port):
             marks["sut_port"] = _verify(found.port)
-        health = found.health_path.value if not opts.no_api and found.health_path.value != scan.DEFAULT_HEALTH else None
-        if health and _verify(found.health_path):
-            marks["sut_health_path"] = _verify(found.health_path)
+        health = None if opts.no_api else _declare(marks, "sut_health_path", found.health_path.value, scan.DEFAULT_HEALTH, found.health_path)
         add(GT_WORKFLOW, t.groundtruth_workflow(project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image,
                                                 prd_glob=opts.prd_glob, openapi=_repo_file(root, opts.openapi_source)))
         owners = next((rel for rel in CODEOWNERS_CANDIDATES if (root / rel).is_file()), CODEOWNERS_CANDIDATES[0])
@@ -184,10 +193,16 @@ def build(opts: Options) -> Plan:
         plan.files.append(Planned(root / owners, owners, t.merge_codeowners(old_owners, opts.qa_team), managed=True))
         if not opts.qa_team:
             plan.warnings.append("thiếu --qa-team: CODEOWNERS dùng owner giữ chỗ kèm qc-agent:todo (`qc-agent validate` sẽ từ chối cho tới khi thay bằng team QA thật)")
-        add(WORKFLOW, t.qc_workflow(
-            project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image, sut_dockerfile=dockerfile, sut_context=opts.sut_context or context,
+        gate_workflow = t.qc_workflow(
+            project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image, sut_dockerfile=dockerfile, sut_context=context,
             sut_port=port, sut_health_path=health, sut_env=sut_env, ui_dockerfile=ui_dockerfile, ui_context=ui_context, ui_port=ui_port,
-            ui_health_path=opts.ui_health_path, ui_build_args=ui_build_args, marks=marks))
+            ui_health_path=opts.ui_health_path, ui_build_args=ui_build_args, marks=marks)
+        if (root / t.LEGACY_WORKFLOW).is_file() and not (root / WORKFLOW).exists() and not opts.force:
+            # Repo đang dùng tên cũ: sinh thêm qc-gate.yml sẽ tạo HAI job cùng project (hai Check Run). Việc đổi tên là của người dùng.
+            plan.warnings.append(f"{t.LEGACY_WORKFLOW} đã có nên KHÔNG sinh {WORKFLOW} (sẽ có hai job cùng project). Đổi tên để dùng bản mới "
+                                 f"(có input `workers` cho chạy tay): `git mv {t.LEGACY_WORKFLOW} {WORKFLOW}`; hoặc chạy lại init với --force để sinh {WORKFLOW} rồi tự xoá {t.LEGACY_WORKFLOW}")
+        else:
+            add(WORKFLOW, gate_workflow)
     except (t.TemplateError, openapi.OpenApiError) as error:
         raise InitError(str(error)) from None
     return plan

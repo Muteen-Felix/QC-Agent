@@ -1,0 +1,23 @@
+diff --git a/src/routes/legacy.ts b/src/routes/legacy.ts
+deleted file mode 100644
+index 1b88fbd..0000000
+--- a/src/routes/legacy.ts
++++ /dev/null
+@@ -1,4 +0,0 @@
+-import { Router } from "express";
+-
+-export const legacy = Router();
+-legacy.get("/", (_req, res) => res.send("legacy"));
+diff --git a/src/server.ts b/src/server.ts
+index f9c0cfe..ac58b17 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -1,8 +1,6 @@
+ import express from "express";
+ import { users } from "./routes/users";
+-import { legacy } from "./routes/legacy";
+ 
+ const app = express();
+ app.use("/users", users);
+-app.use("/legacy", legacy);
+ app.listen(3000);

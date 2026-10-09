@@ -1,0 +1,15 @@
+# Dataset node-api: API Node/TypeScript tổng hợp, KHÔNG chép mã từ SUT sản phẩm. Dùng slug chưa đăng ký nên nhận _default.yaml thật.
+name: node-api
+sut: sut
+patches: patches
+injection_patches: patches/injection
+labels: labels.yaml
+project: {slug: node-api}
+labels_status: unreviewed
+cost_target:
+  median_reduction: null
+  reason: "Đo 2026-10-07 (eval_cost --ceiling --split all, estimate): trần chặt 1-B_min/A = 9,8% ở median (P90 46,0%) trên 13 ca LLM vì đa số diff chỉ chạm 1-2 file nhỏ; chưa đạt 40% ở median theo ước lượng (sau tinh chỉnh trần 14,8% tune, 9,1% holdout); count_tokens còn PENDING. Diff lớn còn dư địa (nd-008, 45 file: trần 46,0%) nhưng không đại diện cho median (S4-04, phương án A)."
+splits:
+  # holdout chia TRƯỚC khi đo; mỗi nhóm ca (add/modify/delete/rename/security/generated/large) vẫn còn đại diện trong tune; chỉ chạy một lần sau khi đóng băng núm
+  tune: ["nd-001", "nd-003", "nd-004", "nd-006", "nd-008", "nd-010", "nd-011", "nd-012", "nd-013", "nd-014", "nd-015", "nd-016", "nd-017", "nd-018", "injection-001", "injection-002"]
+  holdout: ["nd-002", "nd-005", "nd-007", "nd-009"]

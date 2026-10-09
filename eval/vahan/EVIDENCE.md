@@ -2,7 +2,29 @@
 
 Mục đích: cho thấy bộ test do agent Ground-Truth sinh ra có **bắt được lỗi thật** hay không (mutation testing), đo trên một SUT thật chứ không phải noteboard. Báo cáo ghi cả những lần chạy hỏng và các giới hạn của phép đo; số liệu thô nằm trong `eval/real*.json`.
 
-## 1. Kết luận được phép và không được phép
+## 0. Chấm lại sau khi duyệt nhãn (2026-10-06)
+
+Codex đối chiếu 72 nhãn loại trừ và 15 mutant; `ncnghia` xác nhận chọn phương án A **sau khi đã thấy** kết quả ở `eval/real.json`; `vvhuy` ký duyệt nhãn ngày 2026-10-06 (trường `labeled_by`, cũng **sau khi xem** `eval/real.json`). PRD của BA và repo `vahan-automation` không bị sửa. Vì AC-12.2 và AC-14.2 đều gộp phần HTTP với sự kiện Socket.IO, cả hai được loại khỏi mẫu số **ở cấp toàn AC**; so với nhãn AI ban đầu, chỉ có AC-12.2 mới được thêm vào `non_testable`. Ngưỡng 85% cũng được chủ dự án hạ từ 90% sau lần đo gốc. Đây là review và quyết định hậu nghiệm, không phải phép đo mù độc lập của QA.
+
+Nguồn số liệu mới: `eval/real-reviewed.json`, chạy `--from-saved` trên chính catalog của lần 3; không gọi LLM, không sinh TC mới. `eval/real.json` và bảng 90% bên dưới giữ nguyên để truy vết kết quả ban đầu.
+
+| Chỉ số | Chấm lại | Ngưỡng 85% |
+|---|---:|---:|
+| AC coverage theo nhãn đã duyệt | **23/25 = 92,0%** (thiếu AC-1.5, AC-1.7) | Đạt |
+| TC xanh trên SUT sạch | **59/66 = 89,4%** | Đạt |
+| Mutant bị bắt trên 59 TC xanh | **13/15 = 86,7%** | Đạt |
+
+Phạm vi hiện tại là **25/98 AC testable**, 73 AC ngoài mẫu số. AC-12.2 có TC kiểm phản hồi HTTP nhưng chưa quan sát sự kiện `ui-health:schedule-updated`; AC-14.2 có phần BOM kiểm được qua HTTP nhưng chưa quan sát sự kiện `ui-health:log-received`. Kiểm trực tiếp trên SUT lab: `POST /api/ui-health/logs` trả 201, tải CSV qua HTTP trả 200 với ba byte đầu `ef bb bf`. Những kiểm tra từng phần này **không** chứng minh trọn hai AC. Khi cần tách AC, BA/team sở hữu PRD sẽ quyết định; phép đo này không sửa PRD.
+
+15 mutant đều có thay đổi phản hồi quan sát được so với SUT sạch, nhưng **10/15** chỉ đổi status code (8) hoặc lệch biên một đơn vị (2). Không có mutant về phân quyền hoặc chuyển trạng thái nhiều bước; 86,7% chủ yếu đo khả năng bắt lỗi ở bề mặt API. Scorer 100% vẫn dựa trên waiver và catalog cũ, không phải bằng chứng độc lập rằng mọi hành vi trong AC đều đã được kiểm.
+
+Riêng M03: AC-1.2 quy định username hợp lệ dài 1–128 ký tự nhưng không nêu status cụ thể cho 129 ký tự. Mutant đổi phản hồi 422 thành 401, nên không tương đương; cách gắn lỗi này với AC-1.2 dựa thêm vào ràng buộc validation/OpenAPI và yếu hơn các mutant có status được ghi thẳng trong PRD.
+
+SUT chưa có bộ Ground-Truth `approved` để đo phần (c); verdict 85% ở đây chỉ áp cho bộ **vừa sinh đã lưu**, không phải suite QA đã duyệt.
+
+Kiểm ngày 2026-10-06: `python tools/eval_gt_sut.py --config eval/vahan.yaml --check-only` bằng Python hệ thống exit 1 vì thiếu `httpx`; `.\.venv\Scripts\python.exe tools\eval_gt_sut.py --config eval\vahan.yaml --check-only` exit 0. Đếm trực tiếp mọi `find` thấy đúng số lần khai báo (M07 cần 2); `.\.venv\Scripts\python.exe -X utf8 eval\vahan\probe_mutants.py` exit 0 với 15 mutant khác SUT sạch, không có 5xx. `--check-only` tự nó **không** áp edit hay kiểm số lần khớp `find`.
+
+## 1. Kết luận của lần đo gốc (nhãn AI, trước review)
 
 | Được phép nói | Không được phép nói |
 |---|---|
@@ -10,9 +32,9 @@ Mục đích: cho thấy bộ test do agent Ground-Truth sinh ra có **bắt đ�
 | Độ phủ AC theo nhãn: 24/26 AC kiểm được qua HTTP (92,3%). | "Agent đạt ngưỡng 90% của kế hoạch ban đầu": hai trong bốn ngưỡng tự động bị hụt (kill rate 86,7% < 90%; TC xanh 89,4% < 90%). Xem cập nhật ngay dưới bảng. |
 | Hai mutant sống sót chỉ ra hai lỗ hổng cụ thể của bộ test (mục 4). | Con số này đại diện cho agent nói chung: chỉ **1 lượt, 1 SUT, 15 mutant**, không có độ biến thiên. |
 
-> **Cập nhật 2026-10-05 (quyết định của chủ dự án).** Hết ngân sách API nên không đo lại; ngưỡng nghiệm thu S1 cho phép đo LLM thật được hạ từ 90% xuống 85% **sau khi đã có số đo này** và chốt ở 1 lượt (kế hoạch gốc: median 3 lần). Theo ngưỡng mới cả ba chỉ số đạt (92,3% / 89,4% / 86,7%), nhưng kill rate chỉ hơn ngưỡng đúng 1 mutant (13/15; 12/15 = 80% sẽ không đạt) và không có độ biến thiên. Cột "Ngưỡng" ở mục 2 giữ nguyên 90% vì đó là ngưỡng lúc đo. Mọi giới hạn ở mục 6 vẫn đúng.
+> **Cập nhật 2026-10-05 (quyết định của chủ dự án, trước review nhãn).** Hết ngân sách API nên không sinh lại; ngưỡng nghiệm thu S1 cho phép đo LLM thật được hạ từ 90% xuống 85% **sau khi đã có số đo này** và chốt ở 1 lượt (kế hoạch gốc: median 3 lần). Với nhãn AI lúc đó, ba chỉ số là 92,3% / 89,4% / 86,7%. Sau review ngày 2026-10-06, dùng bảng ở mục 0. Cột "Ngưỡng" ở mục 2 giữ nguyên 90% vì đó là ngưỡng lúc đo.
 
-## 2. Kết quả lần chạy hợp lệ (lần 3)
+## 2. Kết quả lần chạy hợp lệ (lần 3, trước review)
 
 Nguồn: `eval/real.json`. Bộ vừa sinh: `runs/eval-generated-20261004T010946Z/agent-run1/` (catalog.json, meta.json, egress.jsonl).
 
@@ -86,10 +108,10 @@ Tool đo cũng được sửa trong quá trình (không đổi cách tính các 
 ## 6. Giới hạn của phép đo
 
 1. **Môi trường tắt auth.** Runtime test chưa hỗ trợ auth động (docs/groundtruth-real-sut.md, mục 1.1), nên bản sao lab có middleware bỏ qua kiểm token (`eval/vahan/prepare.ps1`, repo SUT thật không đổi). Hệ quả: AC-1.4, 1.6, 1.8 không đo được; agent cũng tự báo hai `spec_conflict` (AC-1.6, 1.8) về chính điểm này.
-2. **Phạm vi hẹp: 26/98 AC.** 72 AC nằm ngoài tầm HTTP thuần (Socket.IO, Chrome extension, UI React) hoặc cần runner đã kết nối để có Job. Danh sách và lý do nằm trong `non_testable` của `eval/vahan.yaml`. Kết quả **không** nói gì về các AC đó.
-3. **1 lượt, 1 SUT, 15 mutant.** Không có phân phối; mỗi mutant chiếm 6,7 điểm phần trăm. Khoảng chênh với ngưỡng 90% (13 → 14 mutant) nằm trong biên của một mutant.
-4. **Nhãn và mutant là bản nháp của AI, chưa có QA duyệt.** `non_testable` và 15 mutant do Claude soạn từ PRD và mã SUT **trước khi** agent chạy lần nào, nhưng agent cũng là Claude, nên có nguy cơ tương quan (cùng cách hình dung "lỗi hợp lý"). Tài liệu của repo yêu cầu người gán nhãn không phải người viết prompt/PRD, tốt nhất là QA. Trước khi dùng làm bằng chứng chính thức, một người cần đọc lại và đổi trường `labeled_by`.
-5. **Loại mutant hẹp.** Chủ yếu là mã trạng thái sai, lệch một ở biên, sai trường trả về. Không có lỗi logic nhiều bước hay lỗi tuần tự trạng thái.
+2. **Phạm vi hẹp: 25/98 AC theo nhãn đã duyệt.** 73 AC ngoài mẫu số vì cần Socket.IO, Chrome extension, React UI, runner đã kết nối, hoặc không đo trọn AC bằng HTTP thuần; trong đó AC-12.2 và AC-14.2 có phần HTTP vẫn quan sát được. Lần đo gốc dùng 26/98 và 72 AC ngoài mẫu số. Kết quả **không** chứng minh toàn bộ 73 AC.
+3. **1 lượt, 1 SUT, 15 mutant.** Không có phân phối; mỗi mutant chiếm 6,7 điểm phần trăm. Kill rate 13/15 chỉ hơn ngưỡng mới đúng một mutant; 12/15 = 80% sẽ không đạt.
+4. **Review hậu nghiệm.** `non_testable` và 15 mutant do Claude soạn từ PRD và mã SUT **trước khi** agent chạy lần nào. Codex đối chiếu lại, `ncnghia` xác nhận phương án A ngày 2026-10-06 **sau khi thấy** `eval/real.json`; vì vậy đây không phải review mù độc lập của QA. Mutant vẫn có nguy cơ tương quan với cách agent hình dung lỗi.
+5. **Loại mutant hẹp.** 8 mutant đổi status code, 2 mutant lệch cận một đơn vị; 5 mutant còn lại kiểm các thay đổi credential, tên trường, nhánh source, giá trị verify hoặc lịch mặc định. Không có lỗi logic phân quyền hay chuyển trạng thái nhiều bước.
 6. **Chưa có baseline single-shot** (lần B lỗi, nguyên nhân chưa xác minh), nên không có kết luận so sánh.
 7. **Chi phí ước tính, chưa đối chiếu hóa đơn.**
 
@@ -99,9 +121,9 @@ Tool đo cũng được sửa trong quá trình (không đổi cách tính các 
 |---|---|
 | Mô hình | `claude-sonnet-5-5` (agent), prompt `gt-agent/1` |
 | SUT | `vahan-automation`, commit `fcb6fb78d5a7eb8f0a31763bcd2a95e024f6cdd6`, thư mục `apps/api-server`; snapshot bằng `git archive`, bỏ `tests/` và `.venv`; hồ sơ đo: auth tắt trong `app/main.py` (xem `runs/vahan-sut.source`) |
-| PRD | `docs/prd/vahan.md`, sha256 `9d0957be7ef70b3926102b76b286db934a2f52ed0233208650d2fae6831d265c` (**chưa được commit** ở repo SUT) |
+| PRD | `docs/prd/vahan.md`, sha256 `9d0957be7ef70b3926102b76b286db934a2f52ed0233208650d2fae6831d265c`; file thuộc repo `vahan-automation` và không bị thay đổi trong lần review này |
 | OpenAPI | `eval/vahan/openapi.json`, sha256 `cf446b9f9cc94fe5f0c83a74019166d03d4283dbc03919e8353ceda103aab1c4` (xuất từ mã bản sao) |
-| Cấu hình đo | `eval/vahan.yaml`, sha256 `377dfdf556c7c91b41ae2018b5c2506897877cafcf17db6f7aa289e64a27da1c`; ngưỡng 0,9 / 0,9 / 0,9 |
+| Cấu hình lần đo gốc | `eval/vahan.yaml` lúc đó, sha256 `377dfdf556c7c91b41ae2018b5c2506897877cafcf17db6f7aa289e64a27da1c`; ngưỡng 0,9 / 0,9 / 0,9. Bản hiện tại dùng 0,85 / 0,85 / 0,85 và thêm AC-12.2 vào `non_testable` |
 | QC-Agent | commit `4fa7adc` (tool đo đã vá) trên nền `de31da5`. **Lần 3 chạy trên mã này nhưng chưa được commit lúc chạy**: sau đó mã được commit nguyên trạng, không sửa thêm logic. Lần 1 và 2 chạy trên `de31da5` cộng bản vá chưa hoàn chỉnh (chưa có lưu kết quả/ghi chi phí khi lỗi) |
 | Lưu ý hash | `openapi.json` trên Windows có CRLF trong working copy; Git chuẩn hóa về LF, nên sha256 trên máy khác (Linux/CI) sẽ khác. So bằng nội dung đã chuẩn hóa dòng nếu cần |
 | Môi trường | Python 3.11.16 (venv lab riêng cho SUT ở `runs/vahan-venv`) |
@@ -116,13 +138,13 @@ $env:QC_GT_MODEL = "claude-sonnet-5-5"; $env:QC_GT_AGENT_MAX_COST_USD = "1.0"; $
   --generated-mutants --runs 1 --max-total-usd 1.0 --yes --out-json eval\real.json
 ```
 
-Đo lại bộ đã lưu mà **không gọi LLM**: thêm `--from-saved runs\eval-generated-20261004T010946Z` (và bỏ `--yes`).
+Lệnh đã chạy để chấm lại bộ đã lưu, **không gọi LLM**: `.\.venv\Scripts\python.exe tools\eval_gt_sut.py --config eval\vahan.yaml --generator agent --generated-mutants --runs 1 --from-saved runs\eval-generated-20261004T010946Z --out-json eval\real-reviewed.json` (exit 0).
 
-Kiểm khô miễn phí (không gọi LLM): `python tools/eval_gt_sut.py --config eval/vahan.yaml --check-only`.
+Kiểm khô miễn phí (không gọi LLM, dùng venv có dependency): `.\.venv\Scripts\python.exe tools\eval_gt_sut.py --config eval\vahan.yaml --check-only`.
 
 ## 8. Việc cần làm trước khi trình hội đồng
 
-1. Một QA đọc lại `non_testable` và 15 mutant, rồi cập nhật `labeled_by`.
+1. Codex đã đối chiếu `non_testable` và 15 mutant; `ncnghia` xác nhận phương án A và `vvhuy` ký duyệt nhãn ngày 2026-10-06, cả hai sau khi đã thấy số đo (mục 0).
 2. Đối chiếu chi phí thật trên Console và điền vào mục 5.
-3. Commit PRD ở repo SUT (hoặc giữ sha256 làm mốc): `docs/` của repo SUT vẫn là untracked nên commit SHA của SUT không ghim được PRD.
+3. BA/team sở hữu PRD quản lý phiên bản và mọi thay đổi AC; QC-Agent chỉ tham chiếu PRD bằng sha256 ở mục 7.
 4. Nếu còn ngân sách: chạy thêm lượt để có độ biến thiên, và đo baseline single sau khi xác minh nguyên nhân lỗi ở lần B.

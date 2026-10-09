@@ -299,6 +299,8 @@ scope: session                            # session: đăng nhập một lần c
 docker run --rm -v "$PWD:/sut" <image> init --qa-team @org/qa-team --prd-glob 'docs/prd/**'
 ```
 
+`@org/qa-team` chỉ là ví dụ: thay bằng team QA thật. `qc-agent validate` báo ERROR nếu quy tắc `/.qc-agent/` còn trỏ tới owner mẫu.
+
 `init` sinh, ngoài các suite gate: `.github/workflows/qc-groundtruth.yml` (gọi workflow tái sử dụng), và **vùng CODEOWNERS** do qc-agent quản lý:
 
 ```
@@ -351,6 +353,7 @@ Không có lớp nào ngăn người khác *mở* PR sửa `.qc-agent/**`; chún
 - **Với `--agent`, MÃ NGUỒN của SUT cũng rời máy** (loại dữ liệu mới `source_code` trong `egress.jsonl`, ghi trước mỗi request; cùng với `prd_text` và `api_spec`). Chỉ file qua sandbox (mục 5c) được gửi, nhưng việc che bí mật là best-effort: **chạy `gitleaks` trên repo SUT và xoá bí mật đã commit trước khi bật agent**, và chỉ bật khi đã được phép gửi mã nguồn ra Anthropic (cùng câu hỏi #3 bên dưới, nay gồm cả mã).
 - **Câu hỏi #3 ở [implementation-plan.md](implementation-plan.md) (mục "Các câu hỏi chờ chốt") chưa được chốt** ("có được gửi PRD ra LLM bên ngoài không"): nó chặn mọi lượt chạy LLM thật. Cho tới khi có câu trả lời, chỉ chạy bằng PRD mẫu/PRD không nhạy cảm.
 - Chi phí một lần sinh: một lời gọi (tối đa 16 000 token ra), cộng tối đa một lần sửa khi đầu ra sai schema. Số token nằm trong `summary.json`.
+- **Cache (chỉ bộ sinh một lời gọi, `QC_GT_CACHE_DIR`, mặc định `~/.cache/qc-agent/gt`, `none` = tắt):** chạy lại với cùng PRD + OpenAPI + model + `prompt_version` + `auth.yaml` thì không gọi LLM và không ghi `egress.jsonl`; `summary.json` có `cache_hit: true` và `usage` là của lần sinh gốc (đừng cộng vào chi phí). Sửa `prompts/gt_generate.md` thì **phải tăng `prompt_version`**, nếu không cache trả kết quả của prompt cũ. Bộ sinh agent không dùng cache. Đo model thật (`tools/eval_groundtruth.py`, `tools/eval_gt_sut.py`) tự tắt cache.
 - Chi phí bộ sinh agent: tới 40 lượt, mỗi lượt gửi lại cả lịch sử (được prompt cache). Ước tính ban đầu vài USD tới chục USD mỗi PRD với Opus (**chưa đo bằng API thật**); `agent.cost_usd_est` trong `summary.json` là ước tính theo bảng giá trong `llm/agent_loop.py` và `QC_GT_AGENT_MAX_COST_USD` là trần cứng.
 
 ## 9. Sự cố thường gặp

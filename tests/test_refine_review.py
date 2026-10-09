@@ -10,7 +10,7 @@ CTX = {"repo": "o/r", "pr_number": 7, "sha": "abc1234def5678"}
 PATCH = "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n"
 SUGGESTIONS = [
     {"path": ".qc-agent/suites/api-contract.yaml", "start_line": 20, "end_line": 22, "replacement": "    exclude_path:\n    - \"/up\""},
-    {"path": ".github/workflows/qc.yml", "start_line": 19, "end_line": 19, "replacement": '      sut_health_path: "/api/health"'},
+    {"path": ".github/workflows/qc-gate.yml", "start_line": 19, "end_line": 19, "replacement": '      sut_health_path: "/api/health"'},
     {"path": ".qc-agent/perf/smoke.js", "start_line": 5, "end_line": 7, "replacement": 'const PATHS = ["/"];'},
 ]
 DIFF_PATCH = "@@ -18,3 +18,6 @@ jobs\n   with:\n     project: x\n+      sut_health_path: \"/health\"\n+      a: 1\n+      b: 2\n   z: 1\n"
@@ -35,9 +35,9 @@ def test_fence_is_longer_than_any_backtick_run_in_the_untrusted_replacement():
 
 
 def test_only_ranges_fully_inside_the_diff_become_comments():
-    diff = {".github/workflows/qc.yml": {18, 19, 20}, ".qc-agent/suites/api-contract.yaml": {20, 21}}      # api-contract chỉ phủ 20-21, cần 20-22
+    diff = {".github/workflows/qc-gate.yml": {18, 19, 20}, ".qc-agent/suites/api-contract.yaml": {20, 21}}      # api-contract chỉ phủ 20-21, cần 20-22
     comments, skipped = rr.build_comments(SUGGESTIONS, diff)
-    assert [c["path"] for c in comments] == [".github/workflows/qc.yml"] and comments[0]["line"] == 19 and "start_line" not in comments[0]
+    assert [c["path"] for c in comments] == [".github/workflows/qc-gate.yml"] and comments[0]["line"] == 19 and "start_line" not in comments[0]
     assert set(skipped) == {".qc-agent/suites/api-contract.yaml:20-22", ".qc-agent/perf/smoke.js:5-7"}
     multi, _ = rr.build_comments(SUGGESTIONS[:1], {".qc-agent/suites/api-contract.yaml": {20, 21, 22}})
     assert multi[0]["start_line"] == 20 and multi[0]["line"] == 22 and multi[0]["start_side"] == "RIGHT" and multi[0]["side"] == "RIGHT"
@@ -50,7 +50,7 @@ def test_malformed_suggestions_are_ignored():
 @pytest.fixture
 def gh():
     with FakeGitHub() as fake:
-        fake.pr_files = [{"filename": ".github/workflows/qc.yml", "patch": DIFF_PATCH}, {"filename": "README.md", "patch": None}]
+        fake.pr_files = [{"filename": ".github/workflows/qc-gate.yml", "patch": DIFF_PATCH}, {"filename": "README.md", "patch": None}]
         yield fake
 
 

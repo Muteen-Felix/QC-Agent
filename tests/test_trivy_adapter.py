@@ -2,8 +2,10 @@
 import copy
 import hashlib
 import json
+import os
 import random
 import shutil
+import subprocess
 from datetime import datetime, timezone
 
 import pytest
@@ -160,6 +162,171 @@ def test_no_targets_is_an_error_not_zero_cve(tmp_path, spec, mutate):
     mutate(data)
     with pytest.raises(AdapterParseError, match="không tìm thấy manifest/lockfile"):
         parse(tmp_path, spec, data)
+
+
+# ---------- bẫy 3, ngoại lệ có chủ đích: SUT không có dependency (opt-in gắn với manifest đã khai báo) ----------
+
+# Đúng như Trivy 0.74 in cho lockfile hợp lệ 0 dependency VÀ cho repo không có lockfile (không phân biệt được hai ca này).
+NO_RESULTS = {"SchemaVersion": 2, "ArtifactName": ".", "ArtifactType": "filesystem"}
+
+
+@pytest.fixture
+def sut(tmp_path, monkeypatch):
+    """Gốc SUT giả: adapter chạy với cwd = gốc SUT."""
+    root = tmp_path / "sut"
+    root.mkdir()
+    monkeypatch.chdir(root)
+    return root
+
+
+def opt_in_spec(cache, manifests=("package-lock.json",), **inputs):
+    return make_spec("deps.vuln", {"path": ".", "cache_dir": str(cache), "allow_no_dependencies": True, "expected_manifests": list(manifests), **inputs},
+                     ASSERTIONS, task_id="t-012")
+
+
+def test_declared_manifest_without_dependencies_passes_with_zero_targets_and_a_hash(tmp_path, sut, cache):
+    (sut / "package-lock.json").write_text('{"lockfileVersion": 3, "packages": {"": {}}}', encoding="utf-8")
+    parsed = parse(tmp_path, opt_in_spec(cache), NO_RESULTS)
+    assert parsed.metrics["trivy.targets"] == 0 and parsed.metrics["trivy.total"] == 0 and parsed.metrics["trivy.db_age_days"] == 3
+    digest = hashlib.sha256((sut / "package-lock.json").read_bytes()).hexdigest()
+    assert any("declared_manifests" in n and f"package-lock.json sha256={digest}" in n for n in parsed.adapter_notes)
+    assert parsed.findings == []
+
+
+def test_declared_manifest_run_is_green_end_to_end_and_hash_follows_the_content(tmp_path, sut, cache, monkeypatch):
+    spec = opt_in_spec(cache)
+    (sut / "package-lock.json").write_text("{}", encoding="utf-8")
+    first = parse(tmp_path, spec, NO_RESULTS).adapter_notes
+    (sut / "package-lock.json").write_text('{"changed": true}', encoding="utf-8")
+    assert parse(tmp_path, spec, NO_RESULTS).adapter_notes != first      # đổi nội dung lockfile hiện trong report
+    result = run_with_fake_tool(TrivyAdapter(), spec, monkeypatch, tmp_path / "run", report=json.dumps(NO_RESULTS))
+    assert result["status"] == "pass" and result["metrics"]["trivy.targets"] == 0
+
+
+def test_declared_manifest_that_was_deleted_is_an_error_even_with_the_opt_in_still_present(tmp_path, sut, cache, monkeypatch):
+    spec = opt_in_spec(cache)                     # PR xoá package-lock.json nhưng không đụng file suite
+    with pytest.raises(AdapterParseError, match="package-lock.json"):
+        parse(tmp_path, spec, NO_RESULTS)
+    result = run_with_fake_tool(TrivyAdapter(), spec, monkeypatch, tmp_path / "run", report=json.dumps(NO_RESULTS))
+    assert result["status"] == "error" and "package-lock.json" in result["verdict"]["rationale"]
+
+
+def test_one_missing_manifest_among_several_is_an_error(tmp_path, sut, cache):
+    (sut / "package-lock.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(AdapterParseError, match="uv.lock"):
+        parse(tmp_path, opt_in_spec(cache, ["package-lock.json", "uv.lock"]), NO_RESULTS)
+
+
+def test_without_the_opt_in_empty_results_stay_an_error_even_when_the_manifest_exists(tmp_path, sut, spec, monkeypatch):
+    (sut / "package-lock.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(AdapterParseError, match="không tìm thấy manifest/lockfile"):
+        parse(tmp_path, spec, NO_RESULTS)
+    result = run_with_fake_tool(TrivyAdapter(), spec, monkeypatch, tmp_path / "run", report=json.dumps(NO_RESULTS))
+    assert result["status"] == "error"
+
+
+def test_the_opt_in_does_not_swallow_real_findings(tmp_path, sut, cache):
+    (sut / "package-lock.json").write_text("{}", encoding="utf-8")
+    parsed = parse(tmp_path, opt_in_spec(cache), fixture_json("trivy-sample.json"))      # Trivy thấy dependency khác: đếm bình thường
+    assert parsed.metrics["trivy.critical"] == 3 and parsed.metrics["trivy.targets"] >= 1
+
+
+def test_a_missing_declared_manifest_is_an_error_even_when_trivy_returns_results_from_another_manifest(tmp_path, sut, cache, monkeypatch):
+    (sut / "uv.lock").write_text("version = 1", encoding="utf-8")          # manifest thứ hai còn, Trivy vẫn báo CVE từ file khác
+    spec = opt_in_spec(cache, ["uv.lock", "package-lock.json"])               # package-lock.json đã bị xoá
+    with pytest.raises(AdapterParseError, match="package-lock.json"):
+        parse(tmp_path, spec, fixture_json("trivy-sample.json"))
+    result = run_with_fake_tool(TrivyAdapter(), spec, monkeypatch, tmp_path / "run", report=fixture_text("trivy-sample.json"))
+    assert result["status"] == "error" and "package-lock.json" in result["verdict"]["rationale"]
+
+
+@pytest.mark.parametrize("make_bad", [lambda sut: (sut / "package-lock.json").mkdir(), lambda sut: None])
+def test_declared_manifest_state_is_checked_with_non_empty_results_too(tmp_path, sut, cache, make_bad):
+    make_bad(sut)                                                             # thư mục hoặc không tồn tại
+    with pytest.raises(AdapterParseError, match="package-lock.json"):
+        parse(tmp_path, opt_in_spec(cache), fixture_json("trivy-sample.json"))
+
+
+@pytest.mark.parametrize("results", ["x", {}, 0, False])
+def test_the_opt_in_only_covers_a_missing_or_empty_list_not_a_malformed_report(tmp_path, sut, cache, results):
+    (sut / "package-lock.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(AdapterParseError, match="không tìm thấy manifest/lockfile"):
+        parse(tmp_path, opt_in_spec(cache), {**NO_RESULTS, "Results": results})
+
+
+def test_the_opt_in_with_a_broken_db_is_still_an_error(tmp_path, sut, cache):
+    (sut / "package-lock.json").write_text("{}", encoding="utf-8")
+    (cache / "db" / "metadata.json").unlink()
+    with pytest.raises(AdapterParseError, match="thiếu DB CVE nướng sẵn"):
+        parse(tmp_path, opt_in_spec(cache), NO_RESULTS)
+
+
+MANIFEST = ["package-lock.json"]
+BAD_DECLARATIONS = [
+    {"allow_no_dependencies": "yes", "expected_manifests": MANIFEST},        # không phải bool
+    {"allow_no_dependencies": 1, "expected_manifests": MANIFEST},
+    {"allow_no_dependencies": True},                                         # thiếu danh sách
+    {"allow_no_dependencies": True, "expected_manifests": []},
+    {"allow_no_dependencies": True, "expected_manifests": "package-lock.json"},
+    {"allow_no_dependencies": True, "expected_manifests": MANIFEST * 2},     # trùng
+    {"allow_no_dependencies": True, "expected_manifests": [f"d{i}/package-lock.json" for i in range(21)]},     # quá 20
+    {"expected_manifests": MANIFEST},                                        # có danh sách nhưng không opt-in
+    {"allow_no_dependencies": False, "expected_manifests": MANIFEST},
+    {"allow_no_dependencies": True, "expected_manifests": ["/etc/package-lock.json"]},
+    {"allow_no_dependencies": True, "expected_manifests": ["../package-lock.json"]},
+    {"allow_no_dependencies": True, "expected_manifests": ["-x/package-lock.json"]},
+    {"allow_no_dependencies": True, "expected_manifests": [""]},
+    {"allow_no_dependencies": True, "expected_manifests": [5]},
+    {"allow_no_dependencies": True, "expected_manifests": ["."]},
+    {"allow_no_dependencies": True, "expected_manifests": ["README.md"]},    # không phải manifest
+    {"allow_no_dependencies": True, "expected_manifests": ["requirements-dev.txt"]},      # Trivy 0.74 không nhận tên này
+    {"allow_no_dependencies": True, "expected_manifests": ["Package-Lock.json"]},         # đúng chữ hoa/thường
+    {"allow_no_dependencies": True, "path": "apps/api", "expected_manifests": MANIFEST},                  # ngoài inputs.path
+    {"allow_no_dependencies": True, "path": "apps/api", "expected_manifests": ["apps/other/uv.lock"]},
+    {"allow_no_dependencies": True, "path": "apps/api", "expected_manifests": ["apps/api"]},               # chính thư mục path
+]
+
+
+@pytest.mark.parametrize("inputs", BAD_DECLARATIONS)
+def test_a_bad_declaration_is_an_error_before_and_after_running_trivy(tmp_path, sut, cache, inputs):
+    spec = make_spec("deps.vuln", {"cache_dir": str(cache), **inputs}, ASSERTIONS, task_id="t-012")
+    with pytest.raises(AdapterParseError):
+        TrivyAdapter().build_cmd(spec, tmp_path)
+    with pytest.raises(AdapterParseError):
+        parse(tmp_path, spec, NO_RESULTS)
+
+
+def test_a_declaration_inside_inputs_path_is_accepted(tmp_path, sut, cache):
+    (sut / "apps" / "api").mkdir(parents=True)
+    (sut / "apps" / "api" / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    spec = opt_in_spec(cache, ["apps/api/uv.lock"], path="apps/api")
+    assert TrivyAdapter().build_cmd(spec, tmp_path)[-1] == "apps/api"
+    assert parse(tmp_path, spec, NO_RESULTS).metrics["trivy.targets"] == 0
+
+
+def test_a_declared_manifest_that_is_a_directory_is_an_error(tmp_path, sut, cache):
+    (sut / "package-lock.json").mkdir()
+    with pytest.raises(AdapterParseError, match="package-lock.json"):
+        parse(tmp_path, opt_in_spec(cache), NO_RESULTS)
+
+
+def link_dir(link, target):
+    """Symlink thư mục; Windows không có quyền thì dùng junction (mklink /J, không cần quyền). Không tạo được thì skip."""
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        done = os.name == "nt" and subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True).returncode == 0
+        if not done:
+            pytest.skip("không tạo được symlink/junction trên máy này")
+
+
+def test_a_declared_manifest_reached_through_a_link_out_of_the_repo_is_an_error(tmp_path, sut, cache):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "package-lock.json").write_text("{}", encoding="utf-8")
+    link_dir(sut / "linked", outside)          # tên khai báo nằm trong repo, nhưng file thật nằm NGOÀI gốc SUT
+    with pytest.raises(AdapterParseError, match="linked/package-lock.json"):
+        parse(tmp_path, opt_in_spec(cache, ["linked/package-lock.json"]), NO_RESULTS)
 
 
 # ---------- báo cáo hỏng ----------
