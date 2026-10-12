@@ -1,5 +1,7 @@
 # S4-06: full-stack-fastapi-template
 
+> Cập nhật rà soát ngày 2026-10-12: xem [báo cáo validation và evidence](s4-06-validation-fastapi.md). Baseline/C/D/E đã có lượt GitHub thật và Jira đã cấu hình; D tạo 2 ticket, B chưa có protection/non-QA. Nội dung dưới đây giữ làm runbook chuẩn bị và lịch sử local, không phải bảng nghiệm thu hiện tại.
+
 Sandbox public: `MinhDuc-IT/full-stack-fastapi-template`, nhánh `master`, QA `@MinhDuc-IT`.
 Image: `ghcr.io/minhduc-it/qc-agent@sha256:95c55978ec52316e648c07c6f11ff780a930db3950d285504473d43965c6c785`.
 Workflow ghim QC-Agent `4183af5c3365e493a1d339a1c73e9485856c0f55`. GitHub đã có secrets GHCR/app/DB. LLM chưa được phép; Jira chưa có.
