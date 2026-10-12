@@ -1,0 +1,14 @@
+slug: full-stack-fastapi-template
+name: Full Stack FastAPI Template
+repo: MinhDuc-IT/full-stack-fastapi-template
+jira:
+  project_key: QCSB
+  issue_type: Task
+  max_new_per_run: 2
+  user_map:
+    MinhDuc-IT: '712020:39d74e90-6415-4b8c-8f3e-54fa612baa74'
+# Backend phục vụ cả frontend; chưa bật worker UI cần LLM.
+modes:
+  pr:
+    # SUT đã chuẩn hóa tuple exception để coverage-debt đọc được backend.
+    advisory_suites: [perf-smoke, coverage-debt]
