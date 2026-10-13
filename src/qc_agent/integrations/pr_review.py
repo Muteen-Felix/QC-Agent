@@ -8,7 +8,7 @@ import logging
 import os
 from pathlib import Path
 
-from qc_agent.integrations import ci, github
+from qc_agent.integrations import ci, github, finding_view
 from qc_agent.integrations.refine_review import MAX_COMMENTS, MAX_PAGES, pr_diff_lines
 from qc_agent.logging_setup import configure, event
 
@@ -16,35 +16,38 @@ log = logging.getLogger("qc_agent.pr_review")
 MARKER = "<!-- qc-agent:review sha256={digest} -->"
 ICON = {"critical": "🔴", "medium": "🟠", "low": "🟡"}
 MAX_LISTED = 30
+REVIEW_FORMAT_VERSION = 4
 
 
 def digest(findings: list[dict]) -> str:
     pairs = sorted((str(f.get("fingerprint", "")), str(f.get("severity", ""))) for f in findings)
-    return hashlib.sha256(json.dumps(pairs, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([REVIEW_FORMAT_VERSION, pairs], ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
 def _hint(finding: dict) -> str:
     worker, rule = finding.get("worker"), github.clean_md(finding.get("rule_id") or "", 80)
     if worker == "semgrep":
-        return f"Bỏ qua có lý do: `# nosemgrep: {rule}`."
+        return f"Chỉ sau khi kiểm tra code và xác nhận rule không áp dụng, dùng `# nosemgrep: {rule}` kèm lý do. Không bỏ qua lỗi thật để làm xanh QC."
     if worker == "gitleaks":
-        return "Nếu là dương tính giả, thêm fingerprint vào `.gitleaksignore`."
+        return "Xác nhận chuỗi không phải credential thật trước khi thêm fingerprint vào `.gitleaksignore`, và ghi rõ lý do. Nếu là secret thật đã lộ, thu hồi hoặc thay key."
     if worker == "trivy":
-        return "Nếu là dương tính giả, thêm mục có lý do vào `.trivyignore`."
+        return "Đối chiếu CVE và dependency trong evidence. Chỉ thêm mục vào `.trivyignore` kèm lý do khi đã xác nhận cảnh báo không áp dụng."
     return ""
 
 
 def inline_body(finding: dict) -> str:
-    severity = str(finding.get("severity", "low"))
-    title = github.clean_md(finding.get("title") or "Finding", 200)
-    worker = github.clean_md(finding.get("worker") or "worker", 80)
-    rule = github.clean_md(finding.get("rule_id") or "", 80)
-    return f"{ICON.get(severity, '⚪')} **{severity}** · {worker} · {rule}\n\n{title}\n\n{_hint(finding)}"[:2000]
+    issue = finding_view.Issue(finding, [finding])
+    body = finding_view.render(issue, github.clean_md)
+    hint = _hint(finding)
+    if hint:
+        body += "\n\n<details><summary>Nếu đã kiểm tra và xác nhận cảnh báo không áp dụng</summary>\n\n" + hint + "\n\n</details>"
+    return body[:2000]
 
 
 def split_by_diff(findings: list[dict], diff_lines: dict[str, set[int]]) -> tuple[list[dict], list[dict]]:
     comments, outside = [], []
-    for finding in findings:
+    for issue in finding_view.group(findings):
+        finding = {**issue.finding, "severity": issue.severity}
         raw = finding.get("path")
         path = raw[2:] if isinstance(raw, str) and raw.startswith("./") else raw
         line = finding.get("line")
@@ -57,27 +60,20 @@ def split_by_diff(findings: list[dict], diff_lines: dict[str, set[int]]) -> tupl
 
 
 def render_body(findings: list[dict], outside: list[dict], inline: int, digest_hex: str) -> str:
-    counts = {level: sum(f.get("severity") == level for f in findings) for level in ICON}
+    issues = finding_view.group(findings)
     lines = ["### qc-agent · Review", "",
-             f"Critical: {counts['critical']} · Medium: {counts['medium']} · Low: {counts['low']}",
-             f"{inline} finding gắn đúng dòng; {len(outside)} finding ngoài diff hoặc không có vị trí."]
-    for level in ICON:
-        mine = [f for f in outside if f.get("severity") == level]
-        if not mine:
-            continue
-        lines += ["", f"**{level.title()}**"]
-        for finding in mine[:MAX_LISTED]:
-            title = github.clean_md(finding.get("title") or "Finding", 160)
-            worker = github.clean_md(finding.get("worker") or "worker", 60)
-            where = github.clean_md(finding.get("path") or "không có vị trí", 120)
-            if finding.get("line"):
-                where += ":" + str(finding["line"])
-            lines.append(f"- {ICON[level]} {worker}: {title} @ {where}")
-        if len(mine) > MAX_LISTED:
-            lines.append(f"- … và {len(mine) - MAX_LISTED} finding nữa trong artifact")
-    lines += ["", "Review chỉ để đọc; verdict của gate quyết định PR có bị chặn hay không.", "",
-              MARKER.format(digest=digest_hex)]
-    return "\n".join(lines)[:github.MAX_COMMENT]
+             f"**{len(issues)} mục cần xử lý · {inline} inline comment tại dòng thay đổi**"]
+    for number, issue in enumerate(issues[:MAX_LISTED], 1):
+        lines += ["", "---", "", finding_view.render(issue, github.clean_md, number=number)]
+    if len(issues) > MAX_LISTED:
+        lines.append(f"\nCòn {len(issues)-MAX_LISTED} mục trong artifact.")
+    lines += ["", finding_view.technical(issues, github.clean_md), "",
+              "Review giải thích kết quả; check QC và branch protection quyết định việc chặn merge."]
+    marker = MARKER.format(digest=digest_hex)
+    body = "\n".join(lines)
+    if len(body) + len(marker) + 2 > github.MAX_COMMENT:
+        body = body[:github.MAX_COMMENT - len(marker) - 100] + "\n\n</details>\nPhần còn lại xem trong artifact."
+    return body + "\n\n" + marker
 
 
 def already_posted(client: github.GitHubClient, repo: str, pr_number: int, digest_hex: str) -> bool:

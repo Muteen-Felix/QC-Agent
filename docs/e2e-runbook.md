@@ -1,6 +1,6 @@
 # Runbook E2E
 
-Phần "Chạy harness local" mô tả cách chạy chuỗi PR → Select → Gate → Review → Jira → Report **trên máy**, không cần GitHub, Jira hay Anthropic thật (S4-05). Phần "Chạy trên GitHub thật (S4-06)" ở cuối file mô tả công cụ `tools/e2e/` đã có; **chưa có lần chạy nào trên GitHub, Jira hay LLM thật**, nên mọi dòng bằng chứng của S4-06 đang là PENDING.
+Phần "Chạy harness local" mô tả cách chạy chuỗi PR → Select → Gate → Review → Jira → Report **trên máy**, không cần GitHub, Jira hay Anthropic thật (S4-05). Phần "Chạy trên GitHub thật (S4-06)" ở cuối file mô tả công cụ `tools/e2e/`. Đã có smoke GitHub của full-stack-fastapi-template, nhưng chưa nghiệm thu đủ A–E/Jira/LLM thật; xem [runbook của SUT sandbox](e2e-fastapi-sandbox.md) để biết bằng chứng và các mục PENDING.
 
 Vận hành gate thật (xoay khoá, chi phí, event log, đổi nhà cung cấp): [operations.md](operations.md).
 

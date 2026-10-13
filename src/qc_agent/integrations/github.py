@@ -177,12 +177,19 @@ def render_summary(run: dict, *, project: str, mode: str, exit_code: int | None 
         lines.append("⚠️ Jira: " + clean_md(report["jira_warning"], 100))
     counts = report.get("severity_counts") or {}
     if counts:
-        lines.append(f"Findings: {counts.get('critical', 0)} Critical · {counts.get('medium', 0)} Medium · {counts.get('low', 0)} Low")
-        for finding in (report.get("findings") or [])[:5]:
-            where = clean_md(finding.get("path") or "không có vị trí", 80)
-            if finding.get("line"):
-                where += ":" + str(finding["line"])
-            lines.append(f"- {clean_md(finding.get('severity'), 12)}: {clean_md(finding.get('title'), 120)} @ {where}")
+        from qc_agent.integrations import finding_view
+        issues = finding_view.group(report.get("findings") or [])
+        lines += ["", f"**{len(issues)} mục cần xử lý** (đã gộp theo vấn đề/dependency và các ngưỡng liên quan)."]
+        if issues:
+            lines += ["", "| Vấn đề | Vị trí | Mức độ |", "|---|---|---|"]
+        for issue in issues[:5]:
+            title, where, _, _ = finding_view.describe(issue.finding)
+            lines.append(f"| {clean_md(title, 200)} | {finding_view.code_location(where)} | {clean_md(issue.severity.title(), 20)} |")
+        if len(issues) > 5:
+            lines.append(f"\nCòn {len(issues)-5} mục; xem review và artifact.")
+        lines += ["", "<details><summary>Số finding gốc trong artifact</summary>", "",
+                  f"{counts.get('critical', 0)} Critical · {counts.get('medium', 0)} Medium · {counts.get('low', 0)} Low.",
+                  "Số này gồm finding chi tiết và kiểm tra ngưỡng; không phải số bug độc lập.", "", "</details>"]
     if problem:
         lines += ["", "> ⚠️ Lỗi hệ thống/cấu hình (không phải kết quả của gate). Xem log của job."]
     if gating:
