@@ -14,6 +14,32 @@ ENV = {"JIRA_BASE_URL": "https://jira.example.invalid", "JIRA_EMAIL": "qc@exampl
 CTX = {"author": "dev", "pr_url": "https://github.example/pr/1", "run_url": "https://github.example/run/1"}
 
 
+def test_coverage_ticket_is_actionable_and_aggregate_not_duplicated(tmp_path):
+    created = []
+    detail = {**FINDING, "worker": "coverage-debt", "task_id": "coverage", "rule_id": "api_endpoint",
+              "title": "Nợ test [api_endpoint]: GET /utils/status chưa có test"}
+    aggregate = {**detail, "fingerprint": "f" * 16, "rule_id": "debt.new", "path": None,
+                 "title": "debt.new = 1 vi phạm == 0"}
+
+    def respond(request):
+        if request.url.path.endswith("/search/jql"):
+            return httpx.Response(200, json={"issues": []})
+        created.append(json.loads(request.content)["fields"])
+        return httpx.Response(201, json={"key": "QCSB-1"})
+
+    result = sync_low_findings([detail, aggregate], cfg=CFG, ctx=CTX, env=ENV, egress_dir=tmp_path,
+                               transport=httpx.MockTransport(respond))
+    assert result["created"] == 1
+    assert created[0]["summary"] == "Bổ sung test cho GET /utils/status"
+    text = json.dumps(created[0]["description"], ensure_ascii=False)
+    assert "chưa chứng minh chức năng có bug" in text and "Điều kiện hoàn thành" in text
+    assert "toyapp/app.py:12" in text and CTX["pr_url"] in text
+    # Ngưỡng đứng riêng vẫn tạo ticket, không bị mất thông tin.
+    result = sync_low_findings([aggregate], cfg=CFG, ctx=CTX, env=ENV, egress_dir=tmp_path,
+                               transport=httpx.MockTransport(respond))
+    assert result["created"] == 1
+
+
 def test_create_low_then_skip_existing(tmp_path):
     created = []
 

@@ -99,8 +99,15 @@ def describe(f):
             fix = "Đối chiếu response trong evidence với OpenAPI, sửa implementation hoặc schema theo yêu cầu đã duyệt."
     elif worker == "coverage-debt" and rule != "debt.new":
         title = "Chức năng mới chưa tìm thấy test tương ứng"
-        why = "Scanner chưa nhận diện được test bảo vệ thay đổi; đây là heuristic, cần kiểm tra lại."
+        endpoint = re.search(r"\b((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+)", str(f.get("title") or ""))
+        if rule == "api_endpoint" and endpoint:
+            title = "Bổ sung test cho " + endpoint.group(1)
+        why = "QC-Agent chưa tìm thấy test tương ứng theo rule đang bật. Đây là cảnh báo thiếu test, chưa chứng minh chức năng có bug; cần kiểm tra test hiện có."
         fix = "Bổ sung test cho hành vi mới hoặc xác nhận test hiện có đã bao phủ và cấu hình để scanner nhận diện."
+    elif rule == "debt.new":
+        title = "Kiểm tra các thay đổi chưa có test tương ứng"
+        why = "Số khoản thiếu test mới vượt ngưỡng policy. Đây là kết quả tổng hợp, chưa chỉ ra bug cụ thể."
+        fix = "Xem finding coverage-debt và evidence để xác định thay đổi thiếu test, kiểm tra test hiện có rồi bổ sung nếu cần."
     return title, location or "Kết quả kiểm tra " + str(worker or "worker"), why, fix
 
 

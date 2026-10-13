@@ -16,7 +16,7 @@ log = logging.getLogger("qc_agent.pr_review")
 MARKER = "<!-- qc-agent:review sha256={digest} -->"
 ICON = {"critical": "🔴", "medium": "🟠", "low": "🟡"}
 MAX_LISTED = 30
-REVIEW_FORMAT_VERSION = 3
+REVIEW_FORMAT_VERSION = 4
 
 
 def digest(findings: list[dict]) -> str:
@@ -27,11 +27,11 @@ def digest(findings: list[dict]) -> str:
 def _hint(finding: dict) -> str:
     worker, rule = finding.get("worker"), github.clean_md(finding.get("rule_id") or "", 80)
     if worker == "semgrep":
-        return f"Bỏ qua có lý do: `# nosemgrep: {rule}`."
+        return f"Chỉ sau khi kiểm tra code và xác nhận rule không áp dụng, dùng `# nosemgrep: {rule}` kèm lý do. Không bỏ qua lỗi thật để làm xanh QC."
     if worker == "gitleaks":
-        return "Nếu là dương tính giả, thêm fingerprint vào `.gitleaksignore`."
+        return "Xác nhận chuỗi không phải credential thật trước khi thêm fingerprint vào `.gitleaksignore`, và ghi rõ lý do. Nếu là secret thật đã lộ, thu hồi hoặc thay key."
     if worker == "trivy":
-        return "Nếu là dương tính giả, thêm mục có lý do vào `.trivyignore`."
+        return "Đối chiếu CVE và dependency trong evidence. Chỉ thêm mục vào `.trivyignore` kèm lý do khi đã xác nhận cảnh báo không áp dụng."
     return ""
 
 
@@ -40,7 +40,7 @@ def inline_body(finding: dict) -> str:
     body = finding_view.render(issue, github.clean_md)
     hint = _hint(finding)
     if hint:
-        body += "\n\n<details><summary>Nếu đã xác minh là dương tính giả</summary>\n\n" + hint + "\n\n</details>"
+        body += "\n\n<details><summary>Nếu đã kiểm tra và xác nhận cảnh báo không áp dụng</summary>\n\n" + hint + "\n\n</details>"
     return body[:2000]
 
 
