@@ -380,5 +380,14 @@ Số đo (**ước lượng** `ceil(byte UTF-8 / 3)` của TOÀN BỘ request, k
 **Chưa đạt 40% ở median theo ước lượng `ceil(byte/3)` với định dạng payload hiện tại**; `count_tokens` và recall thật còn PENDING, nên đây chưa phải kết luận về số token thật và mục tiêu 40% của kế hoạch không bị đổi. Trần ước lượng ở median thấp (5–15%) vì đa số diff chỉ chạm 1–2 file nhỏ, phần diff chỉ chiếm khoảng 7–18% request, còn tiền tố cố định (system, module-map, catalog worker, schema tool) khoảng 850–900 token ước lượng. Diff lớn thì có dư địa (diff 45 file đổi tên giảm 57,5% ở `node-api`, trong đó có 45 hunk chỉ đổi chú thích `helper … (moved)` của fixture này bị bỏ theo quy tắc COMMENT có sẵn và hiện qua `dropped_hunks`, nên không suy ra mọi thay đổi chú thích đều an toàn để bỏ; file 3 000 dòng bị cắt theo trần mỗi file giảm hơn 90%) nhưng không đại diện cho median. Trước S4-04 payload đã prune còn **to hơn** diff thô ở hầu hết ca LLM nhỏ (20/20 ca ở `noteboard`). Số **token thật** (`count_tokens`) và **recall thật** chưa đo (PENDING): các con số trên không nói gì về chất lượng chọn worker của model.
 
 ## 6. Rủi ro còn lại (biết trước)
+
+### Cách đọc review và comment QC
+
+Review/summary ưu tiên **mục cần xử lý**: vấn đề, vị trí (file/dòng hoặc endpoint), lý do và hướng sửa. Finding ngưỡng được gộp với finding chi tiết cùng task/worker; nhiều CVE của cùng dependency trong cùng lockfile hiển thị thành một mục, với đầy đủ CVE trong phần chi tiết. Ngưỡng đứng riêng, lỗi phạm vi quét hay tuổi DB vẫn được giữ để không che lỗi setup.
+
+Tên rule và số finding gốc nằm trong phần mở rộng/artifact. Số finding có thể gồm cả lỗi chi tiết lẫn ngưỡng tổng hợp, không tương đương số bug độc lập. Việc gộp chỉ phục vụ trình bày: report JSON, severity, gate verdict và logic Jira không đổi. Hướng ignore chỉ nằm trong phần dương tính giả của inline comment, sau hướng sửa.
+
+Renderer dùng rules, không gọi LLM. Bản định dạng review có version trong digest để một lượt chạy lại có thể đăng bản trình bày mới; các lượt tiếp theo cùng finding và version vẫn được chống trùng.
+
 - Worker eval của **chính repo SUT** (ví dụ `pytest tests/eval`) chạy mã của PR với các key LLM trong môi trường. Với PR cùng repo, tác giả là người có quyền ghi; hãy dùng key riêng cho CI với **giới hạn ngân sách**.
 - Workflow chưa được chạy trên GitHub thật ở thời điểm viết tài liệu này: các bước shell đã được kiểm chứng trên Docker cục bộ bằng `tools/run_reusable_locally.py` và `tests/test_reusable_workflow.py`.
