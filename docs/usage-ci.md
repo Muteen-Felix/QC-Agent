@@ -385,6 +385,8 @@ Số đo (**ước lượng** `ceil(byte UTF-8 / 3)` của TOÀN BỘ request, k
 
 Review/summary ưu tiên **mục cần xử lý**: vấn đề, vị trí (file/dòng hoặc endpoint), lý do và hướng sửa. Finding ngưỡng được gộp với finding chi tiết cùng task/worker; nhiều CVE của cùng dependency trong cùng lockfile hiển thị thành một mục, với đầy đủ CVE trong phần chi tiết. Ngưỡng đứng riêng, lỗi phạm vi quét hay tuổi DB vẫn được giữ để không che lỗi setup.
 
+Review trình bày mỗi mục bằng heading có số thứ tự, đường phân cách, mức độ riêng và bullet có nhãn đậm. Endpoint/file được đặt trong code span. Comment tổng hợp dùng bảng ngắn (vấn đề, vị trí, mức độ); inline comment dùng bullet ngắn và giữ hướng ignore trong phần mở rộng.
+
 Tên rule và số finding gốc nằm trong phần mở rộng/artifact. Số finding có thể gồm cả lỗi chi tiết lẫn ngưỡng tổng hợp, không tương đương số bug độc lập. Việc gộp chỉ phục vụ trình bày: report JSON, severity, gate verdict và logic Jira không đổi. Hướng ignore chỉ nằm trong phần dương tính giả của inline comment, sau hướng sửa.
 
 Renderer dùng rules, không gọi LLM. Bản định dạng review có version trong digest để một lượt chạy lại có thể đăng bản trình bày mới; các lượt tiếp theo cùng finding và version vẫn được chống trùng.

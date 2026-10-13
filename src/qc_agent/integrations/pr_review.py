@@ -16,7 +16,7 @@ log = logging.getLogger("qc_agent.pr_review")
 MARKER = "<!-- qc-agent:review sha256={digest} -->"
 ICON = {"critical": "🔴", "medium": "🟠", "low": "🟡"}
 MAX_LISTED = 30
-REVIEW_FORMAT_VERSION = 2
+REVIEW_FORMAT_VERSION = 3
 
 
 def digest(findings: list[dict]) -> str:
@@ -62,16 +62,11 @@ def split_by_diff(findings: list[dict], diff_lines: dict[str, set[int]]) -> tupl
 def render_body(findings: list[dict], outside: list[dict], inline: int, digest_hex: str) -> str:
     issues = finding_view.group(findings)
     lines = ["### qc-agent · Review", "",
-             f"**{len(issues)} mục cần xử lý.** Có {inline} inline comment tại dòng thay đổi."]
-    for level in ICON:
-        mine = [issue for issue in issues if issue.severity == level]
-        if not mine:
-            continue
-        lines += ["", f"**{level.title()}**"]
-        for issue in mine[:MAX_LISTED]:
-            lines += ["", finding_view.render(issue, github.clean_md)]
-        if len(mine) > MAX_LISTED:
-            lines.append(f"- … và {len(mine) - MAX_LISTED} finding nữa trong artifact")
+             f"**{len(issues)} mục cần xử lý · {inline} inline comment tại dòng thay đổi**"]
+    for number, issue in enumerate(issues[:MAX_LISTED], 1):
+        lines += ["", "---", "", finding_view.render(issue, github.clean_md, number=number)]
+    if len(issues) > MAX_LISTED:
+        lines.append(f"\nCòn {len(issues)-MAX_LISTED} mục trong artifact.")
     lines += ["", finding_view.technical(issues, github.clean_md), "",
               "Review giải thích kết quả; check QC và branch protection quyết định việc chặn merge."]
     marker = MARKER.format(digest=digest_hex)

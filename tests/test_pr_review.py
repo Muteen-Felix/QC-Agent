@@ -18,7 +18,7 @@ def test_inline_only_on_right_side_and_outside_in_body():
         ("toyapp/app.py", n, "RIGHT") for n in range(1, 11)]
     assert {f['fingerprint'] for f in outside} == {f['fingerprint'] for f in findings[10:]}
     body = pr_review.render_body(findings, outside, len(comments), pr_review.digest(findings))
-    assert "Không có vị trí" in body and "**Medium**" in body
+    assert "Không có vị trí" in body and "**Mức độ:** Medium" in body
 
 
 def test_digest_stable_and_body_sanitized():

@@ -46,7 +46,7 @@ def test_api_endpoint_is_location_and_summary_severity_is_retained():
                                  f('schemathesis', 'not_a_server_error', 'check not_a_server_error không đạt')])
     assert len(issues) == 1 and issues[0].severity == 'critical'
     body = finding_view.render(issues[0], github.clean_md)
-    assert 'POST /login' in body and 'HTTP 5xx' in body and 'Cách xử lý:' in body
+    assert '`POST /login`' in body and 'HTTP 5xx' in body and '**Cách sửa:**' in body
     assert 'không có vị trí' not in body
 
 
@@ -57,7 +57,7 @@ def test_api_checks_with_different_rules_are_not_merged():
 
 def test_ignore_guidance_is_secondary_to_fix_and_no_secret_is_assumed_valid():
     body = pr_review.inline_body(f('gitleaks', 'github-pat', 'token', 'app.py', line=1))
-    assert body.index('Cách xử lý:') < body.index('<details>') < body.index('.gitleaksignore')
+    assert body.index('**Cách sửa:**') < body.index('<details>') < body.index('.gitleaksignore')
     assert 'cần xác minh' in body and 'Nếu credential thật' in body
 
 
@@ -66,7 +66,7 @@ def test_grouped_inline_comment_is_not_duplicated_by_oracle():
                 f('semgrep', 'semgrep.high', 'semgrep.high = 1')]
     comments, outside = pr_review.split_by_diff(findings, {'app.py': {4}})
     assert len(comments) == 1 and not outside
-    assert '(critical)' in comments[0]['body']
+    assert '**Mức độ:** Critical' in comments[0]['body']
 
 
 def test_review_keeps_marker_when_content_is_truncated():
@@ -74,3 +74,17 @@ def test_review_keeps_marker_when_content_is_truncated():
     body = pr_review.render_body(findings, findings, 0, 'a'*64)
     assert len(body) <= github.MAX_COMMENT
     assert body.endswith(pr_review.MARKER.format(digest='a'*64))
+
+
+def test_numbered_sections_and_bullet_hierarchy():
+    item = f('semgrep', 'python-eval-exec-dynamic', 'eval', 'some_path.py', line=3)
+    body = pr_review.render_body([item], [item], 0, 'a'*64)
+    assert '\n---\n\n#### 1.' in body
+    assert '- **Vị trí:** `some_path.py:3`' in body
+    assert '- **Vì sao:**' in body and '- **Cách sửa:**' in body
+
+
+def test_code_location_cannot_break_table_or_start_html():
+    rendered = finding_view.code_location('x` | <img>\n@user #123')
+    assert rendered.count('`') == 2 and '|' not in rendered and '<img>' not in rendered
+    assert '@user' not in rendered and '#123' not in rendered

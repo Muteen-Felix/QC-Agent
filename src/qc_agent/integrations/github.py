@@ -180,8 +180,11 @@ def render_summary(run: dict, *, project: str, mode: str, exit_code: int | None 
         from qc_agent.integrations import finding_view
         issues = finding_view.group(report.get("findings") or [])
         lines += ["", f"**{len(issues)} mục cần xử lý** (đã gộp theo vấn đề/dependency và các ngưỡng liên quan)."]
+        if issues:
+            lines += ["", "| Vấn đề | Vị trí | Mức độ |", "|---|---|---|"]
         for issue in issues[:5]:
-            lines += ["", finding_view.render(issue, clean_md, detailed=False)]
+            title, where, _, _ = finding_view.describe(issue.finding)
+            lines.append(f"| {clean_md(title, 200)} | {finding_view.code_location(where)} | {clean_md(issue.severity.title(), 20)} |")
         if len(issues) > 5:
             lines.append(f"\nCòn {len(issues)-5} mục; xem review và artifact.")
         lines += ["", "<details><summary>Số finding gốc trong artifact</summary>", "",

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import html
 from dataclasses import dataclass, field
 
 LEVEL = {"low": 0, "medium": 1, "critical": 2}
@@ -103,13 +104,23 @@ def describe(f):
     return title, location or "Kết quả kiểm tra " + str(worker or "worker"), why, fix
 
 
-def render(issue, clean, *, detailed=True):
+def code_location(value, limit=180):
+    """Code span không có backtick/HTML/pipe thô; giữ đường dẫn dễ đọc trong bảng Markdown."""
+    text = ' '.join(re.sub(r'[\x00-\x1f\x7f]', '', str(value)).split())[:limit]
+    text = html.escape(text, quote=False).replace('`', 'ˋ').replace('|', '&#124;')
+    text = text.replace('@', '@\u200b').replace('#', '#\u200b')
+    return '`' + text + '`'
+
+
+def render(issue, clean, *, detailed=True, number=None):
     title, where, why, fix = describe(issue.finding)
-    lines = [f"**{clean(title, 200)}** ({clean(issue.severity, 20)})", f"Vị trí: {clean(where, 180)}."]
+    heading = f"#### {number}. {clean(title, 200)}" if number is not None else f"**{clean(title, 200)}**"
+    lines = [heading, '', f"**Mức độ:** {clean(issue.severity.title(), 20)}", '',
+             f"- **Vị trí:** {code_location(where)}"]
     if detailed:
-        lines.append("Vì sao: " + clean(why, 350))
-    lines.append("Cách xử lý: " + clean(fix, 500))
-    return '\n\n'.join(lines)
+        lines.append("- **Vì sao:** " + clean(why, 350))
+    lines.append("- **Cách sửa:** " + clean(fix, 500))
+    return '\n'.join(lines)
 
 
 def technical(issues, clean):
