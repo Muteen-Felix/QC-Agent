@@ -1,0 +1,19 @@
+name = "qc-agent-github-app"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Set these before deployment. Install the App on BOTH the control repo and SUT.
+QC_APP_ID = ""
+QC_CONTROL_REPOSITORY = "Muteen-Felix/QC-Agent"
+QC_CONTROL_INSTALLATION_ID = ""
+QC_CONTROL_REF = "app-llm"
+QC_QA_OWNER = "@MinhDuc-IT"
+
+[[durable_objects.bindings]]
+name = "ONBOARDING"
+class_name = "OnboardingQueue"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["OnboardingQueue"]

@@ -42,6 +42,10 @@ on:
       mode:
         type: string
         default: pr
+      ghcr_username:
+        description: "Chủ token kéo GHCR private; để trống dùng actor"
+        type: string
+        default: ""
       suites:
         description: "chỉ chạy các suite này (cách nhau dấu phẩy); mặc định theo policy của mode"
         type: string
@@ -173,7 +177,7 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ inputs.ghcr_username || github.actor }}
           password: ${{ secrets.GHCR_PULL_TOKEN || secrets.qc_read_token || secrets.GITHUB_TOKEN }}
 
       - name: Pull qc-agent image

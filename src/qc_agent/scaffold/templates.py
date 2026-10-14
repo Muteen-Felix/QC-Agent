@@ -47,6 +47,13 @@ class TemplateError(ValueError):
     """Giá trị đưa vào mẫu không hợp lệ (hoặc mẫu và bộ giá trị lệch nhau)."""
 
 
+def _branch(value: str) -> None:
+    if (not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}", value)
+            or any(part in {"", ".", ".."} or part.endswith(".lock") for part in value.split("/"))
+            or ".." in value or value.endswith(".")):
+        raise TemplateError("base_branch không hợp lệ")
+
+
 def template_names() -> list[str]:
     return sorted(p.name for p in resources.files("qc_agent.scaffold").joinpath("tmpl").iterdir() if p.name.endswith(".tmpl"))
 
@@ -157,7 +164,7 @@ def gt_story_test(story_id: str) -> str:
     return render("gt-api-functional.py.tmpl", {"story_id": _q(_need(_GT_ID, story_id, "story_id"))})
 
 
-def groundtruth_workflow(*, project: str, qc_ref: str | None = None, image: str | None = None, qc_repo: str = DEFAULT_QC_REPO,
+def groundtruth_workflow(*, project: str, qc_ref: str | None = None, image: str | None = None, qc_repo: str = DEFAULT_QC_REPO, base_branch: str = "main", ghcr_username: str | None = None,
                          prd_glob: str = DEFAULT_PRD_GLOB, openapi: str | None = None) -> str:
     """qc-groundtruth.yml của repo SUT: gọi workflow tái sử dụng sinh GT + kiểm `gt validate` (S1-07). `qc_ref`/`image` thiếu => chỗ giữ + TODO như `qc_workflow`.
     `openapi` là đường dẫn file TRONG repo (URL của SUT đang chạy thì CI không với tới được)."""
@@ -169,7 +176,9 @@ def groundtruth_workflow(*, project: str, qc_ref: str | None = None, image: str 
     ref_text = _need(_SHA, qc_ref, "qc_ref") if qc_ref else f"qc-agent-todo-pin-commit-sha  # {TODO} ghim commit SHA 40 ký tự của qc-agent (không dùng @main)"
     image_text = _q(_need(_IMAGE, image, "image")) if image else f"ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>  # {TODO} điền digest từ Job Summary của workflow image"
     openapi_line = f"      openapi: {_q(_rel_path(openapi, 'openapi'))}" if openapi else ""
-    return render("qc-groundtruth.yml.tmpl", {"project": project, "qc_repo": qc_repo, "qc_ref": ref_text, "image": image_text, "prd_glob": _q(prd_glob),
+    _branch(base_branch)
+    ghcr_line = "      ghcr_username: " + _q(_need(re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}"), ghcr_username, "ghcr_username")) if ghcr_username else ""
+    return render("qc-groundtruth.yml.tmpl", {"ghcr_line": ghcr_line, "base_branch": _q(base_branch), "project": project, "qc_repo": qc_repo, "qc_ref": ref_text, "image": image_text, "prd_glob": _q(prd_glob),
                                               "prd_glob_expr": "'" + prd_glob + "'", "openapi_line": openapi_line})
 
 
@@ -307,7 +316,7 @@ _WORKFLOW_INPUTS = ("sut_dockerfile", "sut_context", "sut_port", "sut_health_pat
                     "sut_ui_port", "sut_ui_health_path", "sut_ui_build_args")
 
 
-def qc_workflow(*, project: str, qc_ref: str | None = None, image: str | None = None, qc_repo: str = DEFAULT_QC_REPO,
+def qc_workflow(*, project: str, qc_ref: str | None = None, image: str | None = None, qc_repo: str = DEFAULT_QC_REPO, base_branch: str = "main", ghcr_username: str | None = None,
                 sut_dockerfile: str | None = None, sut_context: str | None = None,
                 sut_port: str | None = None, sut_health_path: str | None = None, sut_env: list[str] = (),
                 ui_dockerfile: str | None = None, ui_context: str | None = None, ui_port: str | None = None,
@@ -327,6 +336,8 @@ def qc_workflow(*, project: str, qc_ref: str | None = None, image: str | None = 
     ref_text = _need(_SHA, qc_ref, "qc_ref") if qc_ref else f"qc-agent-todo-pin-commit-sha  # {TODO} ghim commit SHA 40 ký tự của qc-agent (không dùng @main)"
     image_text = _q(_need(_IMAGE, image, "image")) if image else f"ghcr.io/muteen-felix/qc-agent@sha256:<DIGEST>  # {TODO} điền digest từ Job Summary của workflow image"
     with_lines = []
+    if ghcr_username:
+        with_lines.append("      ghcr_username: " + _q(_need(re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}"), ghcr_username, "ghcr_username")))
     for key, value in (("sut_dockerfile", sut_dockerfile), ("sut_context", sut_context), ("sut_port", sut_port), ("sut_health_path", sut_health_path),
                        ("sut_ui_dockerfile", ui_dockerfile), ("sut_ui_context", ui_context), ("sut_ui_port", ui_port),
                        ("sut_ui_health_path", ui_health_path)):
@@ -339,5 +350,6 @@ def qc_workflow(*, project: str, qc_ref: str | None = None, image: str | None = 
             with_lines.append(f"      {key}: |{tail(key)}")
             for item in items:
                 with_lines.append("        " + _need(pattern, item, key))
-    return render("qc-gate.yml.tmpl", {"project": project, "qc_repo": qc_repo, "qc_ref": ref_text, "image": image_text,
+    _branch(base_branch)
+    return render("qc-gate.yml.tmpl", {"base_branch": _q(base_branch), "project": project, "qc_repo": qc_repo, "qc_ref": ref_text, "image": image_text,
                                   "with_block": "\n".join(with_lines)})

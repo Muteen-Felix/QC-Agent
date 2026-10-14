@@ -47,6 +47,8 @@ class Options:
     no_api: bool = False
     qc_repo: str = t.DEFAULT_QC_REPO
     qc_ref: str | None = None         # mặc định: $QC_AGENT_GIT_SHA của image (nếu là SHA 40 ký tự)
+    base_branch: str = "main"
+    ghcr_username: str | None = None
     image: str | None = None
     sut_dockerfile: str | None = None
     sut_context: str | None = None
@@ -186,17 +188,17 @@ def build(opts: Options) -> Plan:
         if port and _verify(found.port):
             marks["sut_port"] = _verify(found.port)
         health = None if opts.no_api else _declare(marks, "sut_health_path", found.health_path.value, scan.DEFAULT_HEALTH, found.health_path)
-        add(GT_WORKFLOW, t.groundtruth_workflow(project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image,
-                                                prd_glob=opts.prd_glob, openapi=_repo_file(root, opts.openapi_source)))
+        add(GT_WORKFLOW, t.groundtruth_workflow(project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image, base_branch=opts.base_branch,
+                                                prd_glob=opts.prd_glob, openapi=_repo_file(root, opts.openapi_source), ghcr_username=opts.ghcr_username))
         owners = next((rel for rel in CODEOWNERS_CANDIDATES if (root / rel).is_file()), CODEOWNERS_CANDIDATES[0])
         old_owners = (root / owners).read_text(encoding="utf-8") if (root / owners).is_file() else None
         plan.files.append(Planned(root / owners, owners, t.merge_codeowners(old_owners, opts.qa_team), managed=True))
         if not opts.qa_team:
             plan.warnings.append("thiếu --qa-team: CODEOWNERS dùng owner giữ chỗ kèm qc-agent:todo (`qc-agent validate` sẽ từ chối cho tới khi thay bằng team QA thật)")
         gate_workflow = t.qc_workflow(
-            project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image, sut_dockerfile=dockerfile, sut_context=context,
+            project=plan.slug, qc_repo=opts.qc_repo, qc_ref=opts.qc_ref or _image_sha(), image=opts.image, base_branch=opts.base_branch, sut_dockerfile=dockerfile, sut_context=context,
             sut_port=port, sut_health_path=health, sut_env=sut_env, ui_dockerfile=ui_dockerfile, ui_context=ui_context, ui_port=ui_port,
-            ui_health_path=opts.ui_health_path, ui_build_args=ui_build_args, marks=marks)
+            ui_health_path=opts.ui_health_path, ui_build_args=ui_build_args, marks=marks, ghcr_username=opts.ghcr_username)
         if (root / t.LEGACY_WORKFLOW).is_file() and not (root / WORKFLOW).exists() and not opts.force:
             # Repo đang dùng tên cũ: sinh thêm qc-gate.yml sẽ tạo HAI job cùng project (hai Check Run). Việc đổi tên là của người dùng.
             plan.warnings.append(f"{t.LEGACY_WORKFLOW} đã có nên KHÔNG sinh {WORKFLOW} (sẽ có hai job cùng project). Đổi tên để dùng bản mới "
@@ -357,6 +359,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-api", action="store_true", help="không sinh api-contract/perf-smoke (project không đủ điều kiện mode pr, chỉ dùng manual)")
     ap.add_argument("--qc-repo", default=t.DEFAULT_QC_REPO, help="repo chứa workflow tái sử dụng")
     ap.add_argument("--qc-ref", metavar="SHA40", help="commit SHA của qc-agent để ghim (mặc định: commit build của image này; thiếu => TODO)")
+    ap.add_argument("--base-branch", default="main", help="Nhánh mặc định của SUT (App đọc từ GitHub API)")
+    ap.add_argument("--ghcr-username", help="Chủ token kéo image GHCR private; không lấy tên App bot")
     ap.add_argument("--image", metavar="REF@sha256:...", help="image qc-agent ghim theo digest (thiếu => TODO)")
     ap.add_argument("--sut-dockerfile", metavar="PATH", help="Dockerfile của API (mặc định: scanner tìm; không thấy thì lỗi)")
     ap.add_argument("--sut-context", metavar="DIR", help="context build của API (mặc định suy từ vị trí Dockerfile)")
@@ -395,7 +399,7 @@ def main(argv: list[str]) -> int:
         args = _parser().parse_args(argv)
         opts = Options(
             sut_root=Path(args.sut_root) if args.sut_root else default_sut_root(), slug=args.slug, openapi_source=args.openapi,
-            openapi_path=args.openapi_path, no_api=args.no_api, qc_repo=args.qc_repo, qc_ref=args.qc_ref, image=args.image,
+            openapi_path=args.openapi_path, no_api=args.no_api, qc_repo=args.qc_repo, qc_ref=args.qc_ref, image=args.image, base_branch=args.base_branch, ghcr_username=args.ghcr_username,
             sut_dockerfile=args.sut_dockerfile, sut_context=args.sut_context, sut_port=args.sut_port, sut_health_path=args.health_path,
             sut_env=args.sut_env, ui_dockerfile=args.ui_dockerfile, ui_context=args.ui_context, ui_port=args.ui_port,
             ui_health_path=args.ui_health_path, ui_build_args=args.ui_build_arg, ui_entry_path=args.ui_entry_path,

@@ -457,6 +457,11 @@ def test_init_from_a_live_sut_produces_a_gate_that_passes_clean_and_fails_on_a_s
         sut = tmp_path / "sut"
         sut.mkdir()
         (sut / "Dockerfile").write_text("FROM python:3.11-slim\nEXPOSE 8000\n", encoding="utf-8")
+        # Gate includes SAST: scan the actual fixture source, not a Dockerfile-only tree.
+        shutil.copytree(NOTEBOARD / "toyapp", sut / "toyapp", ignore=shutil.ignore_patterns("__pycache__"))
+        from importlib.metadata import version
+        (sut / "requirements.txt").write_text(
+            "".join(f"{name}=={version(name)}\n" for name in ("fastapi", "uvicorn")), encoding="utf-8")
         assert cli_main(["init", "--sut-root", str(sut), "--slug", "nb", "--openapi", f"{url}/openapi.json"]) == 0
         projects = ROOT / "configs" / "projects"      # `nb` chưa đăng ký => policy _default
 
@@ -602,7 +607,7 @@ def test_the_groundtruth_caller_workflow_pins_the_reusable_one_and_scopes_its_tr
     assert on["pull_request"] == {"paths": [".qc-agent/**"]} and on["workflow_dispatch"]["inputs"]["prd_path"]["default"] == "docs/prd/**"
     job = data["jobs"]["groundtruth"]
     assert job["uses"] == f"Muteen-Felix/QC-Agent/.github/workflows/qc-groundtruth.reusable.yml@{'a' * 40}"
-    assert job["with"] == {"project": "vahan-rpa", "image": "ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, "prd_path": "${{ inputs.prd_path || 'docs/prd/**' }}"}
+    assert job["with"] == {"project": "vahan-rpa", "image": "ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, "prd_path": "${{ inputs.prd_path || 'docs/prd/**' }}", "base_branch": "main"}
     assert job["permissions"] == {"contents": "write", "pull-requests": "write", "packages": "read"} and job["secrets"] == "inherit"
     assert "qc-agent:todo" not in read(tmp_path, ".github/workflows/qc-groundtruth.yml")
 
@@ -663,7 +668,7 @@ def test_the_groundtruth_workflow_explains_how_to_switch_to_gemini_without_chang
     for line in ("# model: gemini-3.6-flash", '# llm_min_interval_s: "12"', '# llm_max_retries: "5"', '# llm_fallback_models: "gemini-3.8-flash,gemini-2.5-flash"'):
         assert line in text, line
     with_ = gt_workflow(tmp_path)["jobs"]["groundtruth"]["with"]
-    assert set(with_) == {"project", "image", "prd_path"}                                    # mặc định vẫn là Claude: các dòng Gemini chỉ là comment
+    assert set(with_) == {"project", "image", "prd_path", "base_branch"}                     # mặc định vẫn là Claude: các dòng Gemini chỉ là comment
     assert "qc-agent:todo" not in text and gt_workflow(tmp_path)["jobs"]["groundtruth"]["secrets"] == "inherit"
 
 

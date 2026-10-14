@@ -5,7 +5,7 @@
 name: qc-groundtruth
 on:
   push:
-    branches: [main]
+    branches: [{{base_branch}}]
     paths:
       - {{prd_glob}}
   workflow_dispatch:
@@ -27,6 +27,8 @@ jobs:
     uses: {{qc_repo}}/.github/workflows/qc-groundtruth.reusable.yml@{{qc_ref}}
     with:
       project: {{project}}
+      base_branch: {{base_branch}}
+{{ghcr_line}}
       image: {{image}}
       prd_path: ${{ inputs.prd_path || {{prd_glob_expr}} }}
 {{openapi_line}}

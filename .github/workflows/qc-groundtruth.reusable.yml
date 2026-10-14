@@ -44,6 +44,9 @@ on:
       base_branch:
         type: string
         default: main
+      ghcr_username:
+        type: string
+        default: ""
       model:
         description: "ghi đè QC_GT_MODEL (tuỳ chọn)"
         type: string
@@ -176,7 +179,7 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ inputs.ghcr_username || github.actor }}
           password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Pull qc-agent image
@@ -408,7 +411,7 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ inputs.ghcr_username || github.actor }}
           password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Pull qc-agent image

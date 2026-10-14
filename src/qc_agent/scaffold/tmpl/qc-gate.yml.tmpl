@@ -3,7 +3,7 @@
 name: qc-gate
 on:
   pull_request:
-    branches: [main]
+    branches: [{{base_branch}}]
   workflow_dispatch:
     inputs:
       workers:

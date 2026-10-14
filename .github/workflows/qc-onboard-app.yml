@@ -1,0 +1,81 @@
+name: QC App onboarding
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'Installed SUT repository: owner/repo'
+        required: true
+        type: string
+      qa_owner:
+        description: 'QA CODEOWNER, e.g. @MinhDuc-IT (empty leaves a TODO)'
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: qc-onboard-${{ inputs.repository }}
+  cancel-in-progress: false
+
+jobs:
+  onboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: github-app-onboarding
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: control
+          persist-credentials: false
+      - name: Get repository-scoped App token
+        id: app
+        env:
+          QC_APP_ID: ${{ vars.QC_APP_ID }}
+          QC_APP_PRIVATE_KEY: ${{ secrets.QC_APP_PRIVATE_KEY }}
+          SUT_REPOSITORY: ${{ inputs.repository }}
+        run: python control/tools/github_app.py token
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ steps.app.outputs.base }}
+          token: ${{ steps.app.outputs.token }}
+          path: sut
+      - name: Log in to GHCR
+        env:
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_USERNAME: ${{ vars.GHCR_USERNAME }}
+        run: |
+          if [ -n "$GHCR_PULL_TOKEN" ]; then
+            printf '%s' "$GHCR_PULL_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          fi
+      - name: Generate onboarding proposal without executing SUT code
+        env:
+          QC_IMAGE: ${{ vars.QC_ONBOARD_IMAGE }}
+          QC_REF: ${{ vars.QC_ONBOARD_REF }}
+          QC_REPO: ${{ github.repository }}
+          SUT_BASE: ${{ steps.app.outputs.base }}
+          QA_OWNER: ${{ inputs.qa_owner }}
+          GHCR_USERNAME: ${{ vars.GHCR_USERNAME }}
+        run: |
+          [[ "$QC_IMAGE" =~ ^[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}$ ]] || exit 1
+          [[ "$QC_REF" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          args=(init --sut-root /sut --qc-repo "$QC_REPO" --qc-ref "$QC_REF" --image "$QC_IMAGE" --base-branch "$SUT_BASE")
+          if [ -n "$QA_OWNER" ]; then args+=(--qa-team "$QA_OWNER"); fi
+          if [ -n "$GHCR_USERNAME" ]; then args+=(--ghcr-username "$GHCR_USERNAME"); fi
+          # Use trusted source from this workflow ref, not arbitrary code from the SUT.
+          docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp -e PYTHONPATH=/trusted \
+            -v "$GITHUB_WORKSPACE/control/src:/trusted:ro" \
+            -v "$GITHUB_WORKSPACE/sut:/sut" --entrypoint python "$QC_IMAGE" \
+            -m qc_agent.core.cli "${args[@]}"
+      - name: Open draft onboarding PR
+        env:
+          QC_APP_TOKEN: ${{ steps.app.outputs.token }}
+          SUT_REPOSITORY: ${{ inputs.repository }}
+          SUT_BASE_BRANCH: ${{ steps.app.outputs.base }}
+          SUT_ROOT: ${{ github.workspace }}/sut
+        run: python control/tools/github_app.py publish
+      - name: Revoke App token
+        if: ${{ always() && steps.app.outputs.token != '' }}
+        env:
+          QC_APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: python control/tools/github_app.py revoke
