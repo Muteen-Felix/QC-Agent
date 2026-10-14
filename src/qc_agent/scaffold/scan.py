@@ -345,7 +345,7 @@ def _scan_health(root: Path, flag: str | None, dockerfile: str | None = None, co
     ranked = _rank_health(set(routes))
     from qc_agent.scaffold.fastapi_paths import inspect
     mounted, schemas, _ = inspect(root, _python_files(root), health_sources={p for files in routes.values() for p in files})
-    if len(mounted) == 1 and any(mounted[0].endswith(route) for route in routes):
+    if len(mounted) == 1 and mounted[0] != ranked[0] and any(mounted[0].endswith(route) for route in routes):
         return Finding(mounted[0], "detected", (mounted[0],), f"static FastAPI router mount graph; {basis}")
     listed = tuple(_describe_route(route, routes[route]) for route in ranked)
     verify = f"chọn {ranked[0]} trong [{', '.join(listed)}] vì gợi ý xếp hạng, chưa xác nhận: {rule}" if len(ranked) > 1 else None
