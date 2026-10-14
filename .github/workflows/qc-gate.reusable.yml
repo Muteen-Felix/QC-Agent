@@ -128,6 +128,8 @@ on:
       SUT_DB_SECRET_ENV: { required: false }   # nhiều dòng KEY=VALUE chỉ cho container db (POSTGRES_PASSWORD...)
       QC_API_TOKEN: { required: false }
       GHCR_PULL_TOKEN: { required: false }
+      QC_TEST_USERNAME: { required: false }
+      QC_TEST_PASSWORD: { required: false }
       OPENAI_API_KEY: { required: false }
       ANTHROPIC_API_KEY: { required: false }
       JIRA_BASE_URL: { required: false }

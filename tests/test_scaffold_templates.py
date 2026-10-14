@@ -147,7 +147,7 @@ def test_generated_qc_yml_only_uses_inputs_the_reusable_workflow_declares():
     assert set(job["with"]) <= reusable_inputs()  # chống lệch: workflow đổi tên input thì test này đỏ
     assert job["with"]["project"] == "myapp" and job["with"]["image"] == DIGEST
     assert job["with"]["sut_env"] == "A=b\nC=d e\n" and job["with"]["sut_ui_build_args"] == "VITE_API_URL=http://sut:3000\n"
-    assert job["uses"] == f"Muteen-Felix/QC-Agent/.github/workflows/qc-gate.reusable.yml@{SHA}" and job["secrets"] == "inherit"
+    assert job["uses"] == f"Muteen-Felix/QC-Agent/.github/workflows/qc-gate.reusable.yml@{SHA}" and isinstance(job["secrets"], dict)
     assert job["permissions"] == {"contents": "read", "checks": "write", "pull-requests": "write", "packages": "read"}
     assert "suites" not in job["with"]  # policy quyết suite nào chạy
     assert t.TODO not in text
@@ -314,7 +314,7 @@ def test_workflow_marks_annotate_the_right_line_and_keep_the_yaml_valid():
 def test_qc_yml_has_a_commented_db_sample_that_enables_nothing_and_only_names_declared_inputs():
     text = t.qc_workflow(project="myapp", qc_ref=SHA, image=DIGEST)
     job = yaml.safe_load(text)["jobs"]["qc"]
-    assert set(job["with"]) == {"project", "image", "workers"} and job["secrets"] == "inherit"                    # mặc định không bật DB
+    assert set(job["with"]) == {"project", "image", "workers"} and isinstance(job["secrets"], dict)                    # mặc định không bật DB
     sampled = set(re.findall(r"^\s*#\s*(sut_db_\w+):", text, re.M))
     assert sampled == {"sut_db_image", "sut_db_env", "sut_db_ready_cmd"} and sampled <= reusable_inputs()   # mẫu không lệch tên input của workflow
     assert "SUT_SECRET_ENV" in text and "SUT_DB_SECRET_ENV" in text and "sut_base_url" in text and "@sha256:<DIGEST>" in text

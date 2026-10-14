@@ -608,7 +608,7 @@ def test_the_groundtruth_caller_workflow_pins_the_reusable_one_and_scopes_its_tr
     job = data["jobs"]["groundtruth"]
     assert job["uses"] == f"Muteen-Felix/QC-Agent/.github/workflows/qc-groundtruth.reusable.yml@{'a' * 40}"
     assert job["with"] == {"project": "vahan-rpa", "image": "ghcr.io/muteen-felix/qc-agent@sha256:" + "b" * 64, "prd_path": "${{ inputs.prd_path || 'docs/prd/**' }}", "base_branch": "main"}
-    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "packages": "read"} and job["secrets"] == "inherit"
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "packages": "read"} and isinstance(job["secrets"], dict)
     assert "qc-agent:todo" not in read(tmp_path, ".github/workflows/qc-groundtruth.yml")
 
 
@@ -669,7 +669,7 @@ def test_the_groundtruth_workflow_explains_how_to_switch_to_gemini_without_chang
         assert line in text, line
     with_ = gt_workflow(tmp_path)["jobs"]["groundtruth"]["with"]
     assert set(with_) == {"project", "image", "prd_path", "base_branch"}                     # mặc định vẫn là Claude: các dòng Gemini chỉ là comment
-    assert "qc-agent:todo" not in text and gt_workflow(tmp_path)["jobs"]["groundtruth"]["secrets"] == "inherit"
+    assert "qc-agent:todo" not in text and isinstance(gt_workflow(tmp_path)["jobs"]["groundtruth"]["secrets"], dict)
 
 
 # ---------- S4-08: tìm thấy ≠ xác nhận (dấu VERIFY của Dockerfile/context phải tới được caller) ----------

@@ -343,8 +343,14 @@ def _scan_health(root: Path, flag: str | None, dockerfile: str | None = None, co
     if not routes:
         return Finding(DEFAULT_HEALTH, "default", (), f"không thấy route health/ready trong phạm vi ({basis}): readiness của workflow nhận mọi mã HTTP")
     ranked = _rank_health(set(routes))
+    from qc_agent.scaffold.fastapi_paths import inspect
+    mounted, schemas, _ = inspect(root, _python_files(root), health_sources={p for files in routes.values() for p in files})
+    if len(mounted) == 1 and any(mounted[0].endswith(route) for route in routes):
+        return Finding(mounted[0], "detected", (mounted[0],), f"static FastAPI router mount graph; {basis}")
     listed = tuple(_describe_route(route, routes[route]) for route in ranked)
     verify = f"chọn {ranked[0]} trong [{', '.join(listed)}] vì gợi ý xếp hạng, chưa xác nhận: {rule}" if len(ranked) > 1 else None
+    if schemas and not mounted:
+        verify = "VERIFY: FastAPI router mount unresolved; set --health-path to the complete URL"
     return Finding(ranked[0], "detected", listed, f"{rule}; bằng chứng phạm vi: {basis}", verify)
 
 
@@ -385,6 +391,12 @@ def _deps_mention_fastapi(root: Path) -> bool:
 def _scan_openapi(root: Path, fastapi: bool) -> Finding | None:
     if not fastapi:
         return None
+    from qc_agent.scaffold.fastapi_paths import inspect
+    _, schemas, unresolved = inspect(root, _python_files(root))
+    if len(schemas) == 1 and not unresolved:
+        return Finding(schemas[0], "detected", tuple(schemas), "static FastAPI openapi_url")
+    if unresolved:
+        return Finding("/openapi.json", "default", (), "dynamic openapi_url", "VERIFY: unresolved openapi_url; set --openapi-path")
     custom = sorted({m for rel in _python_files(root) for m in _OPENAPI_URL.findall(_read(root / rel))})
     if custom:
         return Finding(custom[0], "detected", tuple(custom), "openapi_url= trong code", _rank_note("thứ tự chữ", custom[0], custom))

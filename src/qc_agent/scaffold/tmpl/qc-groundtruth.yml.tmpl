@@ -43,4 +43,8 @@ jobs:
       # timeout_minutes: 60
       # agent_model: claude-sonnet-5-5
       # agent_max_cost_usd: "3"                                # trần chi phí ước tính cho một PRD
-    secrets: inherit
+    secrets:
+      GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      qc_bot_token: ${{ secrets.QC_BOT_TOKEN }}

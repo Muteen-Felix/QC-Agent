@@ -150,7 +150,7 @@ def onboard(repo, installation, cfg, request=api, download=snapshot):
                 return {'status': 'unchanged'}
             tree = []
             for file in changes:
-                if not file.label.startswith(('.qc-agent/', '.github/')) and file.label != 'CODEOWNERS':
+                if not file.label.startswith(('.qc-agent/', '.github/')) and file.label not in ('CODEOWNERS', '.typos.toml'):
                     raise ValueError('Unexpected generated path')
                 blob = request('POST', '/repos/' + repo + '/git/blobs', token,
                                {'content': base64.b64encode(file.path.read_bytes()).decode(), 'encoding': 'base64'})

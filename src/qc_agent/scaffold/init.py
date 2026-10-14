@@ -113,6 +113,12 @@ def build(opts: Options) -> Plan:
     if not root.is_dir():
         raise InitError(f"--sut-root không phải thư mục: {root}")
     plan = Plan(root=root)
+    # Preserve existing spelling policy; only seed a narrow dictionary for generated Vietnamese prose.
+    spelling_hooks = root / ".pre-commit-config.yaml"
+    if (spelling_hooks.is_file() and "crate-ci/typos" in spelling_hooks.read_text(encoding="utf-8")
+            and not any((root / name).exists() for name in (".typos.toml", "typos.toml", "_typos.toml"))):
+        text = "[default.extend-words]\nthay = \"thay\"\ntham = \"tham\"\n"
+        plan.files.append(Planned(root / ".typos.toml", ".typos.toml", text))
     try:
         plan.slug = t._need(t._SLUG, opts.slug or gitinfo.default_slug(root), "slug")
         if opts.no_api:
@@ -243,7 +249,7 @@ def _api_suites(opts: Options, found: scan.ScanResult, plan: Plan, add) -> None:
         plan.notes.append(f"OpenAPI: {analysis.title or '(không tên)'} {analysis.version}; loại khỏi fuzz {len(analysis.exclude)} đường dẫn; "
                           f"k6 smoke gọi {analysis.get_paths or 'không có'}")
         return
-    verify_openapi = None if found.openapi_path or opts.openapi_path else (
+    verify_openapi = (found.openapi_path.verify if found.openapi_path and not opts.openapi_path else None) if found.openapi_path or opts.openapi_path else (
         "không thấy FastAPI trong phụ thuộc: xác nhận đường dẫn OpenAPI của SUT (đang là /openapi.json)")
     add(f"{SUITES_DIR}/api-contract.yaml", t.api_contract_suite(openapi_path=openapi_path, refine=True, verify_openapi=verify_openapi))
     add(f"{SUITES_DIR}/perf-smoke.yaml", t.perf_smoke_suite(script=K6_SCRIPT))

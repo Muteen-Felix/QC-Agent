@@ -31,4 +31,17 @@ jobs:
       # sut_db_ready_cmd: pg_isready -h 127.0.0.1 -U app           # exit 0 = DB sẵn sàng (hoặc dùng sut_db_port: "5432")
       # Bí mật đặt ở secret của repo SUT (nhiều dòng KEY=VALUE): SUT_SECRET_ENV cho SUT (DATABASE_URL=...@db:5432/app), SUT_DB_SECRET_ENV chỉ cho container db.
       # SUT đã chạy sẵn ở nơi khác thì khai sut_base_url thay cho cả build/chạy SUT lẫn DB.
-    secrets: inherit
+    secrets:
+      GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+      SUT_SECRET_ENV: ${{ secrets.SUT_SECRET_ENV }}
+      SUT_DB_SECRET_ENV: ${{ secrets.SUT_DB_SECRET_ENV }}
+      QC_TEST_USERNAME: ${{ secrets.QC_TEST_USERNAME }}
+      QC_TEST_PASSWORD: ${{ secrets.QC_TEST_PASSWORD }}
+      qc_read_token: ${{ secrets.QC_READ_TOKEN }}
+      QC_API_TOKEN: ${{ secrets.QC_API_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
