@@ -385,7 +385,11 @@ Số đo (**ước lượng** `ceil(byte UTF-8 / 3)` của TOÀN BỘ request, k
 
 Review/summary ưu tiên **mục cần xử lý**: vấn đề, vị trí (file/dòng hoặc endpoint), lý do và hướng sửa. Finding ngưỡng được gộp với finding chi tiết cùng task/worker; nhiều CVE của cùng dependency trong cùng lockfile hiển thị thành một mục, với đầy đủ CVE trong phần chi tiết. Ngưỡng đứng riêng, lỗi phạm vi quét hay tuổi DB vẫn được giữ để không che lỗi setup.
 
-Tên rule và số finding gốc nằm trong phần mở rộng/artifact. Số finding có thể gồm cả lỗi chi tiết lẫn ngưỡng tổng hợp, không tương đương số bug độc lập. Việc gộp chỉ phục vụ trình bày: report JSON, severity, gate verdict và logic Jira không đổi. Hướng ignore chỉ nằm trong phần dương tính giả của inline comment, sau hướng sửa.
+Review trình bày mỗi mục bằng heading có số thứ tự, đường phân cách, mức độ riêng và bullet có nhãn đậm. Endpoint/file được đặt trong code span. Comment tổng hợp dùng bảng ngắn (vấn đề, vị trí, mức độ); inline comment dùng bullet ngắn và giữ hướng ignore trong phần mở rộng.
+
+Tên rule và số finding gốc nằm trong phần mở rộng/artifact. Số finding có thể gồm cả lỗi chi tiết lẫn ngưỡng tổng hợp, không tương đương số bug độc lập. Report JSON, severity và gate verdict giữ nguyên. Hướng ignore nằm trong phần “Nếu đã kiểm tra và xác nhận cảnh báo không áp dụng” của inline comment, sau hướng sửa; chỉ dùng sau khi xác minh và ghi rõ lý do.
+
+Ticket Jira dùng tiêu đề dễ hiểu và các mục Vấn đề, Vị trí, Cần làm, Điều kiện hoàn thành, Bằng chứng và Thông tin kỹ thuật. Cảnh báo thiếu test chưa chứng minh chức năng có bug. Ngưỡng `debt.new` không tạo thêm ticket nếu có finding Low thiếu test cụ thể cùng task/worker; ngưỡng đứng riêng vẫn được tạo ticket để kiểm tra evidence. Fingerprint, ánh xạ assignee và cơ chế chống tạo trùng giữ nguyên. Ticket đã tồn tại không tự cập nhật nội dung.
 
 Renderer dùng rules, không gọi LLM. Bản định dạng review có version trong digest để một lượt chạy lại có thể đăng bản trình bày mới; các lượt tiếp theo cùng finding và version vẫn được chống trùng.
 

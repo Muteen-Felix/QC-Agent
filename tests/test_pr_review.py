@@ -8,6 +8,13 @@ def finding(n, **extra):
             "rule_id": "case", "path": "toyapp/app.py", "line": n, **extra}
 
 
+def test_inline_ignore_guidance_requires_verification():
+    body = pr_review.inline_body(finding(1, worker="gitleaks", rule_id="github-pat"))
+    assert "dương tính giả" not in body
+    assert "Nếu đã kiểm tra và xác nhận cảnh báo không áp dụng" in body
+    assert "thu hồi hoặc thay key" in body and ".gitleaksignore" in body
+
+
 def test_inline_only_on_right_side_and_outside_in_body():
     workers = ("semgrep", "gitleaks", "pytest", "coverage-debt")
     findings = [{**finding(n), "worker": workers[(n - 1) % 4]} for n in range(1, 21)] + [{"fingerprint": "f" * 16, "severity": "medium",
@@ -18,7 +25,7 @@ def test_inline_only_on_right_side_and_outside_in_body():
         ("toyapp/app.py", n, "RIGHT") for n in range(1, 11)]
     assert {f['fingerprint'] for f in outside} == {f['fingerprint'] for f in findings[10:]}
     body = pr_review.render_body(findings, outside, len(comments), pr_review.digest(findings))
-    assert "Không có vị trí" in body and "**Medium**" in body
+    assert "Không có vị trí" in body and "**Mức độ:** Medium" in body
 
 
 def test_digest_stable_and_body_sanitized():

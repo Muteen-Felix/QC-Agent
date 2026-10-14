@@ -14,6 +14,7 @@ import httpx
 
 from qc_agent.core import egress, project
 from qc_agent import settings
+from qc_agent.integrations import finding_view
 from qc_agent.logging_setup import configure, event
 
 log = logging.getLogger("qc_agent.jira")
@@ -26,22 +27,27 @@ def _text(value: object, limit: int = 180) -> str:
 
 
 def _description(finding: dict, ctx: dict, assignee_missing: bool) -> dict:
-    where = _text(finding.get("path"), 200)
-    if where and finding.get("line"):
-        where += f":{finding['line']}"
-    lines = [
-        _text(finding.get("title"), 200),
-        "Rule: " + _text(finding.get("rule_id"), 100),
-        "Vị trí: " + where,
-        "PR: " + _text(ctx.get("pr_url"), 300),
-        "Run: " + _text(ctx.get("run_url"), 300),
-        "Fingerprint: " + str(finding["fingerprint"]),
+    title, where, why, fix = finding_view.describe(finding)
+    done = ("Test cho hành vi liên quan chạy pass và QC-Agent nhận diện được test tương ứng; nếu cảnh báo không áp dụng, ghi rõ bằng chứng và lý do."
+            if finding.get("worker") == "coverage-debt" or finding.get("rule_id") == "debt.new"
+            else "Sửa nguyên nhân hoặc xác minh cảnh báo không áp dụng bằng evidence, rồi chạy lại kiểm tra liên quan.")
+    sections = [
+        ("Vấn đề", _text(why, 500)),
+        ("Vị trí", _text(where, 300)),
+        ("Cần làm", _text(fix, 600)),
+        ("Điều kiện hoàn thành", done),
+        ("Bằng chứng", "PR: " + _text(ctx.get("pr_url"), 300) + "\nWorkflow: " + _text(ctx.get("run_url"), 300)),
+        ("Thông tin kỹ thuật", "Worker: " + _text(finding.get("worker"), 100) + "\nRule: " + _text(finding.get("rule_id"), 100)
+         + "\nFinding gốc: " + _text(finding.get("title"), 300) + "\nFingerprint: " + str(finding["fingerprint"])),
     ]
     if assignee_missing:
-        lines.append("Không map được tác giả PR: " + _text(ctx.get("author"), 100))
-    return {"type": "doc", "version": 1, "content": [
-        {"type": "paragraph", "content": [{"type": "text", "text": line}]} for line in lines if line.strip()
-    ]}
+        sections.append(("Người xử lý", "Không map được tác giả PR: " + _text(ctx.get("author"), 100)))
+    content = []
+    for heading, text in sections:
+        content.append({"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": heading}]})
+        for line in text.splitlines():
+            content.append({"type": "paragraph", "content": [{"type": "text", "text": line}]})
+    return {"type": "doc", "version": 1, "content": content}
 
 
 def sync_low_findings(findings: list[dict], *, cfg: dict, ctx: dict, env: dict,
@@ -51,6 +57,12 @@ def sync_low_findings(findings: list[dict], *, cfg: dict, ctx: dict, env: dict,
     jira = cfg.get("jira", cfg)
     low = {f.get("fingerprint"): f for f in findings if f.get("severity") == "low"
            and isinstance(f.get("fingerprint"), str) and _FINGERPRINT.fullmatch(f["fingerprint"])}
+    # Ngưỡng tổng hợp không tạo thêm ticket khi đã có finding thiếu test cụ thể cùng task/worker.
+    low = {fp: f for fp, f in low.items() if not (
+        f.get("rule_id") == "debt.new" and not f.get("path") and any(
+            detail.get("worker") == "coverage-debt" and detail.get("rule_id") != "debt.new"
+            and detail.get("path") and (detail.get("task_id"), detail.get("worker")) == (f.get("task_id"), f.get("worker"))
+            for detail in low.values()))}
     result = {"jira": "skipped", "created": 0, "duplicates": 0, "remaining": 0}
     if not low:
         result["jira"] = "skipped: không có finding Low"
@@ -121,7 +133,7 @@ def sync_low_findings(findings: list[dict], *, cfg: dict, ctx: dict, env: dict,
                     result["remaining"] += 1
                     continue
                 fields = {"project": {"key": key}, "issuetype": {"name": str(jira["issue_type"])},
-                          "summary": _text(finding.get("title"), 200) or f"QC finding {fingerprint}",
+                          "summary": _text(finding_view.describe(finding)[0], 200) or f"QC finding {fingerprint}",
                           "description": _description(finding, ctx, bool(author and not assignee)),
                           "labels": [label]}
                 if assignee:

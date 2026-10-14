@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import html
 from dataclasses import dataclass, field
 
 LEVEL = {"low": 0, "medium": 1, "critical": 2}
@@ -98,18 +99,35 @@ def describe(f):
             fix = "Đối chiếu response trong evidence với OpenAPI, sửa implementation hoặc schema theo yêu cầu đã duyệt."
     elif worker == "coverage-debt" and rule != "debt.new":
         title = "Chức năng mới chưa tìm thấy test tương ứng"
-        why = "Scanner chưa nhận diện được test bảo vệ thay đổi; đây là heuristic, cần kiểm tra lại."
+        endpoint = re.search(r"\b((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+)", str(f.get("title") or ""))
+        if rule == "api_endpoint" and endpoint:
+            title = "Bổ sung test cho " + endpoint.group(1)
+        why = "QC-Agent chưa tìm thấy test tương ứng theo rule đang bật. Đây là cảnh báo thiếu test, chưa chứng minh chức năng có bug; cần kiểm tra test hiện có."
         fix = "Bổ sung test cho hành vi mới hoặc xác nhận test hiện có đã bao phủ và cấu hình để scanner nhận diện."
+    elif rule == "debt.new":
+        title = "Kiểm tra các thay đổi chưa có test tương ứng"
+        why = "Số khoản thiếu test mới vượt ngưỡng policy. Đây là kết quả tổng hợp, chưa chỉ ra bug cụ thể."
+        fix = "Xem finding coverage-debt và evidence để xác định thay đổi thiếu test, kiểm tra test hiện có rồi bổ sung nếu cần."
     return title, location or "Kết quả kiểm tra " + str(worker or "worker"), why, fix
 
 
-def render(issue, clean, *, detailed=True):
+def code_location(value, limit=180):
+    """Code span không có backtick/HTML/pipe thô; giữ đường dẫn dễ đọc trong bảng Markdown."""
+    text = ' '.join(re.sub(r'[\x00-\x1f\x7f]', '', str(value)).split())[:limit]
+    text = html.escape(text, quote=False).replace('`', 'ˋ').replace('|', '&#124;')
+    text = text.replace('@', '@\u200b').replace('#', '#\u200b')
+    return '`' + text + '`'
+
+
+def render(issue, clean, *, detailed=True, number=None):
     title, where, why, fix = describe(issue.finding)
-    lines = [f"**{clean(title, 200)}** ({clean(issue.severity, 20)})", f"Vị trí: {clean(where, 180)}."]
+    heading = f"#### {number}. {clean(title, 200)}" if number is not None else f"**{clean(title, 200)}**"
+    lines = [heading, '', f"**Mức độ:** {clean(issue.severity.title(), 20)}", '',
+             f"- **Vị trí:** {code_location(where)}"]
     if detailed:
-        lines.append("Vì sao: " + clean(why, 350))
-    lines.append("Cách xử lý: " + clean(fix, 500))
-    return '\n\n'.join(lines)
+        lines.append("- **Vì sao:** " + clean(why, 350))
+    lines.append("- **Cách sửa:** " + clean(fix, 500))
+    return '\n'.join(lines)
 
 
 def technical(issues, clean):
