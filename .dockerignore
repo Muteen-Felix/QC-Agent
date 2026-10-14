@@ -21,3 +21,7 @@ Dockerfile
 !package.json
 !package-lock.json
 !docker/npx
+!tools/
+tools/*
+!tools/github_app.py
+!tools/github_app_service.py

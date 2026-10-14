@@ -1,89 +1,74 @@
-# GitHub App onboarding — milestone 1
+# GitHub App chỉ thay init
 
-Nhánh triển khai: `app-llm`. Hiện có code onboarding và webhook bridge; chưa có GitHub App đã đăng ký, chưa deploy endpoint và chưa có evidence E2E thật. OpenAI, chuyển report sang App bot và đo metric LLM là các mốc tiếp theo, chưa được triển khai ở mốc này.
+App chỉ cài vào **SUT**. Service onboarding nhận sự kiện install/thêm repo, chạy scanner/generator rule-based và tạo draft PR trong SUT. Sau merge, Actions của SUT pull image QC-Agent từ GHCR và chạy pipeline như trước. App không dispatch workflow trong QC-Agent và không cần quyền Actions ở repo QC-Agent.
 
 ```mermaid
 flowchart LR
-    A[Install App / thêm SUT] --> B[Webhook serverless]
-    B --> C[Queue + retry]
-    C --> D[Workflow qc-onboard-app]
-    D --> E[Token chỉ cho SUT]
-    E --> F[Runner chạy init offline]
-    F --> G[Draft PR onboarding]
-    G --> H[Chủ SUT xác nhận TODO + secrets]
+    A[Install App vào SUT] --> B[Service webhook + queue]
+    B --> C[Snapshot SUT + init offline]
+    C --> D[App tạo draft PR cấu hình]
+    D --> E[Chủ SUT xác nhận + secrets + merge]
+    E --> F[Actions SUT pull image QC-Agent và chạy QC]
 ```
 
-## 1. Tạo App
+## Trạng thái
 
-Mở GitHub Settings → Developer settings → GitHub Apps → New GitHub App, dưới tài khoản/org quản lý QC-Agent.
+Code: `tools/github_app_service.py`, `tools/github_app.py` và `deploy/github-app/Dockerfile`. Chưa deploy service, chưa verify install → PR trên GitHub thật. LLM chưa được bật. Scanner còn có thể yêu cầu xác nhận DB, port, health route và OpenAPI; tạo PR không chứng minh baseline QC đã xanh.
 
-- Tên: tên duy nhất, ví dụ `qc-agent-sandbox-<tên của bạn>`.
-- Homepage URL: URL repo QC-Agent.
-- Webhook: tạm tắt Active khi chưa có endpoint; sau deploy bật lại và điền URL `/webhook` cùng secret ngẫu nhiên.
-- Không cần user OAuth callback ở milestone này.
-- Repository permissions: Contents **Read & write**, Pull requests **Read & write**, Workflows **Read & write**, Actions **Read & write**. Metadata là quyền đọc mặc định. Checks **Read & write** chỉ cần khi triển khai App report ở milestone sau.
-- Installation và installation_repositories là các sự kiện lifecycle App dùng để onboarding. Chưa cần subscribe pull_request vì QC vẫn chạy qua workflow trong SUT.
-- Nếu SUT khác chủ repo QC-Agent, chọn phạm vi cài App cho các account cần dùng; thử nghiệm chỉ chọn các repo sandbox.
+Service Python chạy được generator hiện có, thay cho bridge Cloudflare chỉ dispatch workflow ở bản trước. Có thể host container trên máy/server riêng hoặc nền tảng container có HTTPS và lưu trữ bền. Cloudflare Worker cũ và workflow onboarding tập trung đã được bỏ. Worker JS thuần không tự chạy generator Python/Git này.
 
-Sau khi tạo, ghi lại App ID và Generate a private key. **Không gửi PEM hoặc token qua chat và không commit.** Install App vào cả repo điều phối QC-Agent và SUT. Token của control repo chỉ dùng dispatch; token onboarding chỉ có Contents/PR/Workflows của đúng SUT.
+## Cấu hình GitHub App
 
-## 2. Chuẩn bị workflow điều phối
+- Chỉ cần install App vào SUT sandbox.
+- Repository permissions: Contents **Read & write**, Pull requests **Read & write**, Workflows **Read & write** (vì PR chứa `.github/workflows`). Metadata đọc mặc định.
+- Không cần Actions/Checks cho bước init. Report vẫn dùng workflow/GITHUB_TOKEN hiện tại của SUT.
+- Dùng lifecycle events `installation` (created) và `installation_repositories` (added). Không cần PR webhook hoặc OAuth callback ở mốc này.
+- Lấy App ID và private key PEM từ trang App; không commit hoặc gửi private key qua chat.
+- Điền URL service `/webhook`, bật Active và đặt webhook secret trùng cấu hình service. Nếu App đã install trước khi service sẵn sàng, redeliver delivery installation hoặc thêm SUT vào installation để bắt đầu.
 
-Workflow `.github/workflows/qc-onboard-app.yml` phải có trong **default branch** của repo QC-Agent để GitHub chấp nhận workflow_dispatch. Có thể chọn ref `app-llm` khi chạy sau khi nhánh đó được push. Chưa merge/push workflow mới tự động trong milestone này; phải qua review repo QC-Agent.
+## Cấu hình service
 
-Tạo environment `github-app-onboarding` trong repo QC-Agent. Giai đoạn sandbox nên có required reviewer; muốn install tự chạy về sau thì quyết định riêng việc bỏ bước duyệt environment. Giới hạn nhánh được chạy ở environment này cho các nhánh được tin cậy.
+Copy `deploy/github-app/service.env.example` vào file local nằm ngoài Git, ví dụ `runs/github-app-service.env`. Điền:
 
-Variables của environment:
-
-| Name | Value |
+| Variable | Ý nghĩa |
 |---|---|
 | `QC_APP_ID` | App ID |
-| `QC_ONBOARD_IMAGE` | Image QC-Agent đã publish, **ghim digest** |
-| `QC_ONBOARD_REF` | SHA40 của QC-Agent **đã push**, chứa reusable workflows cần dùng |
-| `GHCR_USERNAME` | Chủ PAT kéo GHCR (chỉ cần nếu image private) |
+| `QC_APP_PRIVATE_KEY_FILE` | Đường dẫn PEM được mount read-only trong container |
+| `QC_WEBHOOK_SECRET` | Secret webhook ngẫu nhiên, giống GitHub App |
+| `QC_WORKFLOW_REPOSITORY` | Repo public chứa reusable workflow QC-Agent; **không cần install App vào repo này** |
+| `QC_WORKFLOW_REF` | SHA40 đã publish, có input `ghcr_username` |
+| `QC_IMAGE` | Image đã publish, ghim `@sha256:...`, dùng trong workflow SUT |
+| `QC_QA_OWNER` | QA CODEOWNER, ví dụ `@MinhDuc-IT` |
+| `GHCR_USERNAME` | Chủ PAT kéo image private trong SUT; không dùng tên App bot |
+| `QC_ONBOARD_DB` | SQLite queue, mặc định `/data/onboarding.sqlite` |
 
-Secrets của environment:
+PEM truyền qua file mount; nếu hạ tầng có secret manager hỗ trợ multiline thì có thể đặt `QC_APP_PRIVATE_KEY` thay cho file. Service không cần PAT/GHCR_PULL_TOKEN trong runtime: nó không pull/chạy worker image cho từng SUT. Người triển khai cần Docker login khi build/pull runtime private. SUT vẫn phải tự đặt `GHCR_PULL_TOKEN` nếu workflow dùng image private.
 
-- `QC_APP_PRIVATE_KEY`: toàn bộ nội dung PEM do GitHub cấp.
-- `GHCR_PULL_TOKEN`: token read:packages nếu image private. Đây là credential cho runner điều phối; SUT vẫn cần credential của nó khi chạy gate.
+Build từ root QC-Agent:
 
-Khi dùng image private, generator truyền `ghcr_username` từ `GHCR_USERNAME` vào cả gate và GT workflow. Không dùng tên App bot để login bằng PAT của người khác. SHA `QC_ONBOARD_REF` phải chứa input `ghcr_username` mới trong reusable workflows; không ghim về commit cũ chưa có input đó.
+```powershell
+docker build -f deploy/github-app/Dockerfile --build-arg QC_RUNTIME=ghcr.io/minhduc-it/qc-agent@sha256:<RUNTIME_DIGEST> -t qc-agent-onboarding:local .
+```
 
-Workflow mount mã nguồn generator từ ref đang chạy vào image runtime, để proposal dùng đúng phiên bản source của nhánh. Không gọi LLM, không chạy Dockerfile/SUT scripts, không force-push, không dùng `--force` với init.
+Chạy một container, mount private key read-only và named volume `/data`, nạp file env local, publish cổng `127.0.0.1:8080:8080`. Dùng reverse proxy HTTPS hoặc HTTPS tunnel cho thử nghiệm để GitHub truy cập `/webhook`; `/healthz` kiểm tra tiến trình. Không ghi key vào image/Dockerfile. **Chỉ một process/replica trên một SQLite volume**; nếu cần scale phải thay queue/lease trước. Queue giữ delivery/job bền, retry tối đa 10 lần; failed jobs kiểm tra bằng quyền quản trị trên SQLite/log nội bộ, không có endpoint public đọc dữ liệu queue.
 
-Thử **thủ công trước**: Actions → QC App onboarding → Run workflow → chọn nhánh `app-llm`, nhập `MinhDuc-IT/full-stack-fastapi-template`, QA owner `@MinhDuc-IT`. Repo đã onboard có thể không tạo thay đổi; nên dùng SUT sandbox sạch để kiểm chứng lần đầu.
+## Service làm gì
 
-Workflow tạo draft PR ở nhánh `qc-agent/onboarding`. PR đang mở được tái sử dụng, không ghi đè chỉnh sửa của QA. Nếu nhánh đã có nhưng không còn PR mở, workflow dừng để người dùng kiểm tra; không xoá hay reset nhánh.
+1. Xác thực chữ ký webhook trên bytes gốc và lưu job, dedup theo delivery/repo.
+2. Xác nhận installation vẫn đúng, cấp token chỉ cho repo SUT.
+3. Git fetch snapshot bằng `clone --no-checkout` + archive: không chạy hook, checkout filter, Dockerfile, script SUT hoặc LLM. Token chỉ truyền qua environment header, không ghi vào remote URL hoặc log.
+4. Chỉ nhận file thường, từ chối symlink/special file/path traversal, giới hạn snapshot 100 MB/20.000 entry và 20 MB/file. Repo không phù hợp cần onboarding thủ công. Git fetch có timeout; giới hạn snapshot áp dụng sau fetch, chưa phải quota mạng cứng.
+5. Gọi generator init trực tiếp, giữ file đã có, gom vùng CODEOWNERS được quản lý, chỉ đưa thay đổi `.qc-agent/**`, `.github/**` hoặc CODEOWNERS vào Git tree.
+6. Tạo commit/branch/PR qua GitHub Git Data API, không force-push. Thu hồi token sau xử lý.
 
-## 3. Chuẩn bị webhook serverless
+PR mở sẵn được giữ nguyên để không ghi đè QA. Nếu branch `qc-agent/onboarding` đã tồn tại nhưng không có PR mở, service dừng để người vận hành kiểm tra (gồm trường hợp tạo branch xong nhưng API tạo PR thất bại); không tự xoá/reset nhánh. Không tự merge, cấp secrets hoặc đặt branch protection.
 
-Có bản tham chiếu Cloudflare Worker + Durable Object tại `deploy/github-app/`. Chưa deploy và chưa chọn/bật dịch vụ tính phí thay người dùng. Cần tài khoản Cloudflare với khả năng sử dụng Workers/Durable Objects; kiểm tra điều kiện tài khoản trước khi deploy.
+## Kiểm chứng thật
 
-Điền `wrangler.toml`: App ID, repo điều phối, **installation ID của App trên repo điều phối**, ref đã push và QA owner. Installation ID không phải App ID; lấy từ trang cấu hình installation hoặc API GitHub App. QA owner là cấu hình được tin cậy của deployment, không lấy từ payload SUT.
+- Chữ ký sai không có job; delivery lặp chỉ có một job.
+- Install/thêm SUT tự có draft PR vào đúng default branch, không có workflow chạy trong QC-Agent.
+- Review TODO/DB/health/suites/CODEOWNERS; đặt test-only secrets trong SUT.
+- Merge xong: SUT Actions pull image và baseline xanh. Sau đó cấu hình required checks/QA review nếu muốn enforce merge.
+- Không tick PASS cho install E2E hay metric LLM từ test mock/offline.
 
-Đặt secrets Worker qua công cụ quản lý secret:
-
-- `QC_WEBHOOK_SECRET`: chuỗi ngẫu nhiên, trùng secret cấu hình webhook GitHub App.
-- `QC_APP_PRIVATE_KEY_PKCS8`: private key chuyển sang PKCS8, vì Web Crypto nhận định dạng này. Ví dụ chạy local `openssl pkcs8 -topk8 -nocrypt -in app.private-key.pem -out app.private-key.pkcs8.pem`; hai file đều phải nằm ngoài Git và được quản lý như secret.
-
-Triển khai bằng Wrangler theo cấu hình đã review. Điền `https://<worker>/webhook` vào GitHub App, bật Active. Test bằng thêm SUT mới vào installation hoặc redeliver sự kiện installation sau khi workflow điều phối đã sẵn sàng.
-
-Webhook trả 202 sau khi lưu queue, chưa có nghĩa onboarding đã thành công. Alarm xử lý tối đa 5 dispatch/job mỗi lượt và retry khi GitHub lỗi. Bản ghi delivery giữ 7 ngày. Dispatch có thể lặp khi lỗi xảy ra sau khi GitHub nhận request; workflow concurrency và tra PR hiện có xử lý lặp ở phía runner. Theo dõi Worker logs và Actions để xác nhận kết quả cuối cùng.
-
-## 4. Kiểm chứng
-
-- Chữ ký sai: 401 và không kích hoạt Actions.
-- Install hoặc thêm repo: tự có workflow điều phối, checkout đúng default branch, PR nháp vào đúng branch đó.
-- Gửi lại cùng delivery: không dispatch thêm; dispatch lặp vẫn không ghi đè PR.
-- Secrets không xuất hiện trong artifact, PR hoặc log.
-- Kiểm tra TODO, DB, health route, các suite, CODEOWNERS và secrets SUT trước merge.
-- Khi image private, kiểm tra quyền GHCR và login cho cả runner điều phối lẫn gate SUT. Onboarding proposal không tự cấp secrets hoặc quyền package cho SUT.
-- Merge xong: xác nhận baseline xanh và cấu hình required check/QA review ở branch protection. Onboarding PR được tạo không chứng minh gate đã chạy end-to-end.
-
-## 5. Các mốc sau
-
-1. Report bằng App bot: bổ sung cấp token trong SUT workflow, chọn một bên đăng check/review, bảo đảm đúng commit SHA và không trùng.
-2. OpenAI Selector: provider riêng, key SUT `QC_DIFF_OPENAI_API_KEY`, rule floor + full-set fallback, usage/cost thực.
-3. OpenAI GT: key `QC_GT_OPENAI_API_KEY`, PRD → draft TC → QA → gate; chỉ bật khi cho phép gửi dữ liệu và có ngân sách.
-
-Tài liệu tham chiếu: [GitHub workflow_dispatch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow), [installation tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app), [webhook signatures](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries), [Cloudflare alarms](https://developers.cloudflare.com/durable-objects/api/alarms/).
+Tham chiếu: [GitHub App tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app), [webhook signatures](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries).

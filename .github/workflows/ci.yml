@@ -55,8 +55,6 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Run tests
         run: python -m pytest tests -q
-      - name: Test GitHub App webhook bridge
-        run: node --test deploy/github-app/worker.test.mjs
 
   image-e2e:
     runs-on: ubuntu-latest
