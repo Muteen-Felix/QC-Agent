@@ -1,5 +1,7 @@
 # GitHub App chỉ thay init
 
+Hướng dẫn cài đặt từng bước cho người vận hành và thành viên mới: [github-app-setup.md](github-app-setup.md). Tài liệu này giải thích kiến trúc và cấu hình service.
+
 App chỉ cài vào **SUT**. Service onboarding nhận sự kiện install/thêm repo, chạy scanner/generator rule-based và tạo draft PR trong SUT. Sau merge, Actions của SUT pull image QC-Agent từ GHCR và chạy pipeline như trước. App không dispatch workflow trong QC-Agent và không cần quyền Actions ở repo QC-Agent.
 
 ```mermaid
@@ -13,7 +15,7 @@ flowchart LR
 
 ## Trạng thái
 
-Code: `tools/github_app_service.py`, `tools/github_app.py` và `deploy/github-app/Dockerfile`. Chưa deploy service, chưa verify install → PR trên GitHub thật. LLM chưa được bật. Scanner còn có thể yêu cầu xác nhận DB, port, health route và OpenAPI; tạo PR không chứng minh baseline QC đã xanh.
+Code: `tools/github_app_service.py`, `tools/github_app.py` và `deploy/github-app/Dockerfile`. Đã thử service local + HTTPS tunnel và install → PR trên GitHub thật với `full-stack-fastapi-template-3` ([PR #4](https://github.com/MinhDuc-IT/full-stack-fastapi-template-3/pull/4)); [PR #5](https://github.com/MinhDuc-IT/full-stack-fastapi-template-3/pull/5) xác nhận bốn worker phát hiện fixture lỗi. Chưa deploy production, LLM chưa được bật. DB/startup/secrets của PR #4 được bổ sung riêng; generator không tự chuẩn bị đầy đủ. Baseline vẫn có CVE dependency nên không được coi là đã xanh.
 
 Service Python chạy được generator hiện có, thay cho bridge Cloudflare chỉ dispatch workflow ở bản trước. Có thể host container trên máy/server riêng hoặc nền tảng container có HTTPS và lưu trữ bền. Cloudflare Worker cũ và workflow onboarding tập trung đã được bỏ. Worker JS thuần không tự chạy generator Python/Git này.
 
@@ -58,7 +60,7 @@ Chạy một container, mount private key read-only và named volume `/data`, n�
 2. Xác nhận installation vẫn đúng, cấp token chỉ cho repo SUT.
 3. Git fetch snapshot bằng `clone --no-checkout` + archive: không chạy hook, checkout filter, Dockerfile, script SUT hoặc LLM. Token chỉ truyền qua environment header, không ghi vào remote URL hoặc log.
 4. Chỉ nhận file thường, từ chối symlink/special file/path traversal, giới hạn snapshot 100 MB/20.000 entry và 20 MB/file. Repo không phù hợp cần onboarding thủ công. Git fetch có timeout; giới hạn snapshot áp dụng sau fetch, chưa phải quota mạng cứng.
-5. Gọi generator init trực tiếp, giữ file đã có, gom vùng CODEOWNERS được quản lý, chỉ đưa thay đổi `.qc-agent/**`, `.github/**` hoặc CODEOWNERS vào Git tree.
+5. Gọi generator init trực tiếp, giữ file đã có, gom vùng CODEOWNERS được quản lý; chỉ đưa thay đổi `.qc-agent/**`, `.github/**`, CODEOWNERS và dictionary `.typos.toml` có điều kiện vào Git tree.
 6. Tạo commit/branch/PR qua GitHub Git Data API, không force-push. Thu hồi token sau xử lý.
 
 PR mở sẵn được giữ nguyên để không ghi đè QA. Nếu branch `qc-agent/onboarding` đã tồn tại nhưng không có PR mở, service dừng để người vận hành kiểm tra (gồm trường hợp tạo branch xong nhưng API tạo PR thất bại); không tự xoá/reset nhánh. Không tự merge, cấp secrets hoặc đặt branch protection.
