@@ -1,104 +1,191 @@
-# Hướng dẫn cho team SUT: đo Sprint 4 và demo QC-Agent
+# Hướng dẫn tích hợp QC-Agent vào repository của bạn
 
-Tài liệu này dành cho team cho phép QC-Agent kiểm thử **sản phẩm thật của mình** trên một repo GitHub sandbox. Có hai giai đoạn:
+Tài liệu dành cho chủ repository và thành viên muốn dùng QC-Agent kiểm tra Pull Request. Dịch vụ GitHub App được bên cung cấp QC-Agent vận hành sẵn; bạn bắt đầu bằng link cài App do họ cung cấp.
 
-1. **Đo Sprint 4:** chạy luồng PRD → QA duyệt test → kiểm PR → báo cáo → Jira trên GitHub/Jira thật, có LLM API key cho những bước cần LLM.
-2. **Demo khi không có LLM API key:** dùng chính SUT và các test đã được QA duyệt ở giai đoạn 1 để chứng minh cổng kiểm chất lượng vẫn chạy và chặn lỗi.
+## 1. Bạn sẽ nhận được gì?
 
-**SUT** là ứng dụng được kiểm thử. **PR** là đề nghị đưa thay đổi vào nhánh chính. **Gate** là lượt kiểm tự động trên PR; chỉ khi GitHub yêu cầu check này xanh thì kết quả của nó mới thực sự chặn merge. Team SUT không cần biết code nội bộ QC-Agent: team cung cấp môi trường chạy, dữ liệu thử và người duyệt; team QC cấu hình QC-Agent và thu bằng chứng.
+Sau khi cài App, QC-Agent đọc cấu trúc repository và mở một **PR cấu hình onboarding**. Bạn review cấu hình, thêm secrets cần thiết và merge. Các PR tiếp theo được GitHub Actions của repository khởi động ứng dụng, chạy kiểm tra và đăng kết quả.
 
-## 1. Team SUT cần chuẩn bị gì?
+```mermaid
+flowchart LR
+    A[Cài App vào repo] --> B[Nhận PR onboarding]
+    B --> C[Review cấu hình và thêm secrets]
+    C --> D[Kiểm tra CI rồi merge]
+    D --> E[Mở PR thay đổi code]
+    E --> F[QC chạy và đăng kết quả]
+```
 
-Điền các thông tin dưới đây và gửi **tên hoặc đường dẫn, không gửi giá trị secret** cho team QC.
+Các kiểm tra có thể gồm API, lỗi bảo mật mã nguồn, secret vô tình đưa vào code và lỗ hổng dependency. Worker cụ thể phụ thuộc policy và cấu hình của project.
 
-| Cần chốt | Team SUT cung cấp |
+## 2. Chuẩn bị trước khi cài
+
+- Link **Install GitHub App** từ bên cung cấp QC-Agent.
+- Quyền cài App vào repository. Với organization, có thể cần quản trị viên phê duyệt yêu cầu install.
+- GitHub Actions được phép chạy; repository có nhánh mặc định như `main` hoặc `master`.
+- Biết cách build/chạy project trong môi trường test: Dockerfile, port, health endpoint, database và các biến môi trường bắt buộc.
+- Có môi trường/dữ liệu/tài khoản **riêng cho test**, vì các bài kiểm tra có thể tạo hoặc sửa dữ liệu.
+
+Khuyến nghị thử trên một repo sandbox trước khi áp dụng vào repo chính. Những project chưa có Dockerfile phù hợp hoặc có cấu trúc đặc biệt có thể cần chỉnh PR onboarding bằng tay.
+
+## 3. Install App vào repository
+
+1. Mở link cài App được cung cấp và đăng nhập GitHub.
+2. Chọn tài khoản hoặc organization sở hữu repository.
+3. Chọn **Only select repositories**, rồi chọn repo muốn tích hợp.
+4. Kiểm tra quyền App yêu cầu: đọc/ghi nội dung, Pull Request và workflow; Metadata đọc. Các quyền này dùng để tạo nhánh và PR cấu hình.
+5. Chọn **Install** hoặc gửi yêu cầu cho quản trị viên.
+
+Nếu GitHub chỉ hiện yêu cầu chờ duyệt, onboarding bắt đầu sau khi người quản trị cho phép. Bên vận hành phải hỗ trợ phạm vi account/org của bạn nếu App chưa cho phép cài ngoài account sở hữu.
+
+## 4. Mở PR onboarding
+
+Vào tab **Pull requests** của repo, tìm PR:
+
+```text
+chore(qc): onboard QC-Agent
+```
+
+PR thường là **Draft**, trên nhánh `qc-agent/onboarding`, nhắm vào nhánh mặc định của repo.
+
+| File/thư mục | Mục đích |
 |---|---|
-| Repo sandbox | `OWNER/REPO`, nhánh chính (ví dụ `main`), người có quyền Admin. Repo phải chứa mã SUT đủ để dựng và chạy từ một PR; không dùng dữ liệu production. |
-| Người tham gia | Tài khoản QA có quyền Write để duyệt test; một tài khoản dev không thuộc nhóm QA để thử quy tắc bảo vệ nhánh. |
-| Cách chạy API | Vị trí Dockerfile, thư mục build, cổng, đường dẫn health trả **2xx**, biến môi trường cần thiết. Nếu cần database, nêu loại DB, cách khởi tạo dữ liệu thử và cách biết DB đã sẵn sàng. |
-| Phạm vi kiểm | Một luồng nghiệp vụ HTTP/JSON nhỏ, ổn định; PRD có từng tiêu chí chấp nhận rõ ràng; file OpenAPI trong repo nếu có. Chỉ định dữ liệu và tài khoản test riêng nếu API cần đăng nhập. |
-| Jira sandbox | URL, project key, loại ticket được phép tạo (ví dụ `Task`), tài khoản có quyền tạo/gán ticket, Jira `accountId` của tác giả PR thử. |
-| Gửi dữ liệu tới LLM | Xác nhận PRD, OpenAPI và **diff mã nguồn** của sandbox được phép gửi tới nhà cung cấp LLM nào. Nếu chưa được phép, các phép đo LLM thật sẽ chờ; các bước không dùng LLM vẫn làm được. |
-| Ngân sách | Trần chi tiêu API cho lần đo; team QC sẽ báo ước tính và đo một lượt nhỏ trước chuỗi chạy lặp. |
+| `.github/workflows/qc-gate.yml` | Chạy QC cho PR và cho phép chạy thủ công |
+| `.github/workflows/qc-groundtruth.yml` | Luồng sinh/kiểm tra test case nghiệp vụ, cấu hình riêng khi sử dụng |
+| `.qc-agent/suites/` | Các bộ kiểm tra đề xuất cho project |
+| `.qc-agent/perf/` | Kịch bản kiểm tra hiệu năng cơ bản |
+| `.github/CODEOWNERS` | Người/team review cấu hình và Ground-Truth |
+| `.typos.toml`, nếu được thêm | Dictionary hẹp để comment tiếng Việt tương thích công cụ spelling của repo |
 
-**Chọn repo GitHub:** kịch bản QA ngăn merge cần branch protection. GitHub Free hỗ trợ tính năng này cho repo public; nếu sandbox là repo private, hãy kiểm tra gói GitHub có hỗ trợ trước khi bắt đầu. Repo nên nằm **cùng tổ chức/chủ sở hữu** với những người sẽ cấu hình quyền Actions và QA.
+Các file có đuôi `.example` là mẫu tham khảo, **chưa phải bài kiểm tra đã được cấu hình và chạy**.
 
-**Chọn SUT:** ưu tiên API chạy được bằng Docker từ mã của PR. Nếu dùng một địa chỉ SUT đã chạy sẵn, hãy xác nhận đó là đúng phiên bản của PR; nếu không, kết quả kiểm không chứng minh thay đổi trong PR đã được thử. Team QC sẽ cùng team SUT chọn cách cấp DB và secret cho container thử nghiệm.
+PR có thể kích hoạt Actions ngay khi được mở, trước khi merge. Lần đầu đỏ do thiếu secrets hoặc cần xác nhận cấu hình là dấu hiệu cần hoàn tất onboarding; đọc lỗi của từng job để xác định nguyên nhân.
 
-## 2. Giai đoạn 1 — đo Sprint 4 trên GitHub và Jira thật
+Nếu chưa thấy PR, kiểm tra tab cài đặt App có đúng repo và yêu cầu install đã được duyệt chưa. Sau đó gửi URL repo và thời điểm install cho bên hỗ trợ QC-Agent. Tránh install lại liên tục: service chống xử lý lặp và giữ PR đã mở.
 
-### Bước 1. Kết nối repo SUT với QC-Agent
+## 5. Review cấu hình trước khi merge
 
-Team QC cung cấp **commit SHA** của workflow và **image digest** của phiên bản cần đo; hai giá trị này dùng để cố định phiên bản trong suốt lượt đo. Team QC tạo PR cấu hình trên repo SUT. Team SUT kiểm tra rồi duyệt PR đó, đặc biệt là:
+Trong PR, tìm `qc-agent:todo` và xác nhận:
 
-- QC-Agent dựng và gọi được API của PR, health path trả 2xx, database và tài khoản test hoạt động.
-- Các file `.qc-agent/suites/` mô tả đúng bài kiểm muốn chạy. File chưa hoàn thiện có dấu `qc-agent:todo`; cần xử lý trước khi coi lượt gate là kết quả kiểm sản phẩm.
-- `.github/workflows/qc-gate.yml` chạy trên PR; `.github/workflows/qc-groundtruth.yml` dùng để đề xuất test từ PRD. Repo có workflow `qc.yml` cũ thì team QC sẽ kiểm tra để tránh hai gate cùng chạy.
-- Chính sách project do team QC giữ trên nhánh `main` của QC-Agent. Để test QA duyệt tham gia chặn merge, chính sách phải có suite `gt-functional` trong `blocking_suites`; chỉ có file test trong repo SUT là chưa đủ.
+- **Dockerfile và build context** đúng với project.
+- **Port** đúng với server thực tế.
+- **Health URL** là đường dẫn đầy đủ, gồm prefix của router. Ví dụ `/api/v1/utils/health-check/`.
+- **OpenAPI URL**, nếu kiểm tra API, đúng với SUT. Ví dụ `/api/v1/openapi.json`.
+- **DB và startup**: có DB test, readiness phù hợp, chạy migration/seed trước khi test nếu project yêu cầu.
+- **CODEOWNERS** trỏ tới người/team thật và có quyền phù hợp trong repository của bạn; thay owner mặc định nếu chưa đúng.
 
-Team QC chạy `qc-agent init --dry-run` để xem file sẽ được tạo, sau đó `init` và `validate` trên bản sao repo SUT. Team SUT không cần chạy lệnh này nếu đã giao việc tích hợp cho team QC. Phần giải thích từng input và lỗi cấu hình nằm ở [hướng dẫn CI](usage-ci.md).
+Scanner chỉ đề xuất từ cấu trúc/code tĩnh; không thể tự điền mọi quyết định triển khai. Có PR không đồng nghĩa ứng dụng đã chạy được. Với startup phức tạp, nhờ người phụ trách project hoàn thiện workflow/Dockerfile test trong chính PR này.
 
-### Bước 2. Bật quyền GitHub và Jira
+## 6. Thêm repository secrets
 
-Người có quyền Admin của repo SUT cùng team QC kiểm tra:
+Mở repo của bạn → **Settings → Secrets and variables → Actions → New repository secret**. Nhập **Name**, dán giá trị vào **Secret**, rồi **Add secret**.
 
-1. GitHub Actions được phép chạy workflow từ QC-Agent và kéo image. Nếu repo hoặc image QC-Agent là private, cần cấp quyền đọc tương ứng.
-2. Team hoặc tài khoản QA được ghi đúng trong `.github/CODEOWNERS`, có quyền Write, và file này đã nằm trên nhánh chính.
-3. Workflow được phép tạo PR Ground-Truth. Nên dùng tài khoản bot/GitHub App riêng nếu muốn check trên PR do bot mở chạy ngay.
-4. Sau khi check xuất hiện ở PR đầu tiên, bật bảo vệ nhánh chính: yêu cầu PR, QA Code Owner duyệt khi sửa `.qc-agent/**`, và yêu cầu các check `gt validate` cùng `qc-agent / <project>` xanh. Team QC đối chiếu **tên check hiển thị thực tế** trước khi chọn.
-5. Jira sandbox cho phép tạo và gán ticket. Team QC đưa `project_key`, `issue_type` và ánh xạ GitHub login → Jira `accountId` vào policy project.
+Chỉ tạo những secret project thực sự cần:
 
-API key LLM, Jira token, mật khẩu test và thông tin DB chỉ đặt trong **GitHub Actions secrets** do người có quyền quản lý. Không ghi giá trị vào PRD, file cấu hình, PR, ảnh chụp hoặc tin nhắn cho team QC. Nếu API có đăng nhập, team QC sẽ kiểm tra kiểu đăng nhập có được suite hỗ trợ trước khi hứa kiểm các endpoint đó.
-
-### Bước 3. Chạy năm kịch bản A–E
-
-Mỗi thay đổi gây lỗi dưới đây chỉ làm trên **nhánh thử trong sandbox**. Team SUT chọn tình huống phù hợp sản phẩm; team QC ghi trước kết quả mong đợi để tránh coi lỗi hạ tầng là lỗi sản phẩm.
-
-| Kịch bản | Team thực hiện | Kết quả cần thấy |
+| Name | Khi nào cần? | Giá trị |
 |---|---|---|
-| **A — Từ yêu cầu đến test** | BA/team SUT đưa một PRD nhỏ vào nhánh chính hoặc chạy workflow cho PRD đó. | Workflow dùng LLM thật mở PR Ground-Truth; test mới ở trạng thái `draft`, chưa tự được dùng để chặn merge. |
-| **B — QA duyệt** | QA xem từng test, sửa/loại test sai, chuyển test đúng sang `approved`, rồi duyệt PR. Một tài khoản không phải QA thử sửa `.qc-agent/**`. | `gt validate` xanh sau khi QA hoàn tất; người không phải QA không thể merge thay đổi test khi thiếu QA duyệt, cũng không push thẳng vào nhánh chính. |
-| **C — Lỗi phải chặn** | Dev mở PR chứa một lỗi đã chọn trước, có test hoặc worker xác định được mức Critical/Medium. | Gate trả `BLOCKED`, check đỏ, PR không merge được; báo cáo chỉ ra finding hoặc test thất bại. |
-| **D — Chỉ có cảnh báo Low** | Dev mở PR chỉ tạo finding Low đã chọn trước, các kiểm tra chặn khác đều xanh. | Gate trả `PASSED_WITH_WARNINGS`, check xanh kèm cảnh báo; có inline comment khi finding nằm trên dòng thay đổi và Jira tạo/gán ticket trong sandbox. |
-| **E — Chạy theo yêu cầu** | Team QC chạy workflow thủ công và chỉ định danh sách worker. | Artifact cho thấy đúng worker được yêu cầu; đây là đường chạy thủ công, không dùng LLM để chọn worker. |
+| `GHCR_PULL_TOKEN` | Image QC-Agent private và repo chưa được cấp quyền pull bằng `GITHUB_TOKEN` | PAT classic có `read:packages` của tài khoản được quyền đọc package |
+| `SUT_SECRET_ENV` | Ứng dụng cần secret để chạy | Nhiều dòng `KEY=VALUE` cho môi trường test |
+| `SUT_DB_SECRET_ENV` | Workflow chạy DB cần mật khẩu | Nhiều dòng `KEY=VALUE` cho container DB test |
+| `QC_TEST_USERNAME`, `QC_TEST_PASSWORD` | Bộ test đã cấu hình đăng nhập bằng hai biến này | Tài khoản test có quyền phù hợp |
 
-Trong kịch bản A, LLM **đề xuất** test; QA quyết định test nào đúng. Trong C/D, kết quả xanh/đỏ do test và quy tắc xác định, không do LLM phán. PR chỉ đổi tài liệu hoặc file cấu hình có thể khiến bước chọn worker đi theo quy tắc có sẵn; team QC sẽ chọn diff phù hợp khi cần đo LLM Select.
+### Quyền kéo image private
 
-### Bước 4. Thu bằng chứng và chốt số đo
+PAT là **Personal Access Token** của GitHub. Nếu bên cung cấp đã cấp quyền package cho repo Actions của bạn, có thể dùng `GITHUB_TOKEN` sẵn có và không cần PAT riêng. Nếu cần PAT:
 
-Team QC lưu cho từng kịch bản: link PR và Actions run, SHA của commit, ảnh hoặc kết quả check/QA review, artifact `qc-runs-<project>-<attempt>`, kết quả Jira (nếu có) và thời điểm chạy. `selection.json` cho biết vì sao worker được chọn; `llm_usage.json` cho biết số token/chi phí ước tính. Secret và nội dung nhạy cảm không nằm trong bảng bằng chứng gửi rộng rãi.
+1. Tài khoản tạo PAT phải được phép đọc package QC-Agent. Liên hệ chủ package nếu chưa được cấp quyền.
+2. GitHub cá nhân → Settings → Developer settings → Personal access tokens → **Tokens (classic)** → Generate new token.
+3. Đặt tên dễ nhận diện, chọn hạn dùng và scope **`read:packages`**.
+4. Copy token ngay và lưu thành `GHCR_PULL_TOKEN` trong repo SUT.
+5. Xác nhận `ghcr_username` trong workflow là chủ PAT đang dùng; không giữ username của repo mẫu nếu bạn dùng PAT của người khác.
 
-Sau lượt đầu, team QC ước tính chi phí rồi mới chạy chuỗi **C + D mười lần**, đối chiếu mục tiêu ít nhất **9/10** lượt đúng. Team QC còn đo mức giảm token của Diff Agent, cache khi chạy lại cùng commit, chi phí và thời gian gate so với baseline. **Một lần chạy xanh không có nghĩa Sprint 4 đã hoàn tất**: chỉ đánh dấu đạt từng mục khi có bằng chứng; mục nào chưa chạy được ghi `PENDING` và lý do. [Tiêu chí Sprint 4](implementation-plan.md#dod-sprint-4) do team QC chịu trách nhiệm tổng hợp.
+Scope `read:packages` tự nó không cấp quyền đọc package private của người khác. Bên cung cấp QC-Agent cần cung cấp image reference và cách cấp quyền phù hợp. Tham khảo [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
-## 3. Giai đoạn 2 — demo trên cùng SUT khi gate không có LLM key
+### Ví dụ secrets cho FastAPI + PostgreSQL
 
-Giai đoạn này bắt đầu **sau khi** có test case đã được QA duyệt và merge vào nhánh chính. Không chạy bước sinh test mới từ PRD trong buổi demo: bước đó cần LLM API key. Nếu catalog được tạo bằng fake LLM để thử tích hợp, phải nói rõ đó là mô phỏng; nó không chứng minh chất lượng model trên PRD mới.
+Nếu project dùng các biến này, `SUT_SECRET_ENV` có thể gồm:
 
-### Trước buổi demo
+```dotenv
+SECRET_KEY=<chuỗi ngẫu nhiên riêng cho test>
+DATABASE_URL=postgresql+psycopg://app:<mật khẩu DB test>@db:5432/app
+FIRST_SUPERUSER=qc-admin@example.com
+FIRST_SUPERUSER_PASSWORD=<mật khẩu admin test>
+```
 
-1. Team QC xác nhận policy có `gt-functional` và các suite chặn merge cần thiết; các suite được dùng trong demo phải chạy được **không cần LLM**. Một worker bắt buộc cần model mà thiếu key có thể gây lỗi, không phải bằng chứng cho cơ chế fallback của Select.
-2. Team QC làm cho **workflow gate không nhận LLM API key**. Caller hiện dùng `secrets: inherit`, tức truyền mọi secret của repo sang gate. Trên sandbox, người quản lý secret tạm gỡ **chỉ các key LLM** khỏi repo (và ngừng cấp key từ tổ chức cho repo đó, nếu có). Giữ nguyên `secrets: inherit` để secret Jira, DB, image và tài khoản test vẫn tới gate. Trước khi gỡ, xác nhận key gốc đã được lưu ở nơi quản lý secret đáng tin cậy hoặc chuẩn bị key thay thế: GitHub không cho xem lại giá trị secret. Sau demo đặt lại key. Team QC sẽ kiểm workflow Ground-Truth không được kích hoạt trong lúc key bị rút.
-3. Dùng một **PR đổi mã nguồn chưa từng chạy Select với key**. Kết quả LLM cũ có thể nằm trong cache ngay cả khi key đã bị bỏ. Một diff mã nguồn mới làm khóa cache khác đi. PR chỉ đổi docs có thể chỉ chạy floor; PR sửa `.qc-agent/**` có thể FULL SET do quy tắc, nên không chứng minh được nhánh `missing_api_key`.
-4. Trước khi cố ý tạo lỗi, chạy một PR sạch để biết SUT, database và test đã duyệt hoạt động bình thường. Lỗi dựng SUT hoặc thiếu DB không phải là lỗi sản phẩm được gate phát hiện.
+`SUT_DB_SECRET_ENV`:
 
-### Trình tự trình diễn
+```dotenv
+POSTGRES_PASSWORD=<cùng mật khẩu DB test ở DATABASE_URL>
+```
 
-1. Dev mở PR mã nguồn trên repo SUT. Trong artifact, `selection.json` phải ghi `source: "fallback"`, `full_set: true`, `fallback_reason: "missing_api_key"`. Nếu thấy `source: "cache"` hoặc `source: "rules"`, chọn diff mới phù hợp rồi chạy lại; chưa đạt bằng chứng fallback thiếu key.
-2. Cho thấy các worker thực sự chạy trên phiên bản SUT của PR, gồm test QA duyệt và các suite đã cấu hình. Thiếu key làm Select chọn **FULL SET**, không làm gate bỏ qua kiểm tra.
-3. Cho thấy ba kết quả bằng các PR thử đã chuẩn bị: lỗi Critical/Medium → `BLOCKED` và check đỏ; PR sạch → `PASSED` và check xanh; chỉ Low → `PASSED_WITH_WARNINGS`, check xanh kèm cảnh báo. Mở Check Run, comment trên PR và artifact để đối chiếu kết quả. Nếu đã nối Jira sandbox, cho thấy ticket Low là phần bổ sung.
-4. Sau demo, team quản lý secret khôi phục quyền truy cập LLM key theo cấu hình Sprint 4 và kiểm lại workflow bằng một lượt chạy nhỏ.
+Đây là ví dụ theo framework, không phải biến bắt buộc cho mọi SUT. Các giá trị trong dấu `<...>` phải được thay trước khi dùng. Hostname `db`, user `app` và database `app` cũng phải khớp workflow của bạn. Một secret có thể chứa nhiều dòng; copy toàn bộ block đã điền vào một ô Secret.
 
-**Điều demo chứng minh:** khi LLM thiếu key hoặc không sẵn sàng, gate vẫn chạy các bài kiểm đã được duyệt và vẫn chặn lỗi theo chính sách. **Điều demo không chứng minh:** LLM sinh test đúng từ PRD mới, Diff Agent chọn worker tối ưu hay các worker đánh giá bằng model chạy được khi không có key.
+Luôn sinh thông tin test mới. Không dùng credential production, không commit token/password, không gửi giá trị secret trong issue hoặc chat hỗ trợ.
 
-## 4. Khi kết quả khác dự kiến
+## 7. Chạy và kiểm tra lần đầu
 
-| Hiện tượng | Kiểm tra đầu tiên |
+Sau khi sửa cấu hình/thêm secrets:
+
+1. Vào **Actions**, chọn lượt `qc-gate` của PR onboarding.
+2. Nếu lượt đó thất bại trước khi thêm secrets, chọn **Re-run jobs → Re-run failed jobs**. Hoặc push commit cấu hình mới để tạo lượt chạy mới.
+3. Kiểm tra các giai đoạn: **Pull image → Start SUT/DB → Select → Gate → Review/Report → Enforce**.
+4. Mở comment QC-Agent trên PR, review/inline comments và artifact của lượt chạy.
+
+| Kết quả | Cách hiểu |
 |---|---|
-| PR đỏ trước khi worker chạy | Log bước dựng SUT, health path, DB và secret môi trường thử. |
-| Test đã duyệt không chạy | `gt-functional` đã nằm trong `blocking_suites` chưa; catalog đã merge, có test `approved` chưa. |
-| Không thấy `missing_api_key` | Key còn được truyền, cache Select đã có kết quả, hoặc diff đã được quy tắc xử lý trước khi cần LLM. |
-| Check xanh dù có lỗi Critical/Medium | Finding có thật nằm trong suite chặn merge chưa; GitHub đã yêu cầu đúng check `qc-agent / <project>` chưa. |
-| Không có inline comment | Finding có gắn được vào dòng thuộc diff của PR không; xem Check Run và artifact trước. |
-| Không có Jira ticket | Kiểm project key, quyền tạo/gán issue, ánh xạ tác giả PR và log bước Jira; lỗi Jira không đổi verdict của gate. |
+| `PASSED` | Các kiểm tra được chạy đáp ứng policy |
+| `PASSED_WITH_WARNINGS` | Có cảnh báo theo policy; đọc nội dung cần theo dõi |
+| `BLOCKED` do finding | Worker phát hiện vấn đề cần xử lý theo policy |
+| Lỗi pull/build/startup | Chưa kiểm tra được SUT đầy đủ; sửa quyền hoặc cấu hình môi trường |
+| `Skipped` | Job không thoả điều kiện chạy; không được hiểu là đã test và pass |
 
-Các bước cấu hình sâu và cách đọc artifact: [gate trên CI](usage-ci.md), [QA duyệt Ground-Truth](groundtruth.md), [đo test trên SUT thật](groundtruth-real-sut.md).
+Trivy có thể quét dependency toàn repo. Vì vậy PR chỉ thêm workflow vẫn có thể bị chặn bởi CVE đã tồn tại trên nhánh mặc định; không đồng nghĩa PR onboarding đưa lỗ hổng vào. Đối chiếu finding với phạm vi thay đổi và xử lý baseline cùng người phụ trách project.
+
+Sau khi review và xử lý kết quả theo quy định của team, chuyển PR từ Draft sang **Ready for review**, lấy review cần thiết rồi merge. Không bỏ qua finding chỉ để làm xanh CI.
+
+## 8. Dùng QC-Agent sau onboarding
+
+Tạo branch từ nhánh mặc định đã có cấu hình QC, sửa code và mở PR như bình thường. Actions của repo tự chạy QC và đăng kết quả; bạn không cần install lại App cho mỗi PR.
+
+Để chạy thủ công: **Actions → qc-gate → Run workflow**, chọn branch. Nếu có input `workers`, có thể chọn worker khi chạy thủ công; PR tự động dùng selector/policy.
+
+Muốn ngăn merge khi QC đỏ, chủ repo cần cấu hình **branch protection/ruleset**, yêu cầu đúng check QC hiển thị trên PR và review theo chính sách team. Check đỏ hoặc CODEOWNERS riêng lẻ không tự bảo đảm merge bị chặn.
+
+Khi thử detector, dùng PR sandbox riêng, dữ liệu/credential giả và ghi rõ không merge. Sau khi thu bằng chứng, đóng PR thử nghiệm thay vì merge code lỗi cố ý vào nhánh chính.
+
+## 9. Khi nào sinh test case bằng LLM?
+
+Onboarding và gate không bắt buộc có LLM. Workflow `qc-groundtruth` là luồng riêng:
+
+- PR thay đổi `.qc-agent/**`: validate Ground-Truth đã có; không sinh TC trong nhánh PR này.
+- Thay đổi PRD thuộc đường dẫn đã cấu hình, mặc định `docs/prd/**`, được push/merge vào nhánh mặc định: có thể kích hoạt sinh TC.
+- **Actions → qc-groundtruth → Run workflow**: kích hoạt thủ công với đường dẫn PRD.
+
+Phải cấu hình provider/key và cho phép gửi PRD/context trước khi sinh. Test case được đề xuất ở trạng thái draft, qua PR để QA duyệt rồi gate mới dùng bản approved. Hiện luồng GT hỗ trợ Claude/Gemini; OpenAI cho GT/Selector chưa được triển khai trong mốc App này. Chưa cấu hình LLM thì job có thể được kích hoạt nhưng dừng vì thiếu key; workflow validate xanh khi chưa có catalog cũng chưa chứng minh đã sinh test.
+
+## 10. Lỗi thường gặp và thông tin gửi hỗ trợ
+
+| Hiện tượng | Việc cần kiểm tra |
+|---|---|
+| Không có PR onboarding | Install được duyệt, đúng repo; liên hệ bên vận hành kiểm tra webhook/service |
+| PR đã có nhưng thay đổi không tự cập nhật | Service giữ PR đang mở để bảo vệ chỉnh sửa của bạn; nhờ hỗ trợ cập nhật, không chờ install lại tự ghi đè |
+| Pull image báo 401 / `manifest unknown` | Image/digest, package access, PAT chưa hết hạn, `GHCR_PULL_TOKEN`, username |
+| Start SUT lỗi | Đọc log: thiếu env, DB chưa sẵn sàng, migration, Dockerfile/context, port hoặc health URL |
+| Gate đỏ vì CVE | Đọc package/version/fixed version trong evidence; cập nhật dependency và lockfile theo quy trình team |
+| Chỉ một số worker chạy | Kiểm tra selector/policy và phạm vi PR; không mặc định mọi worker đều phải chạy |
+| Không merge được dù checks xanh | PR còn Draft, thiếu review, conflict hoặc branch rules khác |
+| Workflow sinh test thiếu key | Chưa cấu hình provider/key; liên hệ bên cung cấp trước khi bật gửi PRD ra LLM |
+
+Khi cần hỗ trợ, gửi **URL repo, URL PR, URL workflow run, tên bước lỗi và log đã che thông tin nhạy cảm**. Không gửi PAT, private key App, mật khẩu DB hoặc nội dung repository secrets.
+
+## 11. Checklist hoàn tất tích hợp
+
+- [ ] App được install vào đúng SUT và đã có PR onboarding.
+- [ ] Dockerfile/context, port, health/OpenAPI, startup/DB và TODO được xác nhận.
+- [ ] Secrets test và quyền pull image đã đủ; QA owner phù hợp với repo.
+- [ ] CI khởi động SUT và chạy worker; có review/report/evidence.
+- [ ] Baseline/finding đã được team xem xét; không nhầm skipped với pass.
+- [ ] PR onboarding được review và merge.
+- [ ] PR tiếp theo tự chạy QC.
+- [ ] Required checks/QA review được cấu hình nếu team yêu cầu chặn merge.
+
+Tài liệu cho bên vận hành App/service nằm riêng tại [github-app-setup.md](github-app-setup.md).

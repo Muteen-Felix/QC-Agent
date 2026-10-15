@@ -135,7 +135,8 @@ tests/           test + fixture (SUT mẫu noteboard)       docs/   tài liệu
 | [docs/operations.md](docs/operations.md) | Vận hành: event log, xoay khoá, chi phí LLM, Jira hỏng, đổi nhà cung cấp, GT agent |
 | [docs/e2e-runbook.md](docs/e2e-runbook.md) | Chạy chuỗi PR → Select → Gate → Report trên máy bằng harness local |
 | [docs/onboarding.md](docs/onboarding.md) | Onboard repo mới bằng một lệnh |
-| [docs/github-app-setup.md](docs/github-app-setup.md) | Cài GitHub App/service, onboarding SUT, secrets và kiểm chứng từng bước |
+| [docs/user-guide.md](docs/user-guide.md) | Dành cho người dùng: install App vào repo, cấu hình secrets và bắt đầu chạy QC |
+| [docs/github-app-setup.md](docs/github-app-setup.md) | Dành cho người vận hành: cài GitHub App/service và nối webhook |
 | [docs/github-app-onboarding.md](docs/github-app-onboarding.md) | Kiến trúc App chỉ thay init và cấu hình service |
 | [docs/worker.md](docs/worker.md) | Từng worker, giới hạn công cụ |
 | [docs/core-rules.md](docs/core-rules.md) | Luật code của `core/`, cách thêm worker |

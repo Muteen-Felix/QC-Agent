@@ -1,4 +1,6 @@
-# Cài GitHub App và onboarding SUT: hướng dẫn cho thành viên mới
+# Cài đặt và vận hành GitHub App/service
+
+Nếu bạn chỉ muốn cài App đã được vận hành sẵn vào repo của mình, dùng [User Guide](user-guide.md). Tài liệu này dành cho người vận hành App/service và phần cấu hình kỹ thuật tham chiếu.
 
 Luồng đã thử trên Windows PowerShell + Docker Desktop. App chỉ thay thao tác `init`; sau đó Actions của SUT pull image QC-Agent và chạy QC. Service không chạy worker hoặc sinh test bằng LLM.
 
